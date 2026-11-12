@@ -238,10 +238,12 @@ export function buildFixturePsd(options: { naming?: Naming } = {}): Buffer {
       imageData: raster
     }
   })
-  return writePsdBuffer({
-    width: W,
-    height: H,
-    children,
-    noBackground: true
-  })
+  return writePsdBuffer(
+    {
+      width: W,
+      height: H,
+      children
+    },
+    { noBackground: true }
+  )
 }
