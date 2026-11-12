@@ -52,3 +52,65 @@ it('serializes errors without absolute paths or stack traces', () => {
   expect(JSON.stringify(entry)).not.toContain('/Users/alice')
   expect(entry.err.stack).toBeUndefined()
 })
+
+it('redacts secret keys after normalizing case and punctuation', () => {
+  const redacted = redactLogValue({
+    accessToken: 'a',
+    refresh_token: 'b',
+    'api-key': 'c',
+    clientSecret: 'd',
+    secretKey: 'e',
+    privateKey: 'f',
+    credential: 'g',
+    nested: { clientSecret: 'h' },
+    maxTokens: 42,
+    keep: 'ok'
+  })
+  expect(redacted).toEqual({
+    accessToken: '[REDACTED]',
+    refresh_token: '[REDACTED]',
+    'api-key': '[REDACTED]',
+    clientSecret: '[REDACTED]',
+    secretKey: '[REDACTED]',
+    privateKey: '[REDACTED]',
+    credential: '[REDACTED]',
+    nested: { clientSecret: '[REDACTED]' },
+    maxTokens: 42,
+    keep: 'ok'
+  })
+})
+
+it('sanitizes absolute user paths in plain string messages', () => {
+  const { lines, stream } = capture()
+  const logger = createLogger({ level: 'info', destination: stream })
+  logger.info('loaded /Users/alice/private/model.png')
+  const entry = JSON.parse(lines.join(''))
+  expect(entry.msg).toBe('loaded [PATH]')
+  expect(JSON.stringify(entry)).not.toContain('/Users/alice')
+})
+
+it('does not throw for non-Error err values and sanitizes their paths', () => {
+  const { lines, stream } = capture()
+  const logger = createLogger({ level: 'info', destination: stream })
+  expect(() => logger.error({ err: 'failed /Users/alice/private/model.png' }, 'bad')).not.toThrow()
+  const entry = JSON.parse(lines.join(''))
+  expect(entry.err.message).toBe('failed [PATH]')
+  expect(JSON.stringify(entry)).not.toContain('/Users/alice')
+})
+
+it('emits a safe placeholder for primitive non-string err values', () => {
+  const { lines, stream } = capture()
+  const logger = createLogger({ level: 'info', destination: stream })
+  expect(() => logger.error({ err: 42 }, 'bad')).not.toThrow()
+  const entry = JSON.parse(lines.join(''))
+  expect(entry.err).toEqual({ message: '[REDACTED]' })
+})
+
+it('preserves the original error name in the err field', () => {
+  const { lines, stream } = capture()
+  const logger = createLogger({ level: 'info', destination: stream })
+  logger.error({ err: new TypeError('nope') }, 'failed')
+  const entry = JSON.parse(lines.join(''))
+  expect(entry.err).toEqual({ type: 'TypeError', message: 'nope' })
+  expect(entry.err.stack).toBeUndefined()
+})
