@@ -1,36 +1,9 @@
-import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
+import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtempSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
-
-// Both windows are created in the same tick, so Playwright's firstWindow() can return either page.
-// Resolve each window by its URL to keep the assertions deterministic.
-async function studioPage(app: ElectronApplication) {
-  return await expect
-    .poll(
-      async () => {
-        const win = app.windows().find((page) => page.url().includes('/studio/'))
-        return win ? 'ready' : 'missing'
-      },
-      { timeout: 20_000 }
-    )
-    .toBe('ready')
-    .then(() => app.windows().find((page) => page.url().includes('/studio/'))!)
-}
-
-async function petPage(app: ElectronApplication) {
-  return await expect
-    .poll(
-      async () => {
-        const win = app.windows().find((page) => page.url().includes('/pet/'))
-        return win ? 'ready' : 'missing'
-      },
-      { timeout: 20_000 }
-    )
-    .toBe('ready')
-    .then(() => app.windows().find((page) => page.url().includes('/pet/'))!)
-}
+import { petPage, studioPage } from './support/windows'
 
 test('studio and pet are isolated windows; pet click-through is switchable', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-shell-'))

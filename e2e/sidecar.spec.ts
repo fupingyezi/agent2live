@@ -2,6 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { studioPage } from './support/windows'
 
 test('sidecar is loopback-only, token-protected, and 0600', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-sidecar-'))
@@ -10,7 +11,7 @@ test('sidecar is loopback-only, token-protected, and 0600', async () => {
     env: { ...process.env, AGENT2LIVE_DATA_DIR: dataDir, AGENT2LIVE_E2E: '1' }
   })
   try {
-    const studio = await app.firstWindow()
+    const studio = await studioPage(app)
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
     const endpointFile = join(dataDir, 'runtime', 'endpoint.json')
     await expect

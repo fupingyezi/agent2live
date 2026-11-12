@@ -5,7 +5,7 @@ export const endpointSchema = z
   .object({
     schemaVersion: z.literal('endpoint/1'),
     baseUrl: z.string().url(),
-    token: z.string().min(1),
+    token: z.string().min(32),
     pid: z.number().int().positive(),
     startedAt: z.string()
   })
