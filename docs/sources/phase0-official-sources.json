@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "official-sources/1",
+  "sources": [
+    {
+      "id": "codex-app-server",
+      "url": "https://learn.chatgpt.com/docs/app-server",
+      "version": "0.153.2",
+      "methods": ["thread/start", "thread/resume", "turn/start", "turn/interrupt"],
+      "license": null,
+      "redistributable": null,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    },
+    {
+      "id": "claude-agent-sdk",
+      "url": "https://code.claude.com/docs/en/agent-sdk/overview",
+      "version": "0.3.319",
+      "methods": ["query", "interrupt", "canUseTool"],
+      "license": null,
+      "redistributable": null,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    },
+    {
+      "id": "cubism-web",
+      "url": "https://docs.live2d.com/cubism-sdk-manual/model-web",
+      "version": null,
+      "methods": ["Live2DCubismCore.Moc.fromArrayBuffer", "Live2DCubismCore.Model.fromMoc"],
+      "license": null,
+      "redistributable": null,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    },
+    {
+      "id": "cubism-license",
+      "url": "https://www.live2d.com/en/sdk/license/",
+      "version": null,
+      "methods": [],
+      "license": "Live2D SDK license",
+      "redistributable": false,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    },
+    {
+      "id": "psd2live",
+      "url": "https://github.com/tsunehimatoi/psd2live",
+      "version": "v3.4.0",
+      "methods": [],
+      "license": "GPL-3.0",
+      "redistributable": false,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    },
+    {
+      "id": "psd2live-mcp",
+      "url": "https://github.com/tsunehimatoi/psd2live/blob/master/docs/zh/agent/MCP_AUTHORING.md",
+      "version": "v3.4.0",
+      "methods": ["project_import_psd", "project_export_target", "job_wait", "job_get"],
+      "license": "GPL-3.0",
+      "redistributable": false,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    },
+    {
+      "id": "see-through",
+      "url": "https://github.com/shitagaki-lab/see-through",
+      "version": null,
+      "methods": [],
+      "license": "Apache-2.0",
+      "redistributable": false,
+      "retrievedAt": null,
+      "httpStatus": null,
+      "sha256": null
+    }
+  ]
+}

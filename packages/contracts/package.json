@@ -1,0 +1,10 @@
+{
+  "name": "@agent2live/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ulid": "3.0.2",
+    "zod": "3.25.76"
+  }
+}

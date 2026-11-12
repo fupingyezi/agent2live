@@ -1,0 +1,56 @@
+# Implementation plans and evidence are internal working documents, never committed.
+docs/plans/
+
+# Subagent-driven-development ledger/artifacts (local only).
+.superpowers/
+
+# Live2D Cubism Core is not redistributed. Obtain it from the official site.
+**/live2dcubismcore.js
+**/live2dcubismcore.min.js
+**/live2dcubismcore.min.js.map
+
+# Local runtime data: SQLite, blobs, caches, logs, agent workspaces.
+runtime/
+userData/
+blobs/
+model-cache/
+preview-cache/
+logs/
+spikes/psd2live/work/
+spikes/psd2live/evidence/
+
+# Model binaries and weights are local artifacts, not source.
+*.moc3
+*.cmo3
+*.psd
+*.psb
+weights/
+*.safetensors
+*.ckpt
+*.onnx
+
+# Secrets and local configuration.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build outputs and dependencies.
+node_modules/
+dist/
+out/
+build/
+coverage/
+.playwright/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Phase 0 local assets and test output
+apps/desktop/src/renderer/public/golden/
+apps/desktop/src/renderer/public/live2d/
+apps/desktop/release/
+test-results/
+playwright-report/
+docs/plans/evidence/

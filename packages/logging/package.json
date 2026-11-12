@@ -1,0 +1,9 @@
+{
+  "name": "@agent2live/logging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pino": "10.4.0"
+  }
+}
