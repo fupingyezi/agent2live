@@ -73,4 +73,24 @@ describe('probeMoc3', () => {
     )
     await expect(probeMoc3('agent2live-model://models/Missing.moc3')).rejects.toThrow('MOCT_FETCH_FAILED_404')
   })
+
+  it('releases the moc when Model.fromMoc throws', async () => {
+    const releaseMoc = vi.fn()
+    const fromMoc = vi.fn(() => {
+      throw new Error('invalid moc')
+    })
+    vi.stubGlobal('Live2DCubismCore', {
+      Moc: {
+        fromArrayBuffer: vi.fn(() => ({ release: releaseMoc }))
+      },
+      Model: { fromMoc }
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Uint8Array([0x4d, 0x4f, 0x43, 0x33]), { status: 200 }))
+    )
+    await expect(probeMoc3('agent2live-model://models/Broken.moc3')).rejects.toThrow('invalid moc')
+    expect(fromMoc).toHaveBeenCalledTimes(1)
+    expect(releaseMoc).toHaveBeenCalledTimes(1)
+  })
 })

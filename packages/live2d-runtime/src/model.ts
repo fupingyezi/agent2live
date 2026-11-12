@@ -8,6 +8,7 @@ export interface Live2DProbe extends MocProbe {
   coreVersion: string | null
   motionGroups: Record<string, number>
   expressions: string[]
+  idleStarted: boolean
 }
 
 export interface LoadedLive2D {
@@ -42,8 +43,10 @@ export async function loadLive2DModel(canvas: HTMLCanvasElement, url: string): P
   const model = await mod.Live2DModel.from(url, { autoHitTest: false, autoFocus: false })
   app.stage.addChild(model)
   fitModel(app, model)
+  let idleStarted = false
   try {
-    await model.motion('Idle')
+    idleStarted = await model.motion('Idle')
+    if (!idleStarted) console.warn('idle motion did not start')
   } catch (error) {
     console.warn('idle motion failed to start', error)
   }
@@ -63,7 +66,8 @@ export async function loadLive2DModel(canvas: HTMLCanvasElement, url: string): P
         motionGroups: Object.fromEntries(
           Object.entries(definitions).map(([name, list]) => [name, list.length])
         ),
-        expressions: (settings.expressions ?? []).map((e) => e.Name ?? e.name ?? '').filter(Boolean)
+        expressions: (settings.expressions ?? []).map((e) => e.Name ?? e.name ?? '').filter(Boolean),
+        idleStarted
       }
     }
   }

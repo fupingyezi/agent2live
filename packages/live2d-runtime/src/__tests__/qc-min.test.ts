@@ -56,4 +56,37 @@ describe('QC minimal blockers', () => {
     expect(report.pass).toBe(false)
     expect(report.blockers).toContain('B01')
   })
+
+  it('reports blockers instead of throwing for malformed FileReferences', async () => {
+    const dir = await makeModel()
+    const model3 = JSON.parse(readFileSync(join(dir, 'model.model3.json'), 'utf8'))
+    model3.FileReferences = []
+    writeFileSync(join(dir, 'model.model3.json'), JSON.stringify(model3))
+    const report = await qcModelDirectory(dir)
+    expect(report.pass).toBe(false)
+    expect(report.blockers).toEqual(expect.arrayContaining(['B01', 'B03', 'B05', 'B06']))
+  })
+
+  it('reports blockers for non-array textures and motion groups', async () => {
+    const dir = await makeModel()
+    const model3 = JSON.parse(readFileSync(join(dir, 'model.model3.json'), 'utf8'))
+    model3.FileReferences.Textures = 'textures/0.png'
+    model3.FileReferences.Motions = { Idle: { File: 'idle.motion3.json' }, Extra: [null] }
+    writeFileSync(join(dir, 'model.model3.json'), JSON.stringify(model3))
+    const report = await qcModelDirectory(dir)
+    expect(report.pass).toBe(false)
+    expect(report.blockers).toEqual(expect.arrayContaining(['B01', 'B03', 'B05', 'B06']))
+  })
+
+  it('reports B03 for null entries and B05 when Idle has no usable motion', async () => {
+    const dir = await makeModel()
+    const model3 = JSON.parse(readFileSync(join(dir, 'model.model3.json'), 'utf8'))
+    model3.FileReferences.Textures = [null, 'textures/0.png']
+    model3.FileReferences.Motions = { Idle: [null] }
+    writeFileSync(join(dir, 'model.model3.json'), JSON.stringify(model3))
+    const report = await qcModelDirectory(dir)
+    expect(report.pass).toBe(false)
+    expect(report.blockers).toEqual(expect.arrayContaining(['B03', 'B05']))
+    expect(report.blockers).not.toContain('B06')
+  })
 })

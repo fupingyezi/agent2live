@@ -19,10 +19,22 @@ export function contentTypeFor(file: string): string | null {
   return TYPES[extname(file).toLowerCase()] ?? null
 }
 
+function decodedRawPath(rawUrl: string): string | null {
+  const match = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(\/[^?#]*)?/i.exec(rawUrl)
+  if (!match) return null
+  try {
+    return decodeURIComponent(match[1] ?? '')
+  } catch {
+    return null
+  }
+}
+
 /**
  * Parses an `agent2live-model://models/<relative-path>` request URL into the
  * relative path consumed by {@link resolveContainedFile}. Returns null for any
- * malformed URL, unexpected scheme/host, or malformed percent-encoding.
+ * malformed URL, unexpected scheme/host, malformed percent-encoding, NUL, or
+ * dot-segment traversal. The raw path is inspected before the WHATWG URL parser
+ * normalizes `..` and `%2e%2e` away.
  */
 export function modelPathFromUrl(rawUrl: string): string | null {
   let url: URL
@@ -33,6 +45,9 @@ export function modelPathFromUrl(rawUrl: string): string | null {
   }
   if (url.protocol !== 'agent2live-model:') return null
   if (url.host !== 'models') return null
+  const rawPath = decodedRawPath(rawUrl)
+  if (rawPath === null) return null
+  if (rawPath.includes('\0') || rawPath.split('/').includes('..')) return null
   let path: string
   try {
     path = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
@@ -45,6 +60,7 @@ export function modelPathFromUrl(rawUrl: string): string | null {
 export function resolveContainedFile(root: string, relativePath: string): string | null {
   try {
     if (!relativePath || relativePath.includes('\0') || relativePath.includes('\\')) return null
+    if (relativePath.split('/').includes('..')) return null
     const ext = extname(relativePath).toLowerCase()
     if (!ALLOWED.has(ext)) return null
     if (relativePath.startsWith('/') || isAbsolute(relativePath)) return null
@@ -53,11 +69,11 @@ export function resolveContainedFile(root: string, relativePath: string): string
     if (!statSync(rootReal).isDirectory()) return null
     const target = resolve(rootAbs, relativePath)
     const rel = relative(rootAbs, target)
-    if (!rel || rel.startsWith('..') || rel.split(sep).includes('..')) return null
+    if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.split(sep).includes('..')) return null
     if (!existsSync(target) || !statSync(target).isFile()) return null
     const targetReal = realpathSync(target)
     const relReal = relative(rootReal, targetReal)
-    if (!relReal || relReal.startsWith('..')) return null
+    if (!relReal || relReal.startsWith('..') || isAbsolute(relReal)) return null
     return target
   } catch {
     return null

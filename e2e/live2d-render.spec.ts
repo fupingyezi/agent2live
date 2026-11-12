@@ -35,6 +35,7 @@ test('studio and pet load the same Cubism 4 model, play Idle, and expose require
     const probe = await studio.evaluate(() => (window as any).__agent2liveProbe)
     expect(probe.coreVersion).toBeTruthy()
     expect(probe.motionGroups.Idle).toBeGreaterThan(0)
+    expect(probe.idleStarted).toBe(true)
     for (const id of [
       'ParamAngleX',
       'ParamAngleY',

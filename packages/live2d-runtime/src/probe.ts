@@ -37,17 +37,20 @@ export async function probeMoc3(url: string): Promise<MocProbe> {
   if (!response.ok) throw new Error(`MOCT_FETCH_FAILED_${response.status}`)
   const buffer = await response.arrayBuffer()
   const moc = core().Moc.fromArrayBuffer(buffer)
-  const model = core().Model.fromMoc(moc)
   try {
-    return {
-      parameterIds: [...model.parameters.ids],
-      partIds: [...model.parts.ids],
-      drawableCount: model.drawables.count,
-      canvasWidth: model.canvasinfo?.CanvasWidth ?? 0,
-      canvasHeight: model.canvasinfo?.CanvasHeight ?? 0
+    const model = core().Model.fromMoc(moc)
+    try {
+      return {
+        parameterIds: [...model.parameters.ids],
+        partIds: [...model.parts.ids],
+        drawableCount: model.drawables.count,
+        canvasWidth: model.canvasinfo?.CanvasWidth ?? 0,
+        canvasHeight: model.canvasinfo?.CanvasHeight ?? 0
+      }
+    } finally {
+      model.release?.()
     }
   } finally {
-    model.release?.()
     moc.release?.()
   }
 }

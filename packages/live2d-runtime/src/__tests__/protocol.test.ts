@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { contentTypeFor, modelPathFromUrl, resolveContainedFile } from '../protocol'
 
 function fixture(): string {
@@ -28,6 +28,37 @@ describe('model protocol path containment', () => {
     expect(resolveContainedFile(root, 'Haru/%00.json')).toBeNull()
     expect(resolveContainedFile(root, 'Haru\\..\\secret.txt')).toBeNull()
     expect(resolveContainedFile(root, 'secret.txt')).toBeNull()
+  })
+
+  it('rejects an existing allowlisted file outside the root because of containment', () => {
+    const root = fixture()
+    const outsideDir = mkdtempSync(join(tmpdir(), 'agent2live-outside-dir-'))
+    writeFileSync(join(outsideDir, 'secret.png'), 'outside')
+    const traversal = relative(root, join(outsideDir, 'secret.png'))
+    expect(traversal.startsWith('..')).toBe(true)
+    expect(resolveContainedFile(root, traversal)).toBeNull()
+  })
+
+  it('rejects an absolute path to an existing allowlisted file', () => {
+    const root = fixture()
+    const absolute = join(root, 'Haru', 'textures', '0.png')
+    expect(resolveContainedFile(root, absolute)).toBeNull()
+  })
+
+  it('rejects a literal backslash-named file that exists inside the root', () => {
+    const root = fixture()
+    writeFileSync(join(root, 'Haru\\..\\secret.png'), 'inside')
+    expect(resolveContainedFile(root, 'Haru\\..\\secret.png')).toBeNull()
+  })
+
+  it('rejects a NUL character without throwing', () => {
+    const root = fixture()
+    expect(resolveContainedFile(root, 'Haru/\0.png')).toBeNull()
+  })
+
+  it('rejects an interior .. segment even when it stays inside the root', () => {
+    const root = fixture()
+    expect(resolveContainedFile(root, 'Haru/../Haru/Haru.model3.json')).toBeNull()
   })
 
   it('rejects symlinks that escape the model root', () => {
@@ -61,5 +92,11 @@ describe('model request URL parsing', () => {
     expect(modelPathFromUrl('https://models/Haru/Haru.model3.json')).toBeNull()
     expect(modelPathFromUrl('not a url')).toBeNull()
     expect(modelPathFromUrl('agent2live-model://models/')).toBeNull()
+  })
+
+  it('rejects encoded dot-segments and NUL before URL normalization', () => {
+    expect(modelPathFromUrl('agent2live-model://models/%2e%2e/%2e%2e/secret.png')).toBeNull()
+    expect(modelPathFromUrl('agent2live-model://models/Haru/%00.png')).toBeNull()
+    expect(modelPathFromUrl('agent2live-model://models/Haru/../Haru/Haru.model3.json')).toBeNull()
   })
 })
