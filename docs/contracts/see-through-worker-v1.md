@@ -35,8 +35,9 @@ Unknown fields are rejected. Times are RFC 3339 UTC.
 - Image: PNG/JPEG/WebP, at most 20 MiB; 256–4096 px per side.
 - PSD: at most 200 MiB; layers at most 256.
 - One concurrent job per worker in Phase 0; queue the rest.
-- Job timeout: 15 minutes. Result URLs/paths are worker-local and never persisted
-  as external links.
+- Client job polling timeout: 10 minutes. The stub worker completes in
+  milliseconds and implements no server-side timeout. Result URLs/paths are
+  worker-local and never persisted as external links.
 
 ## Errors
 
@@ -47,7 +48,8 @@ optional `detail` and `requestId`. Stable codes:
 `SEE_THROUGH_PAYLOAD_TOO_LARGE`, `SEE_THROUGH_UNSUPPORTED_MEDIA`,
 `SEE_THROUGH_CHECKSUM_MISMATCH`, `SEE_THROUGH_IDEMPOTENCY_CONFLICT`,
 `SEE_THROUGH_JOB_NOT_FOUND`, `SEE_THROUGH_RESULT_NOT_READY`,
-`SEE_THROUGH_RESULT_INVALID`, `SEE_THROUGH_TIMEOUT`, `SEE_THROUGH_INTERNAL`.
+`SEE_THROUGH_RESULT_INVALID`, `SEE_THROUGH_TIMEOUT`, `SEE_THROUGH_INTERNAL`,
+`SEE_THROUGH_NOT_FOUND` (unknown route or resource).
 
 ## Guarantees and non-goals
 

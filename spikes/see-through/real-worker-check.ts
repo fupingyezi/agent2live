@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { readPsd } from 'ag-psd'
@@ -8,6 +8,7 @@ const evidenceDir = resolve('docs/plans/evidence/phase0/G0-SEETHROUGH')
 mkdirSync(evidenceDir, { recursive: true })
 const evidenceFile = resolve(evidenceDir, 'real-worker.json')
 const decomposedPsdFile = join(evidenceDir, 'decomposition.psd')
+const decomposedPsdTempFile = join(evidenceDir, 'decomposition.psd.tmp')
 
 // Never print or persist the worker URL or token; they are operator secrets.
 function redact(value: string): string {
@@ -41,10 +42,13 @@ async function main(): Promise<void> {
 
   const client = new SeeThroughClient(url, token)
   const health = await client.health()
+  // A null/empty GPU identity (e.g. the stub worker) must never produce a pass.
+  const gpuName = health.gpu?.name?.trim() ?? ''
+  if (!gpuName) throw new Error('SEE_THROUGH_WORKER_GPU_IDENTITY_MISSING')
   const image = readFileSync(input)
   const started = Date.now()
   const job = await client.submit(image, `real-${randomUUID()}`)
-  const finished = await client.waitForJob(job.id, 15 * 60_000)
+  const finished = await client.waitForJob(job.id, 10 * 60_000)
   const psd = await client.downloadResult(finished)
   const parsed = readPsd(psd, {
     useImageData: true,
@@ -55,9 +59,10 @@ async function main(): Promise<void> {
   if (finished.result?.psd.sha256 && finished.result.psd.sha256 !== psdSha256) {
     throw new Error('SEE_THROUGH_CHECKSUM_MISMATCH')
   }
-  writeFileSync(decomposedPsdFile, psd)
+  writeFileSync(decomposedPsdTempFile, psd)
   const metrics = finished.result?.metrics
-  const structuralPass = finished.status === 'succeeded' && (parsed.children?.length ?? 0) > 0
+  const layerCount = parsed.children?.length ?? 0
+  const structuralPass = finished.status === 'succeeded' && layerCount > 0 && gpuName.length > 0
   const qualityPass = Boolean(
     metrics &&
       metrics.missingRequiredRoles.length === 0 &&
@@ -65,9 +70,17 @@ async function main(): Promise<void> {
       metrics.composite.deltaE2000P95 <= 3 &&
       metrics.manualInterventionCount === 0
   )
+  const status = structuralPass && qualityPass ? 'pass' : 'fail'
+  let persistedPsdFile: string | null = null
+  if (status === 'pass') {
+    renameSync(decomposedPsdTempFile, decomposedPsdFile)
+    persistedPsdFile = decomposedPsdFile
+  } else {
+    rmSync(decomposedPsdTempFile, { force: true })
+  }
   const report = {
     kind: 'see-through-real-worker',
-    status: structuralPass && qualityPass ? 'pass' : 'fail',
+    status,
     scope: 'structure-and-quality',
     structuralStatus: structuralPass ? 'pass' : 'fail',
     qualityStatus: qualityPass ? 'pass' : 'fail',
@@ -80,11 +93,11 @@ async function main(): Promise<void> {
       model: health.models.seeThrough
     },
     psd: {
-      file: decomposedPsdFile,
+      file: persistedPsdFile,
       bytes: psd.length,
       sha256: psdSha256,
       workerSha256: finished.result?.psd.sha256 ?? null,
-      layerCount: parsed.children?.length ?? 0,
+      layerCount,
       layers: finished.result?.layers ?? []
     },
     startedAt,

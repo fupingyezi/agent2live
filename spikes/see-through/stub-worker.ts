@@ -23,7 +23,8 @@ class HttpError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    message: string
+    message: string,
+    readonly closeAfterResponse = false
   ) {
     super(message)
   }
@@ -54,20 +55,55 @@ function problem(response: ServerResponse, error: HttpError, requestId?: string)
 }
 
 function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
+  const declaredHeader = request.headers['content-length']
+  if (declaredHeader !== undefined) {
+    const declared = Number(declaredHeader)
+    if (!Number.isSafeInteger(declared) || declared < 0) {
+      return Promise.reject(new HttpError(400, 'SEE_THROUGH_INVALID_INPUT', 'invalid content-length'))
+    }
+    if (declared > limit) {
+      // Reject without destroying the socket: drain the announced body so the
+      // client can finish writing and read the flushed 413 problem response.
+      request.resume()
+      return Promise.reject(new HttpError(413, 'SEE_THROUGH_PAYLOAD_TOO_LARGE', 'payload too large'))
+    }
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let total = 0
-    request.on('data', (chunk: Buffer) => {
+    let settled = false
+    const cleanup = (): void => {
+      request.off('data', onData)
+      request.off('end', onEnd)
+      request.off('error', onError)
+    }
+    const onData = (chunk: Buffer): void => {
+      if (settled) return
       total += chunk.length
       if (total > limit) {
-        reject(new HttpError(413, 'SEE_THROUGH_PAYLOAD_TOO_LARGE', 'payload too large'))
-        request.destroy()
+        settled = true
+        cleanup()
+        request.pause()
+        reject(new HttpError(413, 'SEE_THROUGH_PAYLOAD_TOO_LARGE', 'payload too large', true))
         return
       }
       chunks.push(chunk)
-    })
-    request.on('end', () => resolve(Buffer.concat(chunks)))
-    request.on('error', reject)
+    }
+    const onEnd = (): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(Buffer.concat(chunks))
+    }
+    const onError = (error: Error): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    request.on('data', onData)
+    request.on('end', onEnd)
+    request.on('error', onError)
   })
 }
 
@@ -227,10 +263,13 @@ export async function startStubWorker(options: { token: string }): Promise<StubW
 
       throw new HttpError(404, 'SEE_THROUGH_NOT_FOUND', 'not found')
     } catch (error) {
-      if (error instanceof HttpError) {
-        problem(response, error)
-      } else {
-        problem(response, new HttpError(500, 'SEE_THROUGH_INTERNAL', 'internal error'))
+      const failure =
+        error instanceof HttpError ? error : new HttpError(500, 'SEE_THROUGH_INTERNAL', 'internal error')
+      problem(response, failure)
+      if (failure.closeAfterResponse && !request.readableEnded) {
+        // Streaming overflow: flush the problem response first so the paused,
+        // unconsumed request cannot reset the socket before the client sees it.
+        response.once('finish', () => request.destroy())
       }
     }
   })

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import {
+  SEE_THROUGH_MAX_PSD_BYTES,
   SEE_THROUGH_PROTOCOL_VERSION,
   healthResponseSchema,
   jobResponseSchema,
@@ -13,10 +14,41 @@ export class SeeThroughClientError extends Error {
   constructor(
     readonly code: string,
     readonly status: number,
-    message: string
+    message: string,
+    readonly responseContentType: string | null = null
   ) {
     super(message)
   }
+}
+
+async function readCappedBody(response: Response, limit: number): Promise<Buffer> {
+  const declaredHeader = response.headers.get('content-length')
+  if (declaredHeader !== null) {
+    const declared = Number(declaredHeader)
+    if (!Number.isSafeInteger(declared) || declared < 0) {
+      throw new SeeThroughClientError('SEE_THROUGH_RESULT_INVALID', 502, 'invalid result length')
+    }
+    if (declared > limit) {
+      await response.body?.cancel()
+      throw new SeeThroughClientError('SEE_THROUGH_RESULT_INVALID', 502, 'result exceeds size limit')
+    }
+  }
+  if (!response.body) return Buffer.alloc(0)
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (!value) continue
+    total += value.byteLength
+    if (total > limit) {
+      await reader.cancel()
+      throw new SeeThroughClientError('SEE_THROUGH_RESULT_INVALID', 502, 'result exceeds size limit')
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks)
 }
 
 export class SeeThroughClient {
@@ -34,13 +66,24 @@ export class SeeThroughClient {
       }
     })
     if (!response.ok) {
+      const contentType = response.headers.get('content-type')
       const text = await response.text()
       try {
         const problem = problemSchema.parse(JSON.parse(text) as unknown)
-        throw new SeeThroughClientError(problem.code, response.status, problem.detail ?? problem.title)
+        throw new SeeThroughClientError(
+          problem.code,
+          response.status,
+          problem.detail ?? problem.title,
+          contentType
+        )
       } catch (error) {
         if (error instanceof SeeThroughClientError) throw error
-        throw new SeeThroughClientError('SEE_THROUGH_HTTP_ERROR', response.status, text.slice(0, 200))
+        throw new SeeThroughClientError(
+          'SEE_THROUGH_HTTP_ERROR',
+          response.status,
+          text.slice(0, 200),
+          contentType
+        )
       }
     }
     return response
@@ -100,7 +143,8 @@ export class SeeThroughClient {
     if (job.status !== 'succeeded' || !job.result) {
       throw new SeeThroughClientError('SEE_THROUGH_RESULT_NOT_READY', 409, 'job has no result')
     }
-    const bytes = Buffer.from(await (await this.request(job.result.psd.downloadPath)).arrayBuffer())
+    const response = await this.request(job.result.psd.downloadPath)
+    const bytes = await readCappedBody(response, SEE_THROUGH_MAX_PSD_BYTES)
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     if (sha256 !== job.result.psd.sha256 || bytes.length !== job.result.psd.byteSize) {
       throw new SeeThroughClientError('SEE_THROUGH_RESULT_INVALID', 502, 'result checksum or size mismatch')
