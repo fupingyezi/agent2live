@@ -1,19 +1,37 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { existsSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { petPage, studioPage } from './support/windows'
 
 // Local fallback for developer machines that keep the official Cubism samples checked out.
-// CI/other machines should point CUBISM_SAMPLE_ROOT at a directory containing Haru/Haru.model3.json.
+// CI/other machines should point CUBISM_SAMPLE_ROOT or AGENT2LIVE_MODEL_ROOT at the model tree.
 const DEFAULT_MODEL_ROOT = '/Users/yoshiko/code/live2D/CubismWebSamples/Samples/Resources'
-const MODEL_ROOT = process.env.CUBISM_SAMPLE_ROOT ?? DEFAULT_MODEL_ROOT
-const MODEL_URL = 'agent2live-model://models/Haru/Haru.model3.json'
+const MODEL_ROOT = process.env.AGENT2LIVE_MODEL_ROOT ?? process.env.CUBISM_SAMPLE_ROOT ?? DEFAULT_MODEL_ROOT
+const MODEL_URL = process.env.AGENT2LIVE_MODEL_URL ?? 'agent2live-model://models/Haru/Haru.model3.json'
 
+function configuredModelPath(): string | null {
+  try {
+    const url = new URL(MODEL_URL)
+    if (url.protocol !== 'agent2live-model:' || url.host !== 'models') return null
+    return decodeURIComponent(url.pathname.replace(/^\/+/, '')) || null
+  } catch {
+    return null
+  }
+}
+
+const modelPath = configuredModelPath()
+
+// The Cubism Core is never committed; without it the harness cannot render any model.
 test.skip(
-  !existsSync(join(MODEL_ROOT, 'Haru', 'Haru.model3.json')),
-  'Haru sample model not available; set CUBISM_SAMPLE_ROOT'
+  !existsSync(join(process.cwd(), 'apps/desktop/src/renderer/public/live2d/live2dcubismcore.min.js')),
+  'Cubism Core is not installed locally'
+)
+// A skip is never a pass: the configured model must exist under the configured root.
+test.skip(
+  !modelPath || !existsSync(join(MODEL_ROOT, modelPath)),
+  'model not available; set AGENT2LIVE_MODEL_ROOT / AGENT2LIVE_MODEL_URL or CUBISM_SAMPLE_ROOT'
 )
 
 test('studio and pet load the same Cubism 4 model, play Idle, and expose required parameters', async () => {
@@ -60,6 +78,26 @@ test('studio and pet load the same Cubism 4 model, play Idle, and expose require
     const beforePixels = await sharp(before).raw().toBuffer()
     const afterPixels = await sharp(after).raw().toBuffer()
     expect(beforePixels.equals(afterPixels)).toBe(false)
+
+    const evidenceDir = process.env.AGENT2LIVE_EVIDENCE_DIR
+    if (evidenceDir) {
+      mkdirSync(evidenceDir, { recursive: true })
+      await studio.screenshot({ path: join(evidenceDir, 'studio.png') })
+      await pet.screenshot({ path: join(evidenceDir, 'pet.png') })
+      writeFileSync(
+        join(evidenceDir, 'probe.json'),
+        `${JSON.stringify(
+          {
+            modelUrl: MODEL_URL,
+            probe,
+            petProbe,
+            pixelDiff: !beforePixels.equals(afterPixels)
+          },
+          null,
+          2
+        )}\n`
+      )
+    }
   } finally {
     await app.close()
   }

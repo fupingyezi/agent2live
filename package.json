@@ -22,11 +22,15 @@
     "check:plans-ignored": "node scripts/check-plans-ignored.mjs",
     "check:no-prohibited": "node scripts/check-no-prohibited-assets.mjs",
     "check:workspace": "node scripts/check-workspace.mjs",
+    "spike:psd2live:fixture": "tsx spikes/psd2live/make-fixture.ts",
+    "spike:psd2live:cli": "tsx spikes/psd2live/cli-probe.ts",
+    "spike:psd2live:probe": "tsx spikes/psd2live/probe.ts",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm check:plans-ignored && pnpm check:no-prohibited",
     "bench:data": "pnpm --filter @agent2live/server bench:data"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@playwright/test": "^1.65.0",
     "@types/node": "^22.20.5",
     "ag-psd": "^34.1.0",

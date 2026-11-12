@@ -8,6 +8,7 @@ coverage/
 test-results/
 playwright-report/
 docs/plans/
+spikes/psd2live/work/
 apps/desktop/src/renderer/public/golden/
 apps/desktop/src/renderer/public/live2d/
 pnpm-lock.yaml
