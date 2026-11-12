@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Live2DProbe } from '@agent2live/live2d-runtime'
 
-export function ProbePanel({ probe }: { probe: unknown }): React.ReactElement {
+export interface ProbePanelProps {
+  probe: Live2DProbe
+}
+
+export const ProbePanel: React.FC<ProbePanelProps> = ({ probe }) => {
   return (
     <pre
       data-testid="probe"

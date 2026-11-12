@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import type { EmptyProps } from '../shared/model-types'
 import { mountModel } from '../shared/live2d-stage'
 import '../shared/harness.css'
 
-function Pet(): React.ReactElement {
+export const Pet: React.FC<EmptyProps> = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState<string | null>(null)
@@ -14,7 +15,7 @@ function Pet(): React.ReactElement {
     mountModel(canvasRef.current)
       .then((result) => {
         if (cancelled) return
-        ;(window as unknown as { __agent2liveProbe?: unknown }).__agent2liveProbe = result.probe
+        window.__agent2liveProbe = result.probe
         setStatus('ready')
       })
       .catch((reason: unknown) => {

@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import type { Live2DProbe } from '@agent2live/live2d-runtime'
+import type { EmptyProps } from '../shared/model-types'
 import { mountModel } from '../shared/live2d-stage'
 import { ProbePanel } from '../shared/probe-panel'
 import '../shared/harness.css'
 
-function Studio(): React.ReactElement {
+export const Studio: React.FC<EmptyProps> = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [status, setStatus] = useState('loading')
-  const [probe, setProbe] = useState<unknown>(null)
+  const [probe, setProbe] = useState<Live2DProbe | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -18,7 +20,7 @@ function Studio(): React.ReactElement {
         if (cancelled) return
         setProbe(result.probe)
         setStatus('ready')
-        ;(window as unknown as { __agent2liveProbe?: unknown }).__agent2liveProbe = result.probe
+        window.__agent2liveProbe = result.probe
       })
       .catch((reason: unknown) => {
         if (cancelled) return
