@@ -25,7 +25,13 @@ const checks = {
   electronAbi: playwrightPass(sidecar),
   sidecarAuth: playwrightPass(sidecarAuth),
   packagedApp: playwrightPass(packaged),
-  benchmark: bench.pass === true && bench.mode === 'real' && bench.p95Ms <= bench.thresholdP95Ms
+  benchmark:
+    bench.pass === true &&
+    bench.mode === 'real' &&
+    bench.vectorCount === 10000 &&
+    bench.dimensions === 768 &&
+    bench.thresholdP95Ms === 80 &&
+    bench.p95Ms <= bench.thresholdP95Ms
 }
 const pass = Object.values(checks).every(Boolean)
 writeEvidence('docs/plans/evidence/phase0/G0-DATA/gate-run.json', {
@@ -33,11 +39,16 @@ writeEvidence('docs/plans/evidence/phase0/G0-DATA/gate-run.json', {
   status: pass ? 'pass' : 'fail',
   mode: 'real',
   commands: [
-    'pnpm vitest run apps/server/src/__tests__/db.test.ts apps/server/src/__tests__/events.test.ts apps/server/src/__tests__/app.test.ts --reporter=json',
+    'pnpm native:node',
+    'LOG_LEVEL=silent pnpm vitest run apps/server/src/__tests__/db.test.ts apps/server/src/__tests__/events.test.ts apps/server/src/__tests__/app.test.ts --reporter=json --outputFile=docs/plans/evidence/phase0/G0-DATA/db-vitest.json',
     'pnpm bench:data',
-    'playwright test e2e/sidecar.spec.ts',
-    'playwright test e2e/data-sidecar.spec.ts',
-    'playwright test e2e/packaged-data.spec.ts'
+    'pnpm native:electron',
+    'pnpm pack:desktop',
+    'LOG_LEVEL=silent pnpm exec playwright test e2e/sidecar.spec.ts --reporter=json > docs/plans/evidence/phase0/G0-DATA/sidecar-auth.json',
+    'LOG_LEVEL=silent pnpm exec playwright test e2e/data-sidecar.spec.ts --reporter=json > docs/plans/evidence/phase0/G0-DATA/data-sidecar.json',
+    'AGENT2LIVE_PACKAGED_APP=apps/desktop/release/mac-arm64/agent2live.app/Contents/MacOS/agent2live LOG_LEVEL=silent pnpm exec playwright test e2e/packaged-data.spec.ts --reporter=json > docs/plans/evidence/phase0/G0-DATA/packaged-data.json',
+    'pnpm exec node scripts/write-data-evidence.mjs',
+    'pnpm native:node'
   ],
   blocker: pass ? null : 'DATA_CHECK_FAILED',
   nextAction: pass ? 'allow Phase 1 data-layer work' : 'fix failed data checks and rerun from a clean commit',

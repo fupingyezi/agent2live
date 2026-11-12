@@ -18,13 +18,18 @@ export function openEventStream(request: FastifyRequest, reply: FastifyReply, st
     })
     raw.statusCode = 400
     raw.setHeader('content-type', 'application/problem+json')
+    raw.setHeader('cache-control', 'no-store')
+    raw.setHeader('x-request-id', request.id)
+    raw.setHeader('x-trace-id', request.traceId)
     raw.end(JSON.stringify(problem))
     return
   }
 
   raw.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-cache, no-transform',
+    'cache-control': 'no-store',
+    'x-request-id': request.id,
+    'x-trace-id': request.traceId,
     connection: 'keep-alive',
     'x-accel-buffering': 'no'
   })
@@ -46,7 +51,13 @@ export function openEventStream(request: FastifyRequest, reply: FastifyReply, st
     else write(event)
   })
 
-  for (const event of store.listAfter(after)) write(event)
+  const pageSize = 500
+  let caughtUp = false
+  while (!caughtUp) {
+    const batch = store.listAfter(lastSeq, pageSize)
+    for (const event of batch) write(event)
+    caughtUp = batch.length < pageSize
+  }
   live = true
   for (const event of backlog) write(event)
 
