@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import { scanCommentViolations } from './check-code-comments.mjs'
 import { scanTsxStyle } from './check-tsx-style.mjs'
+import { discoverFiles, exitCodeForViolations, reportViolations } from './code-style-shared.mjs'
 
 test('rejects a component with an inline props type', () => {
   const source = [
@@ -147,6 +151,153 @@ test('rejects block comments that cite tasks or docs paths', () => {
     { path: 'value.ts', line: 1, rule: 'comment-context' },
     { path: 'value.ts', line: 4, rule: 'comment-context' }
   ])
+})
+
+test('rejects a plain uppercase const component with an inline props type', () => {
+  const source = [
+    "import React from 'react'",
+    '',
+    'export const Card = ({ title }: { title: string }) => <div>{title}</div>',
+    '',
+    'export const Panel = function ({ label }: { label: string }) {',
+    '  return <div>{label}</div>',
+    '}'
+  ].join('\n')
+  assert.deepEqual(scanTsxStyle([{ path: 'Card.tsx', content: source }]), [
+    { path: 'Card.tsx', line: 3, rule: 'component-props' },
+    { path: 'Card.tsx', line: 5, rule: 'component-props' }
+  ])
+})
+
+test('rejects statements separated only by a block comment with an internal blank line', () => {
+  const source = [
+    "import React from 'react'",
+    '',
+    'export const first = 1',
+    '/* note',
+    '',
+    '   continued */',
+    'export const second = 2'
+  ].join('\n')
+  assert.deepEqual(scanTsxStyle([{ path: 'values.tsx', content: source }]), [
+    { path: 'values.tsx', line: 7, rule: 'module-spacing' }
+  ])
+})
+
+test('accepts a real blank line outside a block comment between statements', () => {
+  const source = [
+    "import React from 'react'",
+    '',
+    'export const first = 1',
+    '',
+    '/* note',
+    '',
+    '   continued */',
+    'export const second = 2'
+  ].join('\n')
+  assert.deepEqual(scanTsxStyle([{ path: 'values.tsx', content: source }]), [])
+})
+
+test('rejects lowercase context phrases in real comments', () => {
+  const source = [
+    '// phase 1',
+    'const a = 1',
+    '',
+    '// task 12',
+    'const b = 2',
+    '',
+    '// adr 9',
+    'const c = 3',
+    '',
+    '// see docs/architecture for details',
+    'const d = 4',
+    '',
+    '// 按计划',
+    'const e = 5',
+    '',
+    '// 按用户要求',
+    'const f = 6',
+    '',
+    '// 执行上下文',
+    'const g = 7'
+  ].join('\n')
+  assert.deepEqual(scanCommentViolations([{ path: 'value.ts', content: source }]), [
+    { path: 'value.ts', line: 1, rule: 'comment-context' },
+    { path: 'value.ts', line: 4, rule: 'comment-context' },
+    { path: 'value.ts', line: 7, rule: 'comment-context' },
+    { path: 'value.ts', line: 10, rule: 'comment-context' },
+    { path: 'value.ts', line: 13, rule: 'comment-context' },
+    { path: 'value.ts', line: 16, rule: 'comment-context' },
+    { path: 'value.ts', line: 19, rule: 'comment-context' }
+  ])
+})
+
+test('fails closed when a configured root is missing', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'code-style-'))
+  try {
+    assert.throws(
+      () => discoverFiles({ baseDir: directory, roots: ['missing'], extensions: ['.ts'] }),
+      /CODE_STYLE_ROOT_MISSING:missing/
+    )
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('fails closed when discovery finds no files', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'code-style-'))
+  try {
+    mkdirSync(join(directory, 'empty'))
+    assert.throws(
+      () => discoverFiles({ baseDir: directory, roots: ['empty'], extensions: ['.ts'] }),
+      /CODE_STYLE_NO_FILES/
+    )
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('discovers matching files, skips excluded directories, and includes base files', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'code-style-'))
+  try {
+    mkdirSync(join(directory, 'src'))
+    mkdirSync(join(directory, 'src', 'node_modules'))
+    writeFileSync(join(directory, 'src', 'keep.ts'), '')
+    writeFileSync(join(directory, 'src', 'skip.md'), '')
+    writeFileSync(join(directory, 'src', 'node_modules', 'skip.ts'), '')
+    writeFileSync(join(directory, 'root.tsx'), '')
+    const files = discoverFiles({
+      baseDir: directory,
+      roots: ['src'],
+      extensions: ['.ts'],
+      baseFileExtensions: ['.tsx']
+    })
+    assert.deepEqual(files, [join(directory, 'root.tsx'), join(directory, 'src', 'keep.ts')])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('exitCodeForViolations reports failure only when a violation exists', () => {
+  assert.equal(exitCodeForViolations([]), 0)
+  assert.equal(exitCodeForViolations([{ path: 'a.ts', line: 1, rule: 'comment-context' }]), 1)
+})
+
+test('reportViolations prints each violation followed by the count', () => {
+  const lines = []
+  const code = reportViolations([{ path: 'a.ts', line: 1, rule: 'comment-context' }], (line) =>
+    lines.push(line)
+  )
+  assert.equal(code, 1)
+  assert.deepEqual(lines, ['a.ts:1 comment-context', '1 violation(s)'])
+  assert.deepEqual(
+    (() => {
+      const empty = []
+      const emptyCode = reportViolations([], (line) => empty.push(line))
+      return [emptyCode, empty]
+    })(),
+    [0, ['0 violation(s)']]
+  )
 })
 
 test('sorts comment violations deterministically across files', () => {

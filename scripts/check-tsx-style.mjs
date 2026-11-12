@@ -1,39 +1,8 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
-const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
+import { compareViolations, isDirectRun, lineNumber, runCheck, scriptKindFor } from './code-style-shared.mjs'
+
 const TSX_ROOTS = ['apps', 'packages']
-const EXCLUDED_DIRS = new Set([
-  'node_modules',
-  'dist',
-  'out',
-  'release',
-  '.packaged-server',
-  'docs',
-  '.git',
-  '.superpowers',
-  'test-results',
-  'playwright-report'
-])
-
-function lineNumber(sourceFile, position) {
-  return sourceFile.getLineAndCharacterOfPosition(position).line + 1
-}
-
-function compareViolations(left, right) {
-  if (left.path !== right.path) return left.path < right.path ? -1 : 1
-  if (left.line !== right.line) return left.line - right.line
-  if (left.rule !== right.rule) return left.rule < right.rule ? -1 : 1
-  return 0
-}
-
-function scriptKindFor(path) {
-  if (path.endsWith('.tsx')) return ts.ScriptKind.TSX
-  if (path.endsWith('.mjs') || path.endsWith('.js')) return ts.ScriptKind.JS
-  return ts.ScriptKind.TS
-}
 
 function isUppercaseName(name) {
   return /^[A-Z]/.test(name)
@@ -97,49 +66,45 @@ function scanComponents(file, sourceFile, violations) {
   }
 }
 
+function maskCommentRanges(content, start, end) {
+  const ranges = new Map()
+  const candidates = [
+    ...(ts.getLeadingCommentRanges(content, start) ?? []),
+    ...(ts.getTrailingCommentRanges(content, start) ?? [])
+  ]
+  for (const range of candidates) ranges.set(`${range.pos}:${range.end}`, range)
+  let masked = content.slice(start, end)
+  const sorted = [...ranges.values()].sort((left, right) => right.pos - left.pos)
+  for (const range of sorted) {
+    if (range.pos < start || range.end > end) continue
+    masked = `${masked.slice(0, range.pos - start)}x${masked.slice(range.end - start)}`
+  }
+  return masked
+}
+
+function hasSeparatingBlankLine(file, previous, current, sourceFile) {
+  const start = previous.getEnd()
+  const end = current.getStart(sourceFile)
+  const masked = maskCommentRanges(file.content, start, end)
+  return masked
+    .split('\n')
+    .slice(1, -1)
+    .some((line) => line.trim() === '')
+}
+
 function scanSpacing(file, sourceFile, violations) {
-  const lines = file.content.split(/\r?\n/)
   const statements = sourceFile.statements
   for (let index = 1; index < statements.length; index += 1) {
     const previous = statements[index - 1]
     const current = statements[index]
     if (ts.isImportDeclaration(previous) && ts.isImportDeclaration(current)) continue
-    const previousEnd = lineNumber(sourceFile, previous.getEnd())
-    const currentStart = lineNumber(sourceFile, current.getStart(sourceFile))
-    let separated = false
-    for (let line = previousEnd + 1; line < currentStart; line += 1) {
-      if ((lines[line - 1] ?? '').trim() === '') {
-        separated = true
-        break
-      }
-    }
-    if (!separated) {
-      violations.push({ path: file.path, line: currentStart, rule: 'module-spacing' })
-    }
+    if (hasSeparatingBlankLine(file, previous, current, sourceFile)) continue
+    violations.push({
+      path: file.path,
+      line: lineNumber(sourceFile, current.getStart(sourceFile)),
+      rule: 'module-spacing'
+    })
   }
-}
-
-function collectFiles(directory, extensions, output) {
-  let entries
-  try {
-    entries = readdirSync(directory, { withFileTypes: true })
-  } catch {
-    return
-  }
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue
-    const absolute = join(directory, entry.name)
-    if (entry.isDirectory()) {
-      if (EXCLUDED_DIRS.has(entry.name)) continue
-      collectFiles(absolute, extensions, output)
-    } else if (entry.isFile() && extensions.some((extension) => entry.name.endsWith(extension))) {
-      output.push(absolute)
-    }
-  }
-}
-
-function relativePath(absolute) {
-  return relative(ROOT, absolute).split(sep).join('/')
 }
 
 export function scanTsxStyle(files) {
@@ -158,19 +123,8 @@ export function scanTsxStyle(files) {
   return violations.sort(compareViolations)
 }
 
-function runCheck() {
-  const absoluteFiles = []
-  for (const root of TSX_ROOTS) collectFiles(join(ROOT, root), ['.tsx'], absoluteFiles)
-  absoluteFiles.sort()
-  const files = absoluteFiles.map((absolute) => ({
-    path: relativePath(absolute),
-    content: readFileSync(absolute, 'utf8')
-  }))
-  const violations = scanTsxStyle(files)
-  for (const violation of violations) console.log(`${violation.path}:${violation.line} ${violation.rule}`)
-  console.log(`${violations.length} violation(s)`)
-  process.exitCode = violations.length > 0 ? 1 : 0
+function runCli() {
+  runCheck({ roots: TSX_ROOTS, extensions: ['.tsx'] }, scanTsxStyle)
 }
 
-const invokedPath = process.argv[1] === undefined ? undefined : resolve(process.argv[1])
-if (invokedPath === fileURLToPath(import.meta.url)) runCheck()
+if (isDirectRun(import.meta.url)) runCli()
