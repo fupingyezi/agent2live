@@ -1,5 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
+import type { PetWindowState } from '../shared/ipc-contracts'
 
 const preload = join(__dirname, '../preload/index.js')
 const PET_TRANSPARENT = true
@@ -7,14 +8,6 @@ const PET_TRANSPARENT = true
 let studio: BrowserWindow | null = null
 let pet: BrowserWindow | null = null
 let clickThrough = false
-
-export interface PetWindowState {
-  visible: boolean
-  clickThrough: boolean
-  alwaysOnTop: boolean
-  transparent: boolean
-  focused: boolean
-}
 
 function loadRenderer(win: BrowserWindow, name: 'studio' | 'pet'): void {
   const devUrl = process.env.ELECTRON_RENDERER_URL

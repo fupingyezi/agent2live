@@ -1,9 +1,4 @@
-import type { Live2DProbe } from '@agent2live/live2d-runtime'
-
-export interface StageResult {
-  probe: Live2DProbe
-  modelUrl: string
-}
+import type { StageResult } from './model-types'
 
 export function modelUrlFromSearch(search: string): string | null {
   const value = new URLSearchParams(search).get('model')

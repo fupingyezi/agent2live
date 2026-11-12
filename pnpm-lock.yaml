@@ -62,6 +62,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@agent2live/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@agent2live/live2d-runtime':
         specifier: workspace:*
         version: link:../../packages/live2d-runtime

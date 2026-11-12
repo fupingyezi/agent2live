@@ -1,4 +1,4 @@
-import type { Agent2LiveBridge } from '../apps/desktop/src/preload'
+import type { Agent2LiveBridge } from '../apps/desktop/src/shared/ipc-contracts'
 
 declare global {
   interface Window {

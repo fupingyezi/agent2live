@@ -2,12 +2,7 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-
-export interface SidecarInfo {
-  baseUrl: string
-  token: string
-  pid: number
-}
+import { parseSidecarEndpoint, type SidecarInfo } from '@agent2live/contracts'
 
 let child: UtilityProcess | null = null
 let info: SidecarInfo | null = null
@@ -32,21 +27,6 @@ function serverEntry(): string {
 
 function dataDir(): string {
   return process.env.AGENT2LIVE_DATA_DIR ?? app.getPath('userData')
-}
-
-function parseEndpoint(raw: string): SidecarInfo {
-  const parsed = JSON.parse(raw) as Partial<SidecarInfo> & { schemaVersion?: string }
-  if (parsed.schemaVersion !== 'endpoint/1') throw new Error('unexpected endpoint schema')
-  if (typeof parsed.baseUrl !== 'string' || !/^http:\/\/127\.0\.0\.1:\d+$/.test(parsed.baseUrl)) {
-    throw new Error('endpoint baseUrl must be loopback')
-  }
-  if (typeof parsed.token !== 'string' || parsed.token.length === 0) {
-    throw new Error('endpoint token is missing')
-  }
-  if (typeof parsed.pid !== 'number' || !Number.isInteger(parsed.pid) || parsed.pid <= 0) {
-    throw new Error('endpoint pid is invalid')
-  }
-  return { baseUrl: parsed.baseUrl, token: parsed.token, pid: parsed.pid }
 }
 
 export async function startSidecar(): Promise<SidecarInfo> {
@@ -80,7 +60,7 @@ export async function startSidecar(): Promise<SidecarInfo> {
     if (existsSync(endpointFile)) {
       const raw = readFileSync(endpointFile, 'utf8')
       try {
-        info = parseEndpoint(raw)
+        info = parseSidecarEndpoint(JSON.parse(raw))
         return info
       } catch (error) {
         // JSON.parse may run before the atomic rename completes; only fail fast on

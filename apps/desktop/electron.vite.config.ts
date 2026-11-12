@@ -5,9 +5,10 @@ import { resolve } from 'node:path'
 export default defineConfig({
   main: {
     build: {
-      // Bundle the workspace protocol module into out/main: it only exists in the
+      // Bundle workspace-protocol modules into out/main: they only exist in the
       // workspace during development, not in the packaged app's node_modules.
-      externalizeDeps: { exclude: ['@agent2live/live2d-runtime'] }
+      // (contracts ships TypeScript source; the preload only imports its types.)
+      externalizeDeps: { exclude: ['@agent2live/live2d-runtime', '@agent2live/contracts'] }
     }
   },
   preload: {},
