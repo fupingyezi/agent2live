@@ -5,10 +5,9 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { petPage, studioPage } from './support/windows'
 
-// Local fallback for developer machines that keep the official Cubism samples checked out.
-// CI/other machines should point CUBISM_SAMPLE_ROOT or AGENT2LIVE_MODEL_ROOT at the model tree.
-const DEFAULT_MODEL_ROOT = '/Users/yoshiko/code/live2D/CubismWebSamples/Samples/Resources'
-const MODEL_ROOT = process.env.AGENT2LIVE_MODEL_ROOT ?? process.env.CUBISM_SAMPLE_ROOT ?? DEFAULT_MODEL_ROOT
+// The Cubism model tree is never committed; point CUBISM_SAMPLE_ROOT or AGENT2LIVE_MODEL_ROOT
+// at a model tree to run this spec. Without either variable the test skips with a clear message.
+const MODEL_ROOT = process.env.AGENT2LIVE_MODEL_ROOT ?? process.env.CUBISM_SAMPLE_ROOT
 const MODEL_URL = process.env.AGENT2LIVE_MODEL_URL ?? 'agent2live-model://models/Haru/Haru.model3.json'
 
 function configuredModelPath(): string | null {
@@ -30,11 +29,15 @@ test.skip(
 )
 // A skip is never a pass: the configured model must exist under the configured root.
 test.skip(
-  !modelPath || !existsSync(join(MODEL_ROOT, modelPath)),
+  !MODEL_ROOT || !modelPath || !existsSync(join(MODEL_ROOT, modelPath)),
   'model not available; set AGENT2LIVE_MODEL_ROOT / AGENT2LIVE_MODEL_URL or CUBISM_SAMPLE_ROOT'
 )
 
 test('studio and pet load the same Cubism 4 model, play Idle, and expose required parameters', async () => {
+  // The file-level skip above covers this; the guard keeps the launch env typed as string.
+  if (!MODEL_ROOT) {
+    throw new Error('AGENT2LIVE_MODEL_ROOT or CUBISM_SAMPLE_ROOT must be set to run this test')
+  }
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-render-'))
   let app: ElectronApplication | undefined
   try {

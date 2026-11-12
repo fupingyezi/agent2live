@@ -2,14 +2,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'nod
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
-const candidates = [
-  process.env.CUBISM_CORE_SOURCE,
-  '/Users/yoshiko/code/agent/lovely-buddy/apps/desktop/src/renderer/public/live2d/live2dcubismcore.min.js',
-  '/Users/yoshiko/code/agent/l2d-forge/apps/server/assets/live2dcubismcore.min.js'
-].filter(Boolean)
-
-const source = candidates.find((file) => existsSync(file))
-if (!source) {
+const source = process.env.CUBISM_CORE_SOURCE
+if (!source || !existsSync(source)) {
   console.error('Cubism Core not found. Set CUBISM_CORE_SOURCE to a user-provided live2dcubismcore.min.js.')
   process.exit(1)
 }
