@@ -1,6 +1,9 @@
 # Implementation plans and evidence are internal working documents, never committed.
 docs/plans/
 
+# Review notes are internal working documents, never committed.
+docs/reviews/
+
 # Subagent-driven-development ledger/artifacts (local only).
 .superpowers/
 

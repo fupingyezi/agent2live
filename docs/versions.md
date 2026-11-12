@@ -29,9 +29,9 @@ Host: macOS 26.4 arm64 (Darwin 25.4.0)
 | tsx                              | 4.23.15                | `pnpm-lock.yaml`                       |
 | tsup                             | 9.0.0                  | `pnpm-lock.yaml`                       |
 | ag-psd                           | 34.1.0                 | `pnpm-lock.yaml`                       |
-| @types/node                      | 26.6.6                 | `pnpm-lock.yaml`                       |
-| @types/react                     | 19.3.0                 | `pnpm-lock.yaml`                       |
-| @types/react-dom                 | 19.3.0                 | `pnpm-lock.yaml`                       |
+| @types/node                      | 22.20.5                | `pnpm-lock.yaml`                       |
+| @types/react                     | 18.3.31                | `pnpm-lock.yaml`                       |
+| @types/react-dom                 | 18.3.7                 | `pnpm-lock.yaml`                       |
 | Fastify                          | 5.12.8                 | `pnpm-lock.yaml`                       |
 | @fastify/cors                    | 11.4.1                 | `pnpm-lock.yaml`                       |
 | better-sqlite3                   | 13.0.3                 | `pnpm-lock.yaml`                       |
@@ -46,6 +46,7 @@ Host: macOS 26.4 arm64 (Darwin 25.4.0)
 - `@vitejs/plugin-react` is pinned to `5.2.0` instead of the current latest `6.3.0`: the 6.x line requires Vite `^8.0.0`, while this task pins Vite `7.3.7`. Deviates from the unpinned install command; satisfies the Vite baseline.
 - `ag-psd` resolved to `34.1.0` under pnpm's mature-release policy even though the registry `latest` tag is `34.2.0`.
 - pnpm 11 replaced `onlyBuiltDependencies` with `allowBuilds`. `pnpm-workspace.yaml` keeps the plan's `onlyBuiltDependencies` block for traceability and adds the effective `allowBuilds` decisions.
+- Type packages track the pinned runtime majors: `@types/node` 22.x (Node 22.23.2) and `@types/react` / `@types/react-dom` 18.3.x (React 18.3.1).
 
 ## License boundaries
 
