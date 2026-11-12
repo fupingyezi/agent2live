@@ -2,7 +2,51 @@
   "name": "@agent2live/desktop",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "pack:dir": "electron-builder --dir",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "build": {
+    "appId": "app.agent2live.phase0",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../server/dist",
+        "to": "server"
+      },
+      {
+        "from": "../server/migrations",
+        "to": "server/migrations"
+      },
+      {
+        "from": "../server/node_modules",
+        "to": "server/node_modules"
+      }
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": true,
+    "mac": {
+      "target": "dir",
+      "identity": null
+    }
+  },
+  "dependencies": {
+    "@pixi/unsafe-eval": "7.4.3",
+    "pixi-live2d-display-lipsyncpatch": "0.5.0-ls-8",
+    "pixi.js": "7.4.3"
+  },
   "devDependencies": {
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
@@ -12,10 +56,5 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "vite": "7.3.7"
-  },
-  "dependencies": {
-    "@pixi/unsafe-eval": "7.4.3",
-    "pixi-live2d-display-lipsyncpatch": "0.5.0-ls-8",
-    "pixi.js": "7.4.3"
   }
 }
