@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
+  aggregateChecks,
   aggregateGateStatuses,
   completedGate,
   matrixPass,
@@ -48,6 +49,13 @@ test('aggregateGateStatuses lets fail dominate blocked', () => {
   assert.equal(aggregateGateStatuses([{ status: 'blocked' }, { status: 'fail' }]), 'fail')
   assert.equal(aggregateGateStatuses([{ status: 'pass' }, { status: 'unknown' }]), 'fail')
   assert.equal(aggregateGateStatuses([]), 'fail')
+})
+
+test('aggregateChecks lets a failed check outrank missing evidence', () => {
+  assert.equal(aggregateChecks({ a: true, b: true }), 'pass')
+  assert.equal(aggregateChecks({ a: true, b: 'missing' }), 'blocked')
+  assert.equal(aggregateChecks({ a: false, b: 'missing' }), 'fail')
+  assert.equal(aggregateChecks({ a: false, b: true }), 'fail')
 })
 
 test('completedGate lets a failed check outrank missing evidence', () => {

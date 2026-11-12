@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { writeEvidence } from './evidence.mjs'
+import { aggregateChecks } from './phase0-gate.mjs'
 
 const base = resolve('docs/plans/evidence/phase0')
 const read = (relative) => {
@@ -32,10 +33,7 @@ const matrixOk = (matrix, labels) =>
         )
       })
   )
-const aggregate = (checks) => {
-  const values = Object.values(checks)
-  return values.includes('missing') ? 'blocked' : values.includes(false) ? 'fail' : 'pass'
-}
+const aggregate = aggregateChecks
 const write = (gate, status, checks, artifacts, data = {}, blocker = null) =>
   writeEvidence(`docs/plans/evidence/phase0/${gate}/gate-run.json`, {
     gate,

@@ -39,6 +39,12 @@ export function vitestSummary(report) {
   }
 }
 
+export function aggregateChecks(checks) {
+  // fail 优先于 blocked：有确凿失败时不能被缺失证据掩盖。
+  const values = Object.values(checks)
+  return values.includes(false) ? 'fail' : values.includes('missing') ? 'blocked' : 'pass'
+}
+
 export function aggregateGateStatuses(gates) {
   if (!Array.isArray(gates) || gates.length === 0) return 'fail'
   if (gates.some((gate) => !['pass', 'fail', 'blocked'].includes(gate?.status))) return 'fail'
