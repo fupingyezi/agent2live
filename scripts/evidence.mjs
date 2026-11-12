@@ -32,6 +32,10 @@ export function writeEvidence(file, input) {
   if (!input.gate || !STATUS.has(input.status) || !MODES.has(input.mode)) {
     throw new Error('EVIDENCE_INPUT_INVALID')
   }
+  const dirty = Boolean(git(['status', '--porcelain']))
+  if (input.status === 'pass' && dirty) {
+    throw new Error('EVIDENCE_DIRTY_PASS')
+  }
   const artifacts = [...(input.artifactPaths ?? [])].map(artifact)
   const envelope = {
     schemaVersion: 'evidence/1',
@@ -40,7 +44,7 @@ export function writeEvidence(file, input) {
     mode: input.mode,
     recordedAt: new Date().toISOString(),
     sourceCommit: git(['rev-parse', 'HEAD']),
-    dirty: Boolean(git(['status', '--porcelain'])),
+    dirty,
     machine: {
       platform: process.platform,
       arch: process.arch,
@@ -69,6 +73,10 @@ export function readEvidence(file, expectedGate) {
     value.gate !== expectedGate ||
     !STATUS.has(value.status) ||
     !MODES.has(value.mode) ||
+    typeof value.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(value.recordedAt)) ||
+    (typeof value.sourceCommit !== 'string' && value.sourceCommit !== null) ||
+    typeof value.dirty !== 'boolean' ||
     !Array.isArray(value.commands) ||
     !value.machine ||
     !value.versions ||
@@ -78,7 +86,10 @@ export function readEvidence(file, expectedGate) {
   }
   const currentCommit = git(['rev-parse', 'HEAD'])
   const dirty = Boolean(git(['status', '--porcelain']))
-  if (value.status === 'pass' && (!currentCommit || value.sourceCommit !== currentCommit || dirty)) {
+  if (
+    value.status === 'pass' &&
+    (!currentCommit || value.sourceCommit !== currentCommit || dirty || value.dirty !== false)
+  ) {
     throw new Error(`EVIDENCE_STALE:${file}`)
   }
   const commitSeconds = Number(git(['show', '-s', '--format=%ct', 'HEAD']) ?? '0')
