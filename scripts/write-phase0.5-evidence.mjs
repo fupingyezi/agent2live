@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   GATE_EVIDENCE_PATH,
@@ -16,6 +16,24 @@ const EVIDENCE_FILE = resolve(GATE_EVIDENCE_PATH)
 const LIMITATIONS = [
   'This report covers the G0.5-QUALITY checks only; a pass does not imply the Phase 0 gates (G0-RENDER, G0-DATA, G0-DOCS) pass.'
 ]
+const INTERNAL_ERROR_SUMMARY = 'internal error'
+const WRITER_FAILURE = 'WRITER_FAILURE'
+const PLAYWRIGHT_COMMAND = [
+  'pnpm',
+  'exec',
+  'playwright',
+  'test',
+  'e2e/electron-shell.spec.ts',
+  '--reporter=json'
+]
+const SHARED_CONTRACTS_COMMAND = [
+  'pnpm',
+  'vitest',
+  'run',
+  'packages/contracts/src/sidecar.test.ts',
+  'apps/desktop/src/renderer/shared/http/client.test.ts',
+  'apps/desktop/src/renderer/shared/probe-panel.test.tsx'
+]
 
 function display(command, tempDir) {
   return command.join(' ').split(tempDir).join('<tmp>')
@@ -24,20 +42,19 @@ function display(command, tempDir) {
 function runStep(command, logFile, env = {}) {
   const startedAt = Date.now()
   const fd = openSync(logFile, 'a')
-  let exitCode = -1
   try {
     const result = spawnSync(command[0], command.slice(1), {
       cwd: process.cwd(),
       stdio: ['ignore', fd, fd],
       env: { ...process.env, ...env }
     })
-    exitCode = typeof result.status === 'number' ? result.status : -1
-  } catch {
-    exitCode = -1
+    return {
+      exitCode: typeof result.status === 'number' ? result.status : -1,
+      durationMs: Date.now() - startedAt
+    }
   } finally {
     closeSync(fd)
   }
-  return { exitCode, durationMs: Date.now() - startedAt }
 }
 
 function runSimpleCheck(id, command, context) {
@@ -89,20 +106,13 @@ function runElectronShellCheck(context) {
   const reportFile = join(context.tempDir, 'electron-shell.json')
   const logFile = join(context.tempDir, 'electron-shell.log')
   const startedAt = Date.now()
-  const rebuild = runStep(['pnpm', 'native:electron'], logFile)
-  const playwrightCommand = [
-    'pnpm',
-    'exec',
-    'playwright',
-    'test',
-    'e2e/electron-shell.spec.ts',
-    '--reporter=json'
-  ]
+  let rebuild = null
   let playwright = null
   let restore = null
   try {
+    rebuild = runStep(['pnpm', 'native:electron'], logFile)
     if (rebuild.exitCode === 0) {
-      playwright = runStep(playwrightCommand, logFile, {
+      playwright = runStep(PLAYWRIGHT_COMMAND, logFile, {
         PLAYWRIGHT_JSON_OUTPUT_NAME: reportFile
       })
     }
@@ -150,7 +160,7 @@ function runElectronShellCheck(context) {
   return {
     command: [
       display(['pnpm', 'native:electron'], context.tempDir),
-      display(playwrightCommand, context.tempDir),
+      display(PLAYWRIGHT_COMMAND, context.tempDir),
       display(['pnpm', 'native:node'], context.tempDir)
     ].join(' && '),
     status: pass ? 'pass' : 'fail',
@@ -161,57 +171,93 @@ function runElectronShellCheck(context) {
 }
 
 const CHECKS = [
-  ['format', (context) => runSimpleCheck('format', ['pnpm', 'format:check'], context)],
-  ['codeStyle', (context) => runSimpleCheck('codeStyle', ['pnpm', 'check:code-style'], context)],
-  [
-    'typecheckWorkspace',
-    (context) => runSimpleCheck('typecheckWorkspace', ['pnpm', 'typecheck:workspace'], context)
-  ],
-  ['typecheckRoot', (context) => runSimpleCheck('typecheckRoot', ['pnpm', 'typecheck:root'], context)],
-  ['typecheckE2e', (context) => runSimpleCheck('typecheckE2e', ['pnpm', 'typecheck:e2e'], context)],
-  ['typecheckSpikes', (context) => runSimpleCheck('typecheckSpikes', ['pnpm', 'typecheck:spikes'], context)],
-  ['unit', (context) => runUnitCheck(context)],
-  ['build', (context) => runSimpleCheck('build', ['pnpm', 'build'], context)],
-  ['electronShell', (context) => runElectronShellCheck(context)],
-  [
-    'sharedContracts',
-    (context) =>
-      runSimpleCheck(
-        'sharedContracts',
-        [
-          'pnpm',
-          'vitest',
-          'run',
-          'packages/contracts/src/sidecar.test.ts',
-          'apps/desktop/src/renderer/shared/http/client.test.ts',
-          'apps/desktop/src/renderer/shared/probe-panel.test.tsx'
-        ],
-        context
-      )
-  ]
+  {
+    id: 'format',
+    command: 'pnpm format:check',
+    run: (context) => runSimpleCheck('format', ['pnpm', 'format:check'], context)
+  },
+  {
+    id: 'codeStyle',
+    command: 'pnpm check:code-style',
+    run: (context) => runSimpleCheck('codeStyle', ['pnpm', 'check:code-style'], context)
+  },
+  {
+    id: 'typecheckWorkspace',
+    command: 'pnpm typecheck:workspace',
+    run: (context) => runSimpleCheck('typecheckWorkspace', ['pnpm', 'typecheck:workspace'], context)
+  },
+  {
+    id: 'typecheckRoot',
+    command: 'pnpm typecheck:root',
+    run: (context) => runSimpleCheck('typecheckRoot', ['pnpm', 'typecheck:root'], context)
+  },
+  {
+    id: 'typecheckE2e',
+    command: 'pnpm typecheck:e2e',
+    run: (context) => runSimpleCheck('typecheckE2e', ['pnpm', 'typecheck:e2e'], context)
+  },
+  {
+    id: 'typecheckSpikes',
+    command: 'pnpm typecheck:spikes',
+    run: (context) => runSimpleCheck('typecheckSpikes', ['pnpm', 'typecheck:spikes'], context)
+  },
+  {
+    id: 'unit',
+    command: 'pnpm exec vitest run --reporter=json --outputFile=<tmp>/unit.json',
+    run: (context) => runUnitCheck(context)
+  },
+  {
+    id: 'build',
+    command: 'pnpm build',
+    run: (context) => runSimpleCheck('build', ['pnpm', 'build'], context)
+  },
+  {
+    id: 'electronShell',
+    command:
+      'pnpm native:electron && pnpm exec playwright test e2e/electron-shell.spec.ts --reporter=json && pnpm native:node',
+    run: (context) => runElectronShellCheck(context)
+  },
+  {
+    id: 'sharedContracts',
+    command:
+      'pnpm vitest run packages/contracts/src/sidecar.test.ts apps/desktop/src/renderer/shared/http/client.test.ts apps/desktop/src/renderer/shared/probe-panel.test.tsx',
+    run: (context) => runSimpleCheck('sharedContracts', SHARED_CONTRACTS_COMMAND, context)
+  }
 ]
 
-if (CHECKS.map(([id]) => id).join(',') !== REQUIRED_CHECKS.join(',')) {
+if (CHECKS.map((entry) => entry.id).join(',') !== REQUIRED_CHECKS.join(',')) {
   throw new Error('CHECK_ORDER_MISMATCH')
 }
 
-export function runPhase05EvidenceWriter() {
-  const tempDir = mkdtempSync(join(tmpdir(), 'agent2live-phase0.5-'))
-  let results
+export function runGuardedCheck(entry, tempDir) {
+  const startedAt = Date.now()
   try {
-    results = CHECKS.map(([id, run]) => ({ id, ...run({ tempDir }) }))
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true })
+    return entry.run({ tempDir })
+  } catch {
+    return {
+      command: entry.command,
+      status: 'fail',
+      exitCode: -1,
+      durationMs: Date.now() - startedAt,
+      summary: INTERNAL_ERROR_SUMMARY
+    }
   }
+}
 
-  const repository = repositoryState()
+function resolvedSourceCommit(repository) {
+  return typeof repository.head === 'string' && /^[0-9a-f]{40}$/.test(repository.head)
+    ? repository.head
+    : null
+}
+
+function createEvidence(results, repository, blocker) {
   const artifacts = results.map(({ id, exitCode, durationMs }) => ({ id, exitCode, durationMs }))
-  const evidence = {
+  return {
     schemaVersion: SCHEMA_VERSION,
     gate: QUALITY_GATE_ID,
     status: 'fail',
     recordedAt: new Date().toISOString(),
-    sourceCommit: typeof repository.head === 'string' ? repository.head : null,
+    sourceCommit: resolvedSourceCommit(repository),
     dirty: repository.dirty,
     commands: results.map((result) => result.command),
     checks: results.map(({ id, command, status, exitCode, durationMs, summary }) => ({
@@ -223,31 +269,87 @@ export function runPhase05EvidenceWriter() {
       summary
     })),
     artifacts,
-    blocker: null,
+    blocker,
     nextAction: '',
     machine: { platform: process.platform, arch: process.arch, node: process.version },
     limitations: LIMITATIONS
   }
-  const aggregate = evaluatePhase05Gate({ evidence, repository, artifacts })
-  evidence.status = aggregate.status
-  evidence.blocker = aggregate.blockers.length > 0 ? aggregate.blockers.join('; ') : null
-  evidence.nextAction =
-    aggregate.status === 'pass'
-      ? 'Phase 1 may cite this report only alongside fresh G0-RENDER, G0-DATA, and G0-DOCS evidence.'
-      : 'Fix the failed checks, then rerun pnpm phase0.5:gate from a clean commit.'
-  mkdirSync(resolve('docs/plans/evidence/phase0.5'), { recursive: true })
+}
+
+function writeEvidence(evidence) {
+  mkdirSync(dirname(EVIDENCE_FILE), { recursive: true })
   writeFileSync(EVIDENCE_FILE, `${JSON.stringify(evidence, null, 2)}\n`)
-  const exitCode = aggregate.status === 'pass' ? 0 : aggregate.status === 'blocked' ? 2 : 1
-  console.log(
-    JSON.stringify(
-      { status: aggregate.status, blockers: aggregate.blockers, report: GATE_EVIDENCE_PATH },
-      null,
-      2
-    )
-  )
-  return exitCode
+}
+
+function printSummary(status, blockers) {
+  try {
+    console.log(JSON.stringify({ status, blockers, report: GATE_EVIDENCE_PATH }, null, 2))
+  } catch {
+    // keep the process silent rather than crashing on a closed output stream
+  }
+}
+
+function writerFailure() {
+  let repository = { head: null, dirty: true }
+  try {
+    repository = repositoryState()
+  } catch {
+    repository = { head: null, dirty: true }
+  }
+  const results = CHECKS.map((entry) => ({
+    id: entry.id,
+    command: entry.command,
+    status: 'fail',
+    exitCode: -1,
+    durationMs: 0,
+    summary: INTERNAL_ERROR_SUMMARY
+  }))
+  const evidence = createEvidence(results, repository, WRITER_FAILURE)
+  try {
+    writeEvidence(evidence)
+  } catch {
+    // the safe summary below is the only remaining output
+  }
+  printSummary('fail', [WRITER_FAILURE])
+  return 1
+}
+
+export function runPhase05EvidenceWriter() {
+  let tempDir = null
+  try {
+    tempDir = mkdtempSync(join(tmpdir(), 'agent2live-phase0.5-'))
+    const results = CHECKS.map((entry) => ({ id: entry.id, ...runGuardedCheck(entry, tempDir) }))
+    const repository = repositoryState()
+    const evidence = createEvidence(results, repository, null)
+    const aggregate = evaluatePhase05Gate({ evidence, repository, artifacts: evidence.artifacts })
+    evidence.status = aggregate.status
+    evidence.blocker = aggregate.blockers.length > 0 ? aggregate.blockers.join('; ') : null
+    evidence.nextAction =
+      aggregate.status === 'pass'
+        ? 'Phase 1 may cite this report only alongside fresh G0-RENDER, G0-DATA, and G0-DOCS evidence.'
+        : 'Fix the failed checks, then rerun pnpm phase0.5:gate from a clean commit.'
+    writeEvidence(evidence)
+    const exitCode = aggregate.status === 'pass' ? 0 : aggregate.status === 'blocked' ? 2 : 1
+    printSummary(aggregate.status, aggregate.blockers)
+    return exitCode
+  } catch {
+    return writerFailure()
+  } finally {
+    if (tempDir !== null) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true })
+      } catch {
+        // the temporary directory is outside the repository
+      }
+    }
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = runPhase05EvidenceWriter()
+  try {
+    process.exitCode = runPhase05EvidenceWriter()
+  } catch {
+    printSummary('fail', [WRITER_FAILURE])
+    process.exitCode = 1
+  }
 }

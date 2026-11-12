@@ -58,7 +58,7 @@ export function validArtifactManifest(artifacts) {
 
 export function evaluatePhase05Gate(input = {}) {
   const { evidence, repository, artifacts } = input ?? {}
-  if (evidence === undefined || evidence === null) {
+  if (evidence === undefined) {
     return { status: 'blocked', blockers: ['EVIDENCE_MISSING'] }
   }
   if (!isPlainObject(evidence)) {

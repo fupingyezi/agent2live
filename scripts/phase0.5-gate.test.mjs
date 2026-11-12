@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { QUALITY_GATE_ID, REQUIRED_CHECKS, SCHEMA_VERSION, evaluatePhase05Gate } from './phase0.5-gate.mjs'
+import { runGuardedCheck } from './write-phase0.5-evidence.mjs'
 
 const HEAD = 'a'.repeat(40)
 
@@ -152,12 +153,16 @@ test('allows extra keys on artifact entries', () => {
 test('blocks when evidence is missing', () => {
   assert.deepEqual(evaluatePhase05Gate({}), { status: 'blocked', blockers: ['EVIDENCE_MISSING'] })
   assert.deepEqual(evaluate(undefined), { status: 'blocked', blockers: ['EVIDENCE_MISSING'] })
-  assert.deepEqual(evaluate(null), { status: 'blocked', blockers: ['EVIDENCE_MISSING'] })
+  assert.deepEqual(evaluatePhase05Gate(null), { status: 'blocked', blockers: ['EVIDENCE_MISSING'] })
+})
+
+test('rejects null evidence as present but invalid', () => {
+  assert.deepEqual(evaluate(null), { status: 'fail', blockers: ['SCHEMA_INVALID'] })
+  assert.equal(evaluatePhase05Gate({ evidence: null, repository: null, artifacts: null }).status, 'fail')
 })
 
 test('does not throw on malformed input and fails closed', () => {
   assert.deepEqual(evaluatePhase05Gate(), { status: 'blocked', blockers: ['EVIDENCE_MISSING'] })
-  assert.deepEqual(evaluatePhase05Gate(null), { status: 'blocked', blockers: ['EVIDENCE_MISSING'] })
   assert.doesNotThrow(() => evaluatePhase05Gate({ evidence: null, repository: null, artifacts: null }))
   assert.equal(evaluate('not-an-object').status, 'fail')
   assert.equal(evaluate(validEvidence({ checks: 'not-an-array' })).status, 'fail')
@@ -165,4 +170,21 @@ test('does not throw on malformed input and fails closed', () => {
     evaluatePhase05Gate({ evidence: validEvidence(), repository: null, artifacts: null }).status,
     'fail'
   )
+})
+
+test('turns a throwing check into a failed check instead of a crash', () => {
+  const entry = {
+    id: 'format',
+    command: 'pnpm format:check',
+    run: () => {
+      throw new Error('boom /Users/private')
+    }
+  }
+  const result = runGuardedCheck(entry, '/tmp/agent2live-test')
+  assert.equal(result.command, 'pnpm format:check')
+  assert.equal(result.status, 'fail')
+  assert.equal(result.exitCode, -1)
+  assert.equal(result.summary, 'internal error')
+  assert.ok(Number.isInteger(result.durationMs) && result.durationMs >= 0)
+  assert.ok(!JSON.stringify(result).includes('/Users/private'))
 })
