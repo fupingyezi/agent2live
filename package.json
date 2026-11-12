@@ -26,6 +26,9 @@
     "native:electron": "node scripts/rebuild-native.mjs electron",
     "check:plans-ignored": "node scripts/check-plans-ignored.mjs",
     "check:no-prohibited": "node scripts/check-no-prohibited-assets.mjs",
+    "check:tsx-style": "node scripts/check-tsx-style.mjs",
+    "check:code-comments": "node scripts/check-code-comments.mjs",
+    "check:code-style": "node --test scripts/code-style.test.mjs && pnpm check:tsx-style && pnpm check:code-comments",
     "check:workspace": "node scripts/check-workspace.mjs",
     "spike:psd2live:fixture": "tsx spikes/psd2live/make-fixture.ts",
     "spike:psd2live:cli": "tsx spikes/psd2live/cli-probe.ts",
@@ -36,7 +39,7 @@
     "test:gate": "node --test scripts/phase0-gate.test.mjs",
     "phase0:evidence": "node scripts/write-gate-evidence.mjs",
     "phase0:docs": "node scripts/check-official-sources.mjs",
-    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm test:gate && pnpm check:plans-ignored && pnpm check:no-prohibited",
+    "check": "pnpm format:check && pnpm check:code-style && pnpm typecheck && pnpm test && pnpm test:gate && pnpm check:plans-ignored && pnpm check:no-prohibited",
     "bench:data": "pnpm --filter @agent2live/server bench:data"
   },
   "devDependencies": {
