@@ -6,8 +6,9 @@ describe('sidecar endpoint contracts', () => {
     const value = {
       schemaVersion: 'endpoint/1',
       baseUrl: 'http://127.0.0.1:43123',
-      token: 'local-token',
-      pid: 321
+      token: 'secret-token-0123456789abcdefghijkl',
+      pid: 321,
+      startedAt: '2026-11-13T00:00:00.000Z'
     }
     expect(sidecarEndpointFileSchema.parse(value)).toEqual(value)
     expect(sidecarInfoSchema.parse(value)).toEqual({
@@ -19,10 +20,12 @@ describe('sidecar endpoint contracts', () => {
 
   it.each([
     { ...validEndpoint(), baseUrl: 'http://localhost:43123' },
-    { ...validEndpoint(), token: '' },
+    { ...validEndpoint(), token: 'local-token' },
     { ...validEndpoint(), pid: 0 },
     { ...validEndpoint(), schemaVersion: 'endpoint/2' },
-    { ...validEndpoint(), unexpected: true }
+    { ...validEndpoint(), unexpected: true },
+    { ...validEndpoint(), startedAt: '' },
+    endpointWithoutStartedAt()
   ])('rejects malformed or extended endpoint values', (value) => {
     expect(sidecarEndpointFileSchema.safeParse(value).success).toBe(false)
   })
@@ -32,7 +35,13 @@ function validEndpoint() {
   return {
     schemaVersion: 'endpoint/1',
     baseUrl: 'http://127.0.0.1:43123',
-    token: 'local-token',
-    pid: 321
+    token: 'secret-token-0123456789abcdefghijkl',
+    pid: 321,
+    startedAt: '2026-11-13T00:00:00.000Z'
   }
+}
+
+function endpointWithoutStartedAt() {
+  const { startedAt: _startedAt, ...rest } = validEndpoint()
+  return rest
 }

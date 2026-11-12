@@ -1,20 +1,12 @@
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { z } from 'zod'
+import { sidecarEndpointFileSchema, type SidecarEndpointFile } from '@agent2live/contracts'
 
-export const endpointSchema = z
-  .object({
-    schemaVersion: z.literal('endpoint/1'),
-    baseUrl: z.string().url(),
-    token: z.string().min(32),
-    pid: z.number().int().positive(),
-    startedAt: z.string()
-  })
-  .strict()
+export const endpointSchema = sidecarEndpointFileSchema
 
-export type EndpointFile = z.infer<typeof endpointSchema>
+export type EndpointFile = SidecarEndpointFile
 
 export function writeEndpointFile(file: string, input: Omit<EndpointFile, 'schemaVersion'>): EndpointFile {
-  const value: EndpointFile = { schemaVersion: 'endpoint/1', ...input }
+  const value: EndpointFile = endpointSchema.parse({ schemaVersion: 'endpoint/1', ...input })
   const tmp = `${file}.${process.pid}.tmp`
   writeFileSync(tmp, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 })
   chmodSync(tmp, 0o600)

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { parseSidecarEndpoint } from '@agent2live/contracts'
 import { readEndpointFile, writeEndpointFile } from '../endpoint'
 
 it('writes a 0600 atomic endpoint file with schema/pid/token', () => {
@@ -21,7 +22,15 @@ it('writes a 0600 atomic endpoint file with schema/pid/token', () => {
     token: 'secret-token-0123456789abcdefghijkl',
     pid: process.pid
   })
-  expect(readEndpointFile(file).token).toBe('secret-token-0123456789abcdefghijkl')
+  const published = parseSidecarEndpoint(JSON.parse(readFileSync(file, 'utf8')))
+  expect(published).toEqual({
+    schemaVersion: 'endpoint/1',
+    baseUrl: 'http://127.0.0.1:45678',
+    token: 'secret-token-0123456789abcdefghijkl',
+    pid: process.pid,
+    startedAt: '2026-11-09T00:00:00.000Z'
+  })
+  expect(readEndpointFile(file).startedAt).toBe('2026-11-09T00:00:00.000Z')
   expect(() => readEndpointFile(join(dir, 'missing.json'))).toThrow(/endpoint/)
 })
 
