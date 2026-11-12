@@ -104,7 +104,7 @@ export class SeeThroughClient {
         'content-type': 'image/png',
         'x-content-sha256': expectedSha256
       },
-      body: image
+      body: new Uint8Array(image)
     })
     return uploadResponseSchema.parse(await response.json())
   }

@@ -8,7 +8,11 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "typecheck": "pnpm -r typecheck",
+    "typecheck:workspace": "pnpm -r --if-present typecheck",
+    "typecheck:root": "tsc --noEmit -p tsconfig.json",
+    "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json",
+    "typecheck:spikes": "tsc --noEmit -p tsconfig.spikes.json",
+    "typecheck": "pnpm typecheck:workspace && pnpm typecheck:root && pnpm typecheck:e2e && pnpm typecheck:spikes",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "render:matrix": "tsx scripts/render-matrix.ts",

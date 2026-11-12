@@ -10,8 +10,8 @@ test.skip(!executablePath, 'packaged app not configured')
 test('packaged app starts sidecar, migrations, sqlite-vec, FTS5 and SSE route', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-packaged-'))
   const app = await electron.launch({
-    executablePath,
-    env: { ...process.env, AGENT2LIVE_DATA_DIR: dataDir, AGENT2LIVE_E2E: '1' }
+    env: { ...process.env, AGENT2LIVE_DATA_DIR: dataDir, AGENT2LIVE_E2E: '1' },
+    ...(executablePath ? { executablePath } : {})
   })
   try {
     const studio = await studioPage(app)
