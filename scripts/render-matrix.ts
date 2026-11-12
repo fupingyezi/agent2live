@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { parseArgs } from './lib/matrix-args'
 import { readModelMeta } from './lib/model-meta'
 
 const PLAYWRIGHT_TIMEOUT_MS = 10 * 60 * 1000
@@ -41,41 +42,6 @@ interface RendererResult {
   coreVersion: string | null
   error: string | null
   screenshot: string | null
-}
-
-interface Args {
-  required: string[]
-  optional: string[]
-  evidenceDir: string
-  gate: string
-}
-
-function parseArgs(argv: string[]): Args {
-  const args: Args = {
-    required: [],
-    optional: [],
-    evidenceDir: resolve('docs/plans/evidence/phase0/G0-RENDER'),
-    gate: 'G0-RENDER'
-  }
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]
-    if (flag === '--required' || flag === '--optional') {
-      const value = argv[++i]
-      if (!value) throw new Error(`MATRIX_ARG_MISSING:${flag}`)
-      args[flag === '--required' ? 'required' : 'optional'].push(value)
-    } else if (flag === '--evidence-dir') {
-      const value = argv[++i]
-      if (!value) throw new Error('MATRIX_ARG_MISSING:--evidence-dir')
-      args.evidenceDir = resolve(value)
-    } else if (flag === '--gate') {
-      const value = argv[++i]
-      if (!value) throw new Error('MATRIX_ARG_MISSING:--gate')
-      args.gate = value
-    } else {
-      throw new Error(`MATRIX_ARG_UNKNOWN:${flag}`)
-    }
-  }
-  return args
 }
 
 function entries(specs: string[], required: boolean): MatrixInputModel[] {

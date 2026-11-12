@@ -1,5 +1,5 @@
-import { test, expect, _electron as electron } from '@playwright/test'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -36,18 +36,19 @@ test.skip(
 
 test('studio and pet load the same Cubism 4 model, play Idle, and expose required parameters', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-render-'))
-  const app = await electron.launch({
-    args: ['apps/desktop/out/main/index.js'],
-    env: {
-      ...process.env,
-      AGENT2LIVE_DATA_DIR: dataDir,
-      AGENT2LIVE_E2E: '1',
-      AGENT2LIVE_SKIP_SIDECAR: '1',
-      AGENT2LIVE_MODEL_ROOT: MODEL_ROOT,
-      AGENT2LIVE_MODEL_URL: MODEL_URL
-    }
-  })
+  let app: ElectronApplication | undefined
   try {
+    app = await electron.launch({
+      args: ['apps/desktop/out/main/index.js'],
+      env: {
+        ...process.env,
+        AGENT2LIVE_DATA_DIR: dataDir,
+        AGENT2LIVE_E2E: '1',
+        AGENT2LIVE_SKIP_SIDECAR: '1',
+        AGENT2LIVE_MODEL_ROOT: MODEL_ROOT,
+        AGENT2LIVE_MODEL_URL: MODEL_URL
+      }
+    })
     const studio = await studioPage(app)
     await expect(studio.locator('[data-testid="model-status"]')).toHaveText('ready', { timeout: 30_000 })
     const probe = await studio.evaluate(() => (window as any).__agent2liveProbe)
@@ -99,6 +100,10 @@ test('studio and pet load the same Cubism 4 model, play Idle, and expose require
       )
     }
   } finally {
-    await app.close()
+    try {
+      if (app) await app.close()
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
   }
 })

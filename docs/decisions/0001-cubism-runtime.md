@@ -17,7 +17,7 @@ redistributed.
 ## Evidence
 
 - Render matrix: `docs/plans/evidence/phase0/G0-RENDER/matrix.json` (local, ignored)
-- PSD2Live matrix: `docs/plans/evidence/phase0/G0-PSD2LIVE/render/matrix.json` (local, ignored)
+- PSD2Live matrix: `docs/plans/evidence/phase0/G0-PSD2LIVE/render/matrix.json` (not produced — G0-PSD2LIVE blocked; local, ignored)
 - Haru smoke: `docs/plans/evidence/phase0/G0-RENDER/probe.json` (local, ignored)
 
 Observed values from the local G0-RENDER matrix run (`--gate G0-RENDER`, 2026-11-12):

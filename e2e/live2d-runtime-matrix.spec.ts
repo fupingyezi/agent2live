@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -213,9 +213,13 @@ for (const model of models) {
       result = populated ? { ...result, error: result.error ?? message } : failedResult(model, message)
       if (model.required) throw error
     } finally {
-      results.push(result)
-      persist()
-      if (app) await app.close().catch(() => undefined)
+      try {
+        results.push(result)
+        persist()
+      } finally {
+        if (app) await app.close().catch(() => undefined)
+        rmSync(dataDir, { recursive: true, force: true })
+      }
     }
   })
 }
