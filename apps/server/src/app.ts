@@ -1,20 +1,26 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
+import type Database from 'better-sqlite3'
 import { newId } from '@agent2live/contracts'
 import { createLogger } from '@agent2live/logging'
 import { bearerToken, tokenMatches } from './auth'
+import { latestMigrationVersion } from './db/migrate'
 import { AppError, problemFor } from './errors'
+import { openEventStream } from './events/sse'
+import { EventStore } from './events/store'
 
 export interface AppOptions {
   token: string
   dataDir?: string
-  db?: unknown
-  events?: unknown
+  db?: Database.Database
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
     traceId: string
+  }
+  interface FastifyInstance {
+    eventStore: EventStore | null
   }
 }
 
@@ -67,19 +73,39 @@ export function buildApp(options: AppOptions): FastifyInstance {
     )
   })
 
-  app.get('/health', async () => ({
-    schemaVersion: 'health/1',
-    ok: true,
-    pid: process.pid,
-    uptimeMs: Math.round(process.uptime() * 1000),
-    startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
-    runtime: {
-      node: process.versions.node,
-      modules: process.versions.modules,
-      electron: process.versions.electron ?? null
-    },
-    data: { db: Boolean(options.db), events: Boolean(options.events) }
-  }))
+  const eventStore = options.db ? new EventStore(options.db) : null
+  app.decorate('eventStore', eventStore)
+
+  app.get('/health', async () => {
+    const body: Record<string, unknown> = {
+      schemaVersion: 'health/1',
+      ok: true,
+      pid: process.pid,
+      uptimeMs: Math.round(process.uptime() * 1000),
+      startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+      runtime: {
+        node: process.versions.node,
+        modules: process.versions.modules,
+        electron: process.versions.electron ?? null
+      },
+      data: { db: Boolean(options.db), events: Boolean(eventStore) }
+    }
+    if (options.db) {
+      body.db = {
+        schemaVersion: 'sqlite/1',
+        migration: latestMigrationVersion(options.db),
+        wal: options.db.pragma('journal_mode', { simple: true }) === 'wal',
+        vectorDim: 768
+      }
+    }
+    return body
+  })
+
+  if (eventStore) {
+    app.get('/api/v1/events', async (request, reply) => {
+      openEventStream(request, reply, eventStore)
+    })
+  }
 
   app.setNotFoundHandler((request, _reply) => {
     throw new AppError('RESOURCE_NOT_FOUND', { resource: request.url.split('?')[0] })

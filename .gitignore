@@ -51,6 +51,7 @@ coverage/
 .DS_Store
 
 # Phase 0 local assets and test output
+apps/desktop/.packaged-server/
 apps/desktop/src/renderer/public/golden/
 apps/desktop/src/renderer/public/live2d/
 apps/desktop/release/

@@ -3,6 +3,7 @@ dist/
 out/
 build/
 release/
+apps/desktop/.packaged-server/
 coverage/
 test-results/
 playwright-report/

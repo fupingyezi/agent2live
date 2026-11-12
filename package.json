@@ -17,6 +17,8 @@
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
     "pack:desktop": "node scripts/package-desktop.mjs",
+    "native:node": "node scripts/rebuild-native.mjs node",
+    "native:electron": "node scripts/rebuild-native.mjs electron",
     "check:plans-ignored": "node scripts/check-plans-ignored.mjs",
     "check:no-prohibited": "node scripts/check-no-prohibited-assets.mjs",
     "check:workspace": "node scripts/check-workspace.mjs",

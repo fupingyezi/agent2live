@@ -1,11 +1,15 @@
 import { join } from 'node:path'
 import { buildApp } from './app'
 import { loadConfig } from './config'
+import { openDatabase } from './db/client'
+import { migrate } from './db/migrate'
 import { removeEndpointFile, writeEndpointFile } from './endpoint'
 
 async function main(): Promise<void> {
   const config = loadConfig()
-  const app = buildApp({ token: config.token, dataDir: config.dataDir })
+  const db = openDatabase(join(config.dataDir, 'app.sqlite'))
+  migrate(db, config.migrationsDir)
+  const app = buildApp({ token: config.token, dataDir: config.dataDir, db })
   const endpointFile = join(config.dataDir, 'runtime', 'endpoint.json')
   const address = await app.listen({ host: '127.0.0.1', port: config.port })
   const port = new URL(address).port
@@ -23,6 +27,7 @@ async function main(): Promise<void> {
     closing = true
     removeEndpointFile(endpointFile)
     await app.close()
+    db.close()
     process.exit(0)
   }
   process.on('SIGTERM', () => void shutdown())

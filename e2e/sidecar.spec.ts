@@ -42,7 +42,7 @@ test('sidecar is loopback-only, token-protected, and 0600', async () => {
       headers: { authorization: `Bearer ${endpoint.token}` }
     })
     expect(authorized.status).toBe(200)
-    expect((await authorized.json()).data.db).toBe(false)
+    expect((await authorized.json()).data).toEqual({ db: true, events: true })
   } finally {
     await app.close()
   }
