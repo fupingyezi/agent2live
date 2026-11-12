@@ -6,7 +6,7 @@ import test from 'node:test'
 
 import { scanCommentViolations } from './check-code-comments.mjs'
 import { scanTsxStyle } from './check-tsx-style.mjs'
-import { discoverFiles, exitCodeForViolations, reportViolations } from './code-style-shared.mjs'
+import { discoverFiles, exitCodeForViolations, reportViolations, runCheck } from './code-style-shared.mjs'
 
 test('rejects a component with an inline props type', () => {
   const source = [
@@ -274,6 +274,34 @@ test('discovers matching files, skips excluded directories, and includes base fi
     })
     assert.deepEqual(files, [join(directory, 'root.tsx'), join(directory, 'src', 'keep.ts')])
   } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('runCheck resolves discovery and reported paths against a custom baseDir', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'code-style-'))
+  const lines = []
+  const originalLog = console.log
+  const originalExitCode = process.exitCode
+  try {
+    mkdirSync(join(directory, 'src'))
+    writeFileSync(
+      join(directory, 'src', 'Card.tsx'),
+      [
+        "import React from 'react'",
+        '',
+        'export function Card({ title }: { title: string }) {',
+        '  return <article>{title}</article>',
+        '}'
+      ].join('\n')
+    )
+    console.log = (line) => lines.push(line)
+    runCheck({ baseDir: directory, roots: ['src'], extensions: ['.tsx'] }, scanTsxStyle)
+    assert.equal(process.exitCode, 1)
+    assert.deepEqual(lines, ['src/Card.tsx:3 component-props', '1 violation(s)'])
+  } finally {
+    console.log = originalLog
+    process.exitCode = originalExitCode
     rmSync(directory, { recursive: true, force: true })
   }
 })

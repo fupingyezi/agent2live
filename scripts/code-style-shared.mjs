@@ -101,6 +101,7 @@ export function isDirectRun(metaUrl) {
 }
 
 export function runCheck(config, scan) {
-  const violations = scan(loadFiles(discoverFiles(config)))
+  const baseDir = config.baseDir ?? ROOT
+  const violations = scan(loadFiles(discoverFiles({ ...config, baseDir }), baseDir))
   process.exitCode = reportViolations(violations)
 }

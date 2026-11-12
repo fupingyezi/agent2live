@@ -177,7 +177,7 @@ test('turns a throwing check into a failed check instead of a crash', () => {
     id: 'format',
     command: 'pnpm format:check',
     run: () => {
-      throw new Error('boom /Users/private')
+      throw new Error('boom REDACTED_PRIVATE_PATH')
     }
   }
   const result = runGuardedCheck(entry, '/tmp/agent2live-test')
@@ -186,5 +186,5 @@ test('turns a throwing check into a failed check instead of a crash', () => {
   assert.equal(result.exitCode, -1)
   assert.equal(result.summary, 'internal error')
   assert.ok(Number.isInteger(result.durationMs) && result.durationMs >= 0)
-  assert.ok(!JSON.stringify(result).includes('/Users/private'))
+  assert.ok(!JSON.stringify(result).includes('REDACTED_PRIVATE_PATH'))
 })
