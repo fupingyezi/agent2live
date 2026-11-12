@@ -26,6 +26,8 @@
     "spike:psd2live:fixture": "tsx spikes/psd2live/make-fixture.ts",
     "spike:psd2live:cli": "tsx spikes/psd2live/cli-probe.ts",
     "spike:psd2live:probe": "tsx spikes/psd2live/probe.ts",
+    "probe:codex": "tsx spikes/agents/codex-probe.ts",
+    "probe:claude": "tsx spikes/agents/claude-probe.ts",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm check:plans-ignored && pnpm check:no-prohibited",
     "bench:data": "pnpm --filter @agent2live/server bench:data"
   },
