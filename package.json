@@ -29,6 +29,7 @@
     "bench:data": "pnpm --filter @agent2live/server bench:data"
   },
   "devDependencies": {
+    "@agent2live/live2d-runtime": "workspace:*",
     "@electron/rebuild": "^4.2.1",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@playwright/test": "^1.65.0",

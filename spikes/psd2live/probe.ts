@@ -1,14 +1,22 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { qcModelDirectory } from '../../packages/live2d-runtime/src/qc-min'
+import { qcModelDirectory } from '@agent2live/live2d-runtime/qc'
+import {
+  assessLayerEvidence,
+  finalizeBlockedArtifacts,
+  redactMcpUrl,
+  type BlockedArtifact
+} from './lib/evidence'
 import { Psd2LiveMcp, pickCubismTarget } from './lib/mcp'
 
 const EVIDENCE = resolve('docs/plans/evidence/phase0/G0-PSD2LIVE')
 const WORK = resolve('spikes/psd2live/work')
 const fixture = resolve(process.env.PSD2LIVE_FIXTURE ?? join(WORK, 'fixture.psd'))
+const mcpUrl = process.env.PSD2LIVE_MCP_URL ?? 'http://127.0.0.1:23871/mcp'
 const evidenceFile = join(EVIDENCE, 'result.json')
 const timestamp = Date.now()
+const capturedArtifacts = new Set<BlockedArtifact>()
 
 class Blocked extends Error {
   constructor(readonly reason: string) {
@@ -35,6 +43,7 @@ interface ProbeEvidence {
   decomposition: 'pass' | 'fail' | 'blocked' | 'pending'
   render: 'pending'
   reason: string | null
+  warnings: string[]
   fixture: { kind: 'synthetic' | 'real'; sha256: string; layerCountHint: number | null } | null
   mcp: {
     url: string
@@ -50,6 +59,7 @@ interface ProbeEvidence {
     projectId: string | null
     stateType: string | null
     layerCount: number | null
+    layerEvidence: 'present' | 'missing'
     layers: unknown
   } | null
   exports: Record<string, ExportEvidence>
@@ -60,6 +70,15 @@ interface ProbeEvidence {
 function write(report: ProbeEvidence): void {
   mkdirSync(EVIDENCE, { recursive: true })
   writeFileSync(evidenceFile, `${JSON.stringify(report, null, 2)}\n`)
+}
+
+function writeEvidence(report: ProbeEvidence): void {
+  write(report)
+  finalizeBlockedArtifacts(EVIDENCE, report, capturedArtifacts)
+}
+
+function capture(artifact: BlockedArtifact): void {
+  capturedArtifacts.add(artifact)
 }
 
 function redact(value: string): string {
@@ -189,9 +208,10 @@ async function main(): Promise<void> {
     decomposition: 'blocked',
     render: 'pending',
     reason: null,
+    warnings: [],
     fixture: null,
     mcp: {
-      url: process.env.PSD2LIVE_MCP_URL ?? 'http://127.0.0.1:23871/mcp',
+      url: redactMcpUrl(mcpUrl),
       toolCount: 0,
       hasImport: false,
       hasExportTarget: false,
@@ -215,7 +235,7 @@ async function main(): Promise<void> {
     if (!token) throw new Blocked('PSD2LIVE_MCP_TOKEN_MISSING')
 
     try {
-      mcp = await Psd2LiveMcp.connect(report.mcp.url, token)
+      mcp = await Psd2LiveMcp.connect(mcpUrl, token)
     } catch (error) {
       throw new Blocked(
         `PSD2LIVE_MCP_UNREACHABLE:${redact(error instanceof Error ? error.message : String(error))}`
@@ -237,6 +257,8 @@ async function main(): Promise<void> {
       )}\n`
     )
     writeFileSync(join(EVIDENCE, 'schemas.json'), `${JSON.stringify(descriptors, null, 2)}\n`)
+    capture('tools')
+    capture('schemas')
 
     if (!report.mcp.hasImport) throw new Error('MCP_IMPORT_TOOL_MISSING')
     if (!report.mcp.hasExportTarget) throw new Error('MCP_EXPORT_TARGET_MISSING')
@@ -250,6 +272,7 @@ async function main(): Promise<void> {
     const jobId = typeof imported.id === 'string' ? imported.id : null
     const importedResult = jobId ? await mcp.waitForJob(jobId) : imported
     writeFileSync(join(EVIDENCE, 'import.json'), `${JSON.stringify({ imported, importedResult }, null, 2)}\n`)
+    capture('import')
 
     const projectId =
       typeof importedResult.project_id === 'string'
@@ -259,16 +282,29 @@ async function main(): Promise<void> {
           : null
     const state = importedResult.state ?? imported.state
     if (!projectId || state === undefined) throw new Error('IMPORT_PROJECT_STATE_MISSING')
-    const layers = Array.isArray(importedResult.layers) ? importedResult.layers : null
+    const assessment = assessLayerEvidence(report.fixture?.kind ?? 'synthetic', importedResult.layers)
     report.import = {
       fixture,
       jobId,
       projectId,
       stateType: typeof state,
-      layerCount: layers?.length ?? null,
-      layers
+      layerCount: assessment.layerCount,
+      layerEvidence: assessment.layerEvidence,
+      layers: assessment.layers
     }
-    if (layers && layers.length < 10) throw new Error(`IMPORT_LAYER_COUNT_LOW:${layers.length}`)
+    if (assessment.failure === 'REAL_PSD_LAYER_EVIDENCE_MISSING') {
+      // A real fixture without layer structure cannot prove decomposition. Do
+      // not let a successful export hide the missing evidence.
+      report.warnings.push(assessment.failure)
+      report.status = 'fail'
+      report.decomposition = 'fail'
+      report.reason = assessment.failure
+      process.exitCode = 1
+      return
+    }
+    if (assessment.failure) {
+      throw new Error(`${assessment.failure}:${assessment.layerCount ?? 'unknown'}`)
+    }
 
     const export42 = await exportOnce(mcp, projectId, state, '4.2')
     report.exports['4.2'] = export42
@@ -309,7 +345,7 @@ async function main(): Promise<void> {
   } finally {
     await mcp?.close()
     report.finishedAt = new Date().toISOString()
-    write(report)
+    writeEvidence(report)
     console.log(
       JSON.stringify(
         { status: report.status, decomposition: report.decomposition, reason: report.reason },

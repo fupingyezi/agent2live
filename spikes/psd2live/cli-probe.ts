@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { qcModelDirectory } from '../../packages/live2d-runtime/src/qc-min'
+import { qcModelDirectory } from '@agent2live/live2d-runtime/qc'
+import { buildGradleEnv } from './lib/env'
 
 const EVIDENCE = resolve('docs/plans/evidence/phase0/G0-PSD2LIVE')
 const WORK = resolve('spikes/psd2live/work')
@@ -155,7 +156,7 @@ async function main(): Promise<void> {
     encoding: 'utf8',
     timeout: TIMEOUT_MS,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env }
+    env: buildGradleEnv(process.env)
   })
   report.exitCode = result.status ?? -1
   process.stdout.write(result.stdout ?? '')

@@ -107,6 +107,20 @@ function jobResult(data: Record<string, unknown>): Record<string, unknown> {
   return data.result && typeof data.result === 'object' ? (data.result as Record<string, unknown>) : data
 }
 
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), Math.max(0, timeoutMs))
+  })
+  try {
+    return await Promise.race([operation, timeout])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+const MAX_TOOL_PAGES = 50
+
 export class Psd2LiveMcp {
   private readonly tools = new Map<string, ToolDescriptor>()
 
@@ -130,8 +144,16 @@ export class Psd2LiveMcp {
 
   private async refreshTools(): Promise<void> {
     let cursor: string | undefined
+    let pages = 0
+    const seenCursors = new Set<string>()
     do {
+      if (pages >= MAX_TOOL_PAGES) throw new Error('MCP_TOOL_PAGINATION_LIMIT')
+      if (cursor) {
+        if (seenCursors.has(cursor)) throw new Error('MCP_TOOL_PAGINATION_LOOP')
+        seenCursors.add(cursor)
+      }
       const page = await this.client.listTools(cursor ? { cursor } : undefined)
+      pages += 1
       for (const tool of page.tools) {
         this.tools.set(tool.name, {
           name: tool.name,
@@ -167,8 +189,14 @@ export class Psd2LiveMcp {
     if (!toolName) throw new Error('MCP_JOB_TOOL_MISSING')
     const schema = this.tools.get(toolName)!.inputSchema
     const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      const data = await this.call(toolName, buildJobRequest(schema, jobId, 10_000))
+    for (;;) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) throw new Error('MCP_JOB_TIMEOUT')
+      const call = this.call(toolName, buildJobRequest(schema, jobId, Math.min(10_000, remaining)))
+      // If the race below times out first, the transport may still reject later.
+      // Mark it handled so a hung server cannot surface as an unhandled rejection.
+      call.catch(() => {})
+      const data = await withTimeout(call, remaining, 'MCP_JOB_TIMEOUT')
       if (isTerminalJob(data)) {
         const status = String(data.status ?? '').toLowerCase()
         if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
@@ -176,9 +204,10 @@ export class Psd2LiveMcp {
         }
         return jobResult(data)
       }
-      await new Promise((resolve) => setTimeout(resolve, 1_500))
+      const sleep = deadline - Date.now()
+      if (sleep <= 0) throw new Error('MCP_JOB_TIMEOUT')
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1_500, sleep)))
     }
-    throw new Error('MCP_JOB_TIMEOUT')
   }
 
   async close(): Promise<void> {

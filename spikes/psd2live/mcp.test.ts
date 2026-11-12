@@ -72,7 +72,7 @@ interface FakeServer {
 
 async function startFakeServer(
   tools: Tool[],
-  handler: (name: string, request: Record<string, unknown>) => CallToolResult
+  handler: (name: string, request: Record<string, unknown>) => CallToolResult | Promise<CallToolResult>
 ): Promise<FakeServer> {
   const server = new Server({ name: 'fake-psd2live', version: '0.0.0' }, { capabilities: { tools: {} } })
   const calls: Array<{ name: string; request: Record<string, unknown> }> = []
@@ -230,4 +230,35 @@ describe('PSD2Live MCP client over an offline transport', () => {
     }))
     await expect(fake.mcp.waitForJob('job-1', 100)).rejects.toThrow('MCP_JOB_TOOL_MISSING')
   })
+
+  it('bounds a hung job call by the requested timeout', async () => {
+    fake = await startFakeServer([tool('job_get', JOB_SCHEMA)], () => new Promise<CallToolResult>(() => {}))
+
+    const started = Date.now()
+    await expect(fake.mcp.waitForJob('job-hung', 200)).rejects.toThrow('MCP_JOB_TIMEOUT')
+    expect(Date.now() - started).toBeLessThan(2_000)
+  }, 3_000)
+})
+
+describe('PSD2Live MCP pagination guards', () => {
+  it('rejects a server that repeats the same listTools cursor', async () => {
+    const server = new Server(
+      { name: 'fake-paginated-psd2live', version: '0.0.0' },
+      { capabilities: { tools: {} } }
+    )
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [tool('project_import_psd', PROJECT_IMPORT_SCHEMA)],
+      nextCursor: 'same-cursor'
+    }))
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await server.connect(serverTransport)
+
+    try {
+      await expect(Psd2LiveMcp.connectWithTransport(clientTransport)).rejects.toThrow(
+        'MCP_TOOL_PAGINATION_LOOP'
+      )
+    } finally {
+      await server.close()
+    }
+  }, 3_000)
 })
