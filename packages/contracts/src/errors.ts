@@ -306,6 +306,94 @@ export const ERROR_REGISTRY = {
     '模型版本不兼容',
     '模型与当前 Cubism Core 版本不兼容',
     z.object({ mocVersion: z.number().int(), coreVersion: z.number().int().optional() }).strict()
+  ),
+  PROVIDER_AUTH_FAILED: def(
+    'PROVIDER_AUTH_FAILED',
+    401,
+    'auth',
+    false,
+    'error',
+    'errors.providerAuthFailed',
+    'open_settings',
+    '模型服务认证失败',
+    '请检查服务凭据与访问权限'
+  ),
+  PROVIDER_RATE_LIMITED: def(
+    'PROVIDER_RATE_LIMITED',
+    429,
+    'rate_limit',
+    true,
+    'warning',
+    'errors.providerRateLimited',
+    'retry',
+    '模型服务限流',
+    '请求过于频繁，请稍后重试'
+  ),
+  PROVIDER_TIMEOUT: def(
+    'PROVIDER_TIMEOUT',
+    504,
+    'dependency',
+    true,
+    'warning',
+    'errors.providerTimeout',
+    'retry',
+    '模型服务超时',
+    '等待模型服务响应超时'
+  ),
+  PROVIDER_UNAVAILABLE: def(
+    'PROVIDER_UNAVAILABLE',
+    503,
+    'dependency',
+    true,
+    'error',
+    'errors.providerUnavailable',
+    'retry',
+    '模型服务不可用',
+    '模型服务暂时不可用'
+  ),
+  PROVIDER_INVALID_REQUEST: def(
+    'PROVIDER_INVALID_REQUEST',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.providerInvalidRequest',
+    'fix_input',
+    '模型请求无效',
+    '请求参数不被模型服务接受'
+  ),
+  PROVIDER_CONTENT_REJECTED: def(
+    'PROVIDER_CONTENT_REJECTED',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.providerContentRejected',
+    'fix_input',
+    '内容被模型服务拒绝',
+    '请修改提示词或参考图后重试'
+  ),
+  PROVIDER_INVALID_RESPONSE: def(
+    'PROVIDER_INVALID_RESPONSE',
+    502,
+    'dependency',
+    false,
+    'error',
+    'errors.providerInvalidResponse',
+    'contact_support',
+    '模型响应无效',
+    '模型服务返回了无法解析的数据'
+  ),
+  PROVIDER_CANCELLED: def(
+    'PROVIDER_CANCELLED',
+    408,
+    'cancelled',
+    false,
+    'info',
+    'errors.providerCancelled',
+    'none',
+    '已取消',
+    '请求已取消'
   )
 } satisfies Record<string, ErrorDefinition>
 
