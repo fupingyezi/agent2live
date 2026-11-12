@@ -3,7 +3,7 @@
   "sources": [
     {
       "id": "codex-app-server",
-      "url": "https://learn.chatgpt.com/docs/app-server",
+      "url": "https://github.com/openai/codex/blob/rust-v0.153.2/codex-rs/app-server/README.md",
       "version": "0.153.2",
       "methods": ["thread/start", "thread/resume", "turn/start", "turn/interrupt"],
       "license": null,
@@ -14,7 +14,7 @@
     },
     {
       "id": "claude-agent-sdk",
-      "url": "https://code.claude.com/docs/en/agent-sdk/overview",
+      "url": "https://code.claude.com/docs/en/agent-sdk/typescript",
       "version": "0.3.319",
       "methods": ["query", "interrupt", "canUseTool"],
       "license": null,
@@ -25,7 +25,7 @@
     },
     {
       "id": "cubism-web",
-      "url": "https://docs.live2d.com/cubism-sdk-manual/model-web",
+      "url": "https://github.com/Live2D/CubismWebFramework/blob/develop/src/model/cubismmoc.ts",
       "version": null,
       "methods": ["Live2DCubismCore.Moc.fromArrayBuffer", "Live2DCubismCore.Model.fromMoc"],
       "license": null,
