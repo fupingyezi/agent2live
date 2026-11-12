@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { getPetWindow, getPetWindowState, setPetClickThrough } from './windows'
+import { getSidecarInfo } from './sidecar'
 
 function assertPetSender(senderId: number): void {
   const pet = getPetWindow()
@@ -17,5 +18,10 @@ export function registerWindowIpc(): void {
     assertPetSender(event.sender.id)
     if (typeof value !== 'boolean') throw new Error('click-through value must be boolean')
     return setPetClickThrough(value)
+  })
+  ipcMain.handle('server:get-info', () => {
+    const info = getSidecarInfo()
+    if (!info) throw new Error('sidecar is not ready')
+    return info
   })
 }

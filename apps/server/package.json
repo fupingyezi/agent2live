@@ -3,7 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/index.cjs",
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "node dist/index.cjs",
+    "bench:data": "tsx scripts/data-bench.ts"
+  },
   "dependencies": {
+    "@agent2live/contracts": "workspace:*",
+    "@agent2live/logging": "workspace:*",
     "@fastify/cors": "^11.4.1",
     "better-sqlite3": "^13.0.3",
     "fastify": "5.12.8",
