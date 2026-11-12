@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import { createPetWindow, createStudioWindow } from './windows'
 import { registerWindowIpc } from './ipc'
+import { registerModelProtocol, registerModelScheme } from './model-protocol'
 import { startSidecar, stopSidecar } from './sidecar'
 
 app.setName('agent2live')
@@ -8,7 +9,15 @@ if (process.env.AGENT2LIVE_DATA_DIR) {
   app.setPath('userData', process.env.AGENT2LIVE_DATA_DIR)
 }
 
+// Custom schemes must be registered as privileged before the app becomes ready.
+registerModelScheme()
+
+function modelRoot(): string | null {
+  return process.env.AGENT2LIVE_MODEL_ROOT ?? null
+}
+
 async function bootstrap(): Promise<void> {
+  registerModelProtocol(modelRoot)
   registerWindowIpc()
   if (process.env.AGENT2LIVE_SKIP_SIDECAR !== '1') {
     try {

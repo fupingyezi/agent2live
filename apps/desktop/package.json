@@ -46,6 +46,7 @@
     }
   },
   "dependencies": {
+    "@agent2live/live2d-runtime": "workspace:*",
     "@pixi/unsafe-eval": "7.4.3",
     "pixi-live2d-display-lipsyncpatch": "0.5.0-ls-8",
     "pixi.js": "7.4.3"
