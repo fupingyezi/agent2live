@@ -16,7 +16,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
-    "baseUrl": ".",
     "types": ["node"]
   }
 }
