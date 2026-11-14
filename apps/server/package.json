@@ -14,9 +14,11 @@
     "@agent2live/contracts": "workspace:*",
     "@agent2live/logging": "workspace:*",
     "@fastify/cors": "^11.4.1",
+    "@fastify/multipart": "^9.0.1",
     "better-sqlite3": "^13.0.3",
     "fastify": "5.12.8",
     "pino": "10.4.0",
+    "sharp": "0.35.5",
     "sqlite-vec": "0.1.9",
     "zod": "3.25.76"
   },

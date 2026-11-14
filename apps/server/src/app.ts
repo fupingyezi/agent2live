@@ -8,11 +8,16 @@ import { latestMigrationVersion } from './db/migrate'
 import { AppError, problemFor } from './errors'
 import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
+import { registerAssetRoutes } from './routes/assets'
+import { registerMultipart } from './routes/multipart'
+import type { Services } from './services/container'
 
 export interface AppOptions {
   token: string
   dataDir?: string
   db?: Database.Database
+  eventStore?: EventStore
+  services?: Partial<Services>
 }
 
 declare module 'fastify' {
@@ -73,7 +78,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
     )
   })
 
-  const eventStore = options.db ? new EventStore(options.db) : null
+  const eventStore = options.eventStore ?? (options.db ? new EventStore(options.db) : null)
   app.decorate('eventStore', eventStore)
 
   app.get('/health', async () => {
@@ -104,6 +109,14 @@ export function buildApp(options: AppOptions): FastifyInstance {
   if (eventStore) {
     app.get('/api/v1/events', async (request, reply) => {
       openEventStream(request, reply, eventStore)
+    })
+  }
+
+  const assets = options.services?.assets
+  if (assets) {
+    app.register(async (scope) => {
+      await registerMultipart(scope)
+      registerAssetRoutes(scope, assets)
     })
   }
 

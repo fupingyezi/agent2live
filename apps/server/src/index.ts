@@ -4,12 +4,28 @@ import { loadConfig } from './config'
 import { openDatabase } from './db/client'
 import { migrate } from './db/migrate'
 import { removeEndpointFile, writeEndpointFile } from './endpoint'
+import { EventStore } from './events/store'
+import { systemClock } from './services/clock'
+import { createServices } from './services/container'
 
 async function main(): Promise<void> {
   const config = loadConfig()
   const db = openDatabase(join(config.dataDir, 'app.sqlite'))
   migrate(db, config.migrationsDir)
-  const app = buildApp({ token: config.token, dataDir: config.dataDir, db })
+  const eventStore = new EventStore(db)
+  const services = createServices({
+    db,
+    dataDir: config.dataDir,
+    events: eventStore,
+    clock: systemClock
+  })
+  const app = buildApp({
+    token: config.token,
+    dataDir: config.dataDir,
+    db,
+    eventStore,
+    services
+  })
   const endpointFile = join(config.dataDir, 'runtime', 'endpoint.json')
   const address = await app.listen({ host: '127.0.0.1', port: config.port })
   const port = new URL(address).port

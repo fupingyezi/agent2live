@@ -12,6 +12,14 @@ export async function jpeg(width = 640, height = 960): Promise<Buffer> {
     .toBuffer()
 }
 
+export function assetForm(bytes: Buffer, name = 'image.png', type = 'image/png'): FormData {
+  const copy = new Uint8Array(bytes.length)
+  copy.set(bytes)
+  const form = new FormData()
+  form.append('file', new Blob([copy], { type }), name)
+  return form
+}
+
 export function imageForm(
   metadata: unknown,
   files: Array<{ name: string; bytes: Buffer; type?: string }>
