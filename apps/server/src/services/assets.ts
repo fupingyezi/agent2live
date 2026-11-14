@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3'
 import { newId } from '@agent2live/contracts'
 import type { Clock } from './clock'
 import type { BlobStore } from './blobs'
-import { ImageValidationError, inspectImage, type ImageInspection } from '../images/validate'
+import { ImageValidationError, MAX_IMAGE_BYTES, inspectImage, type ImageInspection } from '../images/validate'
 import { AppError } from '../errors'
 import { withEvents } from './events-buffer'
 import type { EventStore } from '../events/store'
@@ -34,6 +34,8 @@ export interface AssetIngestResult {
   asset: AssetDto
   created: boolean
 }
+
+const MAX_ORIGINAL_NAME_LENGTH = 255
 
 export interface AssetServiceDeps {
   db: Database.Database
@@ -98,15 +100,20 @@ export class AssetService {
     requestId: string
     traceId: string
   }): Promise<AssetIngestResult> {
+    if (input.originalName !== null && input.originalName.length > MAX_ORIGINAL_NAME_LENGTH) {
+      throw new AppError('REQUEST_INVALID', {
+        reason: `originalName exceeds ${MAX_ORIGINAL_NAME_LENGTH} characters`
+      })
+    }
     let inspection: ImageInspection
     try {
       inspection = await inspectImage(input.bytes, input.declaredMime)
     } catch (error) {
       if (error instanceof ImageValidationError) {
-        if (input.bytes.length > 20 * 1024 * 1024) {
+        if (input.bytes.length > MAX_IMAGE_BYTES) {
           throw new AppError('ASSET_TOO_LARGE', {
             bytes: input.bytes.length,
-            limit: 20 * 1024 * 1024
+            limit: MAX_IMAGE_BYTES
           })
         }
         throw new AppError('ASSET_INVALID', { reasons: error.reasons })
@@ -158,8 +165,8 @@ export class AssetService {
       })
       events.append({
         type: 'asset.created',
-        scopeKind: 'project',
-        scopeId: input.requestId,
+        scopeKind: 'system',
+        scopeId: 'system',
         payload: {
           assetId: id,
           sha256: blob.sha256,

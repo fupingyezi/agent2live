@@ -8,26 +8,33 @@ import type { FakeClock } from '../src/services/clock'
 import { assetForm, png, jpeg } from './helpers/files'
 import { buildMultipartTestPayload } from './helpers/http'
 
-async function expectCode(fn: () => Promise<unknown> | unknown, code: string): Promise<void> {
+async function expectCode(
+  fn: () => Promise<unknown> | unknown,
+  code: string
+): Promise<{ code?: string; details?: unknown }> {
   try {
     await fn()
     throw new Error('expected failure')
   } catch (error) {
-    expect((error as { code?: string }).code).toBe(code)
+    const typed = error as { code?: string; details?: unknown }
+    expect(typed.code).toBe(code)
+    return typed
   }
 }
 
 describe('AssetService', () => {
   let fixture: ReturnType<typeof createTestDatabase>
   let service: AssetService
+  let blobs: BlobStore
   let clock: FakeClock
 
   beforeEach(() => {
     fixture = createTestDatabase()
+    blobs = new BlobStore(fixture.dataDir)
     clock = fixture.clock
     service = new AssetService({
       db: fixture.db,
-      blobs: new BlobStore(fixture.dataDir),
+      blobs,
       events: fixture.eventStore,
       audit: new AuditService(fixture.db, clock),
       clock
@@ -54,6 +61,10 @@ describe('AssetService', () => {
     const content = service.openContent(result.asset.id)
     expect(content.asset.sha256).toBe(result.asset.sha256)
     expect(content.bytes).toEqual(bytes)
+    const event = fixture.db
+      .prepare('select scope_kind, scope_id from event_log where type = ?')
+      .get('asset.created')
+    expect(event).toEqual({ scope_kind: 'system', scope_id: 'system' })
   })
 
   it('deduplicates content and records every provenance', async () => {
@@ -81,7 +92,7 @@ describe('AssetService', () => {
     expect(fixture.db.prepare('select count(*) as n from assets').get()).toEqual({ n: 1 })
   })
 
-  it('rejects spoofed, animated, tiny, and oversized images', async () => {
+  it('rejects spoofed, tiny, and oversized images', async () => {
     const jpg = await jpeg()
     await expectCode(
       () =>
@@ -121,7 +132,74 @@ describe('AssetService', () => {
     )
   })
 
-  it('rejects unknown assets and deleted references', async () => {
+  it('rejects animated images', async () => {
+    const frame = await sharp({
+      create: { width: 64, height: 64, channels: 4, background: '#f00' }
+    })
+      .png()
+      .toBuffer()
+    const frame2 = await sharp({
+      create: { width: 64, height: 64, channels: 4, background: '#00f' }
+    })
+      .png()
+      .toBuffer()
+    const animated = await sharp([frame, frame2], { join: { animated: true } })
+      .webp()
+      .toBuffer()
+    const error = await expectCode(
+      () =>
+        service.ingestUpload({
+          bytes: animated,
+          declaredMime: 'image/webp',
+          originalName: 'animated.webp',
+          requestId: 'r',
+          traceId: 't'
+        }),
+      'ASSET_INVALID'
+    )
+    expect(error.details).toEqual({ reasons: ['animated images are not supported'] })
+  })
+
+  it('rejects images wider than 8192 pixels', async () => {
+    const wide = await sharp({
+      create: { width: 8193, height: 64, channels: 4, background: '#fff' }
+    })
+      .png()
+      .toBuffer()
+    const error = await expectCode(
+      () =>
+        service.ingestUpload({
+          bytes: wide,
+          declaredMime: 'image/png',
+          originalName: 'wide.png',
+          requestId: 'r',
+          traceId: 't'
+        }),
+      'ASSET_INVALID'
+    )
+    expect(error.details).toEqual({ reasons: ['image exceeds 8192 pixels'] })
+  })
+
+  it('rejects oversized original names before writing blobs or rows', async () => {
+    const bytes = await png()
+    const error = await expectCode(
+      () =>
+        service.ingestUpload({
+          bytes,
+          declaredMime: 'image/png',
+          originalName: 'a'.repeat(256),
+          requestId: 'r',
+          traceId: 't'
+        }),
+      'REQUEST_INVALID'
+    )
+    expect(error.details).toEqual({ reason: 'originalName exceeds 255 characters' })
+    expect(blobs.listHashes()).toEqual([])
+    expect(fixture.db.prepare('select count(*) as n from assets').get()).toEqual({ n: 0 })
+    expect(fixture.db.prepare('select count(*) as n from asset_provenance').get()).toEqual({ n: 0 })
+  })
+
+  it('returns ASSET_NOT_FOUND for unknown assets', async () => {
     await expectCode(() => service.getAsset('ast_01J00000000000000000000000'), 'ASSET_NOT_FOUND')
   })
 })
@@ -196,6 +274,49 @@ describe('asset routes', () => {
       })
       expect(spoofed.statusCode).toBe(422)
       expect(spoofed.json()).toMatchObject({ error: { code: 'ASSET_INVALID' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects oversized original filenames with a stable 4xx', async () => {
+    const ctx = await createTestApp()
+    try {
+      const bytes = await png(160, 240)
+      const form = assetForm(bytes, `${'a'.repeat(297)}.png`)
+      const { payload, contentType } = await buildMultipartTestPayload(form)
+      const response = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/assets',
+        headers: { ...ctx.auth, 'content-type': contentType },
+        payload
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects excess multipart fields without leaking parser internals', async () => {
+    const ctx = await createTestApp()
+    try {
+      const bytes = await png(160, 240)
+      const copy = new Uint8Array(bytes.length)
+      copy.set(bytes)
+      const form = new FormData()
+      for (let index = 0; index < 21; index += 1) form.append(`field${index}`, 'x')
+      form.append('file', new Blob([copy], { type: 'image/png' }), 'image.png')
+      const { payload, contentType } = await buildMultipartTestPayload(form)
+      const response = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/assets',
+        headers: { ...ctx.auth, 'content-type': contentType },
+        payload
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+      expect(JSON.stringify(response.json())).not.toContain('reach fields limit')
     } finally {
       await ctx.close()
     }
