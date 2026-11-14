@@ -51,7 +51,13 @@ test('creates a character and art project, streams events, and survives reload',
     expect(studio.url()).toBe(projectUrl)
 
     await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
-    await expect(studio.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })).toBeVisible()
+    const projectCard = studio.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })
+    await expect(projectCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '0')
+    await expect(projectCard.getByRole('link', { name: '打开工作台', exact: true })).toBeVisible()
+    await expect(projectCard.getByRole('link', { name: 'Live2D', exact: true })).toBeVisible()
+    await expect(studio.locator('[data-testid="backup-panel"]')).toBeVisible()
+    await expect(studio.locator('[data-testid="backup-empty"]')).toBeVisible()
+    await expect(studio.locator('[data-testid="open-live2d"]')).toBeVisible()
   } finally {
     await app.close()
   }

@@ -21,9 +21,11 @@ import { ApiError } from '../api/client'
 import { createArtProject, getCharacter, getCharacterLineage } from '../api/queries'
 import { queryKeys } from '../api/keys'
 import type { ArtProjectDto, CreateArtProjectInput, LineageNodeDto } from '../api/types'
+import { CharacterBackupPanel } from '../components/CharacterBackupPanel'
 import { StudioError } from '../components/StudioError'
 import { StudioLoading } from '../components/StudioLoading'
-import { formatDateTime, formatStage, stageTone } from '../format'
+import { formatDateTime, formatPercent, formatStage, stageTone } from '../format'
+import { computeProjectProgress } from '../project-progress'
 
 interface ProjectRow {
   project: ArtProjectDto
@@ -160,6 +162,13 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
         eyebrow="角色驾驶舱"
         title={characterQuery.data.title}
         description={characterQuery.data.summary || '这个角色还没有简介。'}
+        actions={
+          <Button asChild variant="secondary">
+            <Link to={`/characters/${encodeURIComponent(id)}/live2d`} data-testid="open-live2d">
+              Live2D 绑定
+            </Link>
+          </Button>
+        }
       />
 
       <div className="studio-cockpit-grid">
@@ -179,27 +188,64 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
             </div>
           ) : (
             <div className="studio-project-list">
-              {rows.map(({ project, branchLabel, parentDeleted }) => (
-                <SurfaceCard asChild key={project.id}>
-                  <Link
-                    to={`/characters/${encodeURIComponent(project.characterId)}/art?project=${encodeURIComponent(project.id)}`}
-                    className="studio-project-card"
-                    data-testid="project-card"
-                    data-project-id={project.id}
-                  >
-                    <div className="studio-card-row">
-                      <h3 className="studio-card-title">{project.title}</h3>
-                      <StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />
-                    </div>
-                    <p className="studio-card-copy">{project.description || '尚未填写项目描述'}</p>
-                    <div className="studio-meta-row">
-                      <span className="studio-meta">更新于 {formatDateTime(project.updatedAt)}</span>
-                      {branchLabel ? <Tag>分支：{branchLabel}</Tag> : null}
-                      {parentDeleted ? <Tag>父分支已删除</Tag> : null}
-                    </div>
-                  </Link>
-                </SurfaceCard>
-              ))}
+              {rows.map(({ project, branchLabel, parentDeleted }) => {
+                const progress = computeProjectProgress(project)
+                const artPath = `/characters/${encodeURIComponent(project.characterId)}/art?project=${encodeURIComponent(project.id)}`
+                const live2dPath = `/characters/${encodeURIComponent(project.characterId)}/live2d?project=${encodeURIComponent(project.id)}`
+                return (
+                  <SurfaceCard key={project.id} asChild>
+                    <article
+                      className="studio-project-card"
+                      data-testid="project-card"
+                      data-project-id={project.id}
+                      data-progress={progress.percent}
+                    >
+                      <div className="studio-card-row">
+                        <h3 className="studio-card-title">
+                          <Link className="studio-project-title-link" to={artPath}>
+                            {project.title}
+                          </Link>
+                        </h3>
+                        <StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />
+                      </div>
+                      <p className="studio-card-copy">{project.description || '尚未填写项目描述'}</p>
+                      <div className="studio-meta-row">
+                        <span className="studio-meta">更新于 {formatDateTime(project.updatedAt)}</span>
+                        {branchLabel ? <Tag>分支：{branchLabel}</Tag> : null}
+                        {parentDeleted ? <Tag>父分支已删除</Tag> : null}
+                      </div>
+                      <div className="studio-progress-block">
+                        <div className="studio-progress-caption">
+                          <span>Phase 1 进度</span>
+                          <span>
+                            {formatPercent(progress.percent)} · {progress.nextLabel}
+                          </span>
+                        </div>
+                        <div
+                          className="studio-progress-track"
+                          role="progressbar"
+                          aria-label={`${project.title} 完成度`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={progress.percent}
+                          data-testid="art-progress"
+                          data-percent={progress.percent}
+                        >
+                          <span className="studio-progress-fill" style={{ width: `${progress.percent}%` }} />
+                        </div>
+                      </div>
+                      <div className="studio-project-actions">
+                        <Button asChild variant="secondary" size="sm">
+                          <Link to={artPath}>打开工作台</Link>
+                        </Button>
+                        <Button asChild variant="quiet" size="sm">
+                          <Link to={live2dPath}>Live2D</Link>
+                        </Button>
+                      </div>
+                    </article>
+                  </SurfaceCard>
+                )
+              })}
             </div>
           )}
         </section>
@@ -248,6 +294,7 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
               </AsyncButton>
             </form>
           </SurfaceCard>
+          <CharacterBackupPanel characterId={id} />
         </aside>
       </div>
     </div>

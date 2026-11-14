@@ -112,7 +112,7 @@ export class ApiClient {
   }
 
   async requestBlob(path: string, options: ApiRequestOptions = {}): Promise<Blob> {
-    const response = await this.send(path, options, 'image/*')
+    const response = await this.send(path, options, options.accept ?? 'image/*')
     return response.blob()
   }
 

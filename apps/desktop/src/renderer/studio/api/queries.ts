@@ -1,4 +1,5 @@
 import { ApiClient, newIdempotencyKey } from './client'
+import type { CreateProviderInput, UpdateProviderInput } from '../providers/create-flow'
 import type {
   ArtProjectDto,
   ArtVersionDto,
@@ -6,6 +7,7 @@ import type {
   ArtVersionMutationDto,
   ArtVersionReferenceDto,
   AssetDto,
+  CharacterBackupDto,
   CharacterDto,
   CharacterLineageDto,
   CreateArtProjectInput,
@@ -477,4 +479,67 @@ export function flattenLineage(roots: CharacterLineageDto['roots']): ArtProjectD
 
 export function isTerminalJobStatus(status: JobDto['status']): boolean {
   return ['succeeded', 'failed', 'cancelled', 'unknown_outcome'].includes(status)
+}
+
+export function getProvider(providerId: string, signal?: AbortSignal): Promise<ProviderConnectionDto> {
+  return api.request<ProviderConnectionDto>(
+    `/api/v1/providers/${encodeURIComponent(providerId)}`,
+    withSignal(signal)
+  )
+}
+
+export function createProvider(
+  input: CreateProviderInput,
+  idempotencyKey = newIdempotencyKey()
+): Promise<ProviderConnectionDto> {
+  return api.request<ProviderConnectionDto>('/api/v1/providers', {
+    method: 'POST',
+    body: input,
+    idempotencyKey
+  })
+}
+
+export function updateProvider(
+  providerId: string,
+  input: UpdateProviderInput,
+  rowVersion: number
+): Promise<ProviderConnectionDto> {
+  return api.request<ProviderConnectionDto>(`/api/v1/providers/${encodeURIComponent(providerId)}`, {
+    method: 'PATCH',
+    body: input,
+    ifMatch: rowVersion
+  })
+}
+
+export async function listBackups(characterId: string, signal?: AbortSignal): Promise<CharacterBackupDto[]> {
+  const response = await api.request<ItemsResponse<CharacterBackupDto>>(
+    `/api/v1/characters/${encodeURIComponent(characterId)}/backups`,
+    withSignal(signal)
+  )
+  return response.items
+}
+
+export function getBackup(backupId: string, signal?: AbortSignal): Promise<CharacterBackupDto> {
+  return api.request<CharacterBackupDto>(
+    `/api/v1/backups/${encodeURIComponent(backupId)}`,
+    withSignal(signal)
+  )
+}
+
+export function createBackup(
+  characterId: string,
+  idempotencyKey = newIdempotencyKey()
+): Promise<CharacterBackupDto> {
+  return api.request<CharacterBackupDto>(`/api/v1/characters/${encodeURIComponent(characterId)}/backups`, {
+    method: 'POST',
+    body: {},
+    idempotencyKey
+  })
+}
+
+export function downloadBackup(backupId: string, signal?: AbortSignal): Promise<Blob> {
+  return api.requestBlob(`/api/v1/backups/${encodeURIComponent(backupId)}/download`, {
+    ...withSignal(signal),
+    accept: 'application/zip'
+  })
 }

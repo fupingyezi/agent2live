@@ -322,6 +322,25 @@ describe('ApiClient', () => {
     expect(await blob.text()).toBe('image-bytes')
     expect(new Headers(fetchImpl.mock.calls[0]![1].headers).get('accept')).toBe('image/*')
   })
+
+  it('honors an explicit accept type for zip downloads', async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = []
+    const client = new ApiClient({
+      getServerInfo: async () => serverInfo,
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init })
+        return new Response(new Uint8Array([80, 75, 3, 4]), {
+          status: 200,
+          headers: { 'content-type': 'application/zip' }
+        })
+      }
+    })
+    const blob = await client.requestBlob('/api/v1/backups/bkp_1/download', {
+      accept: 'application/zip'
+    })
+    expect(blob.size).toBe(4)
+    expect(new Headers(calls[0]!.init.headers).get('accept')).toBe('application/zip')
+  })
 })
 
 describe('formatIfMatch', () => {

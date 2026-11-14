@@ -30,6 +30,7 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const creatingCharacter = location.pathname === '/characters/new'
+  const onProviders = location.pathname.startsWith('/settings/providers')
 
   return (
     <AppFrame
@@ -42,8 +43,15 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
               id: 'characters',
               label: '角色',
               icon: '人',
-              active: !creatingCharacter,
+              active: !creatingCharacter && !onProviders,
               onSelect: () => navigate('/')
+            },
+            {
+              id: 'providers',
+              label: '模型连接',
+              icon: '设',
+              active: onProviders,
+              onSelect: () => navigate('/settings/providers')
             },
             {
               id: 'new-character',

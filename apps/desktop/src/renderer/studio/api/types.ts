@@ -5,6 +5,7 @@ import type {
   ArtVersionMutationDto as ContractArtVersionMutationDto,
   ArtVersionReferenceDto as ContractArtVersionReferenceDto,
   AssetDto as ContractAssetDto,
+  CharacterBackupDto as ContractCharacterBackupDto,
   CharacterDto as ContractCharacterDto,
   CharacterLineageDto as ContractCharacterLineageDto,
   CreateGenerationResultDto as ContractCreateGenerationResultDto,
@@ -91,6 +92,7 @@ export type JobDto = WithIsoTimestamps<ContractJobDto>
 export type JobEventDto = WithIsoTimestamps<ContractJobEventDto>
 export type AssetDto = WithIsoTimestamps<ContractAssetDto>
 export type ProviderConnectionDto = WithIsoTimestamps<ContractProviderConnectionDto>
+export type CharacterBackupDto = WithIsoTimestamps<ContractCharacterBackupDto>
 
 export type PromptDraftDto = WithIsoTimestamps<ContractPromptDraftDto>
 export type PromptInputMaterialDto = WithIsoTimestamps<ContractPromptInputMaterialDto>

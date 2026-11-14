@@ -48,3 +48,10 @@ export function shortId(value: string, visible = 12): string {
 export function formatPercent(percent: number): string {
   return `${Math.round(Math.min(100, Math.max(0, percent)))}%`
 }
+
+export function formatBytes(value: number | null): string {
+  if (value === null || !Number.isFinite(value) || value < 0) return '—'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog } from 'electron'
+import { join } from 'node:path'
 import { createPetWindow, createStudioWindow } from './windows'
 import { registerSecretIpc, registerWindowIpc } from './ipc'
 import { registerModelProtocol, registerModelScheme } from './model-protocol'
@@ -7,6 +8,11 @@ import { startSidecar, stopSidecar } from './sidecar'
 app.setName('agent2live')
 if (process.env.AGENT2LIVE_DATA_DIR) {
   app.setPath('userData', process.env.AGENT2LIVE_DATA_DIR)
+}
+
+// End-to-end runs must not touch the developer's real keychain-backed vault file.
+if (process.env.AGENT2LIVE_E2E === '1' && process.env.AGENT2LIVE_DATA_DIR) {
+  app.setPath('userData', join(process.env.AGENT2LIVE_DATA_DIR, 'electron-user-data'))
 }
 
 // Custom schemes must be registered as privileged before the app becomes ready.
