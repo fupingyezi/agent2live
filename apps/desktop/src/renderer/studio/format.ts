@@ -44,3 +44,7 @@ export function formatDateTime(value: string): string {
 export function shortId(value: string, visible = 12): string {
   return value.length <= visible ? value : `…${value.slice(-visible)}`
 }
+
+export function formatPercent(percent: number): string {
+  return `${Math.round(Math.min(100, Math.max(0, percent)))}%`
+}

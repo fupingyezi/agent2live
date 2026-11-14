@@ -11,6 +11,7 @@ import {
 } from '../../api/queries'
 import { queryKeys } from '../../api/keys'
 import { useJob } from '../../hooks/useJob'
+import { formatPercent } from '../../format'
 import {
   AsyncButton,
   Button,
@@ -226,7 +227,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
           />
           <code className="job-id">{activeJob.jobId}</code>
           {job?.progress !== null && job?.progress !== undefined ? (
-            <span className="job-progress">{Math.round(job.progress * 100)}%</span>
+            <span className="job-progress">{formatPercent(job.progress)}</span>
           ) : null}
           {job?.status === 'failed' ? (
             <div role="alert">

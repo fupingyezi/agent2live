@@ -112,8 +112,8 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
       setConfirmManual(false)
       setFile(null)
       setSelectedId(mutation.artVersion.id)
-      await invalidate()
       onMutated(mutation)
+      await invalidate()
     }
   })
 
@@ -126,15 +126,15 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
     onSuccess: async (mutation) => {
       setConfirmActivate(false)
       setSelectedId(mutation.artVersion.id)
-      await invalidate()
       onMutated(mutation)
+      await invalidate()
     }
   })
 
   const handleMutated = async (mutation: ArtVersionMutationDto): Promise<void> => {
     setSelectedId(mutation.artVersion.id)
-    await invalidate()
     onMutated(mutation)
+    await invalidate()
   }
 
   const mutationError = errorMessage(manualMutation.error) ?? errorMessage(activateMutation.error)

@@ -1229,13 +1229,6 @@ body,
   white-space: nowrap;
 }
 
-.candidate-card figcaption .button {
-  width: 100%;
-  min-height: 34px;
-  padding-inline: var(--a2l-space-2);
-  font-size: var(--a2l-text-meta-size);
-}
-
 .validation-list {
   margin: 0;
   padding-left: var(--a2l-space-4);
@@ -1246,10 +1239,6 @@ body,
 
 .workbench-side .error-state {
   padding: var(--a2l-space-3);
-}
-
-.workbench-side .empty-state {
-  padding: var(--a2l-space-6) var(--a2l-space-3);
 }
 
 @media (max-width: 1180px) {
@@ -1307,9 +1296,5 @@ body,
 
   .toolbar-actions {
     width: 100%;
-  }
-
-  .toolbar-actions .button {
-    flex: 1;
   }
 }

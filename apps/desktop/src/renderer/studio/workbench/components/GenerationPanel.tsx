@@ -16,7 +16,7 @@ import {
 import { queryKeys } from '../../api/keys'
 import { ApiError } from '../../api/client'
 import { useJob } from '../../hooks/useJob'
-import { formatDateTime } from '../../format'
+import { formatDateTime, formatPercent } from '../../format'
 import { CandidateCompare } from './CandidateCompare'
 import {
   AsyncButton,
@@ -165,6 +165,7 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
       acceptGenerationCandidate(candidate.id, project.activeVersionId),
     onMutate: (candidate) => setAcceptingId(candidate.id),
     onSuccess: async (mutation) => {
+      onAccepted(mutation)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
@@ -175,7 +176,6 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
       if (generationId) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.generation(project.id, generationId) })
       }
-      onAccepted(mutation)
     },
     onSettled: () => setAcceptingId(null)
   })
@@ -304,9 +304,7 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
             />
             <code title={generation.id}>{generation.id}</code>
             {(job?.progress ?? generation.progress) !== null ? (
-              <span className="job-progress">
-                {Math.round((job?.progress ?? generation.progress ?? 0) * 100)}%
-              </span>
+              <span className="job-progress">{formatPercent(job?.progress ?? generation.progress ?? 0)}</span>
             ) : null}
           </div>
           <p className="muted">
