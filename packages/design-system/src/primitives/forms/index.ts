@@ -1,3 +1,5 @@
+export type { EmptyProps } from '../../types'
+
 export { Field } from './Field'
 export { FileDropZone } from './FileDropZone'
 export { SearchField } from './SearchField'

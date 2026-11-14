@@ -71,7 +71,10 @@ describe('overlays', () => {
         <p>菜单内容</p>
       </Popover>
     )
-    await userEvent.click(screen.getByRole('button', { name: '更多操作' }))
-    expect(screen.getByRole('dialog', { name: '更多操作' })).toBeVisible()
+    const moreButton = screen.getByRole('button', { name: '更多操作' })
+    await userEvent.click(moreButton)
+    const popover = screen.getByRole('dialog', { name: '更多操作' })
+    expect(popover).toBeVisible()
+    expect(moreButton).toHaveAttribute('aria-controls', popover.id)
   })
 })

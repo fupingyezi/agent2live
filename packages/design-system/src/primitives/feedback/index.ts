@@ -1,3 +1,5 @@
+export type { EmptyProps } from '../../types'
+
 export { CountBadge } from './CountBadge'
 export { EmptyState } from './EmptyState'
 export { ErrorState } from './ErrorState'

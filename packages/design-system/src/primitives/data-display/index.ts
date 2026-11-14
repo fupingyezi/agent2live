@@ -1,6 +1,9 @@
+export type { EmptyProps } from '../../types'
+
 export { Thumbnail } from './Thumbnail'
 export type { ThumbnailProps } from './Thumbnail'
 export { ImageFrame } from './ImageFrame'
 export { KeyValueList } from './KeyValueList'
 export { Tag } from './Tag'
 export { VirtualList } from './VirtualList'
+export type { VirtualListProps } from './VirtualList'

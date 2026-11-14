@@ -29,6 +29,7 @@ export const Popover: React.FC<PopoverProps> = ({
   const triggerElement = React.cloneElement(trigger as React.ReactElement<Record<string, unknown>>, {
     'aria-expanded': current,
     'aria-haspopup': 'dialog',
+    'aria-controls': panelId,
     onClick: (event: React.MouseEvent) => {
       const original = (trigger.props as { onClick?: (event: React.MouseEvent) => void }).onClick
       original?.(event)

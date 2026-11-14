@@ -1,3 +1,5 @@
+export type { EmptyProps } from '../../types'
+
 export { ConfirmDialog } from './ConfirmDialog'
 export type { ConfirmDialogProps } from './ConfirmDialog'
 export { Dialog } from './Dialog'

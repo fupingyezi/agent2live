@@ -1,3 +1,5 @@
+export type { EmptyProps } from '../../types'
+
 export { Accordion } from './Accordion'
 export type { AccordionItem, AccordionProps } from './Accordion'
 export { Disclosure } from './Disclosure'

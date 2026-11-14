@@ -12,9 +12,12 @@ export interface ProgressBarProps {
 export const ProgressBar: React.FC<ProgressBarProps> = ({ label, value, tone = 'running', className }) => {
   const indeterminate = value === undefined
   const clamped = indeterminate ? 0 : Math.min(100, Math.max(0, value))
+  const toneClass =
+    tone === 'running' ? undefined : styles[`progress${tone[0]!.toUpperCase()}${tone.slice(1)}`]
+
   return (
     <div
-      className={cx(styles.progress, styles[`progress${tone[0]!.toUpperCase()}${tone.slice(1)}`], className)}
+      className={cx(styles.progress, toneClass, className)}
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}

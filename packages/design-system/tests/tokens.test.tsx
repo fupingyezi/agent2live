@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { colorTokens, radiusTokens, spacingTokens } from '../src/tokens'
+import { colorTokens, motionTokens, radiusTokens, spacingTokens } from '../src/tokens'
 
 const moduleUrl = import.meta.url
 
 const css = readFileSync(new URL('../src/styles/tokens.css', moduleUrl), 'utf8')
+
+function cssName(name: string): string {
+  return name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+}
 
 describe('design tokens', () => {
   it('locks the Ardot baseline colors', () => {
@@ -29,6 +33,13 @@ describe('design tokens', () => {
     }
     for (const [name, value] of Object.entries(spacingTokens)) {
       expect(normalizedCss).toContain(`--a2l-space-${name}: ${value};`)
+    }
+    for (const [name, value] of Object.entries(radiusTokens)) {
+      expect(normalizedCss).toContain(`--a2l-radius-${cssName(name)}: ${value};`)
+    }
+    for (const [name, value] of Object.entries(motionTokens)) {
+      const tokenName = name === 'easeStandard' ? 'ease-standard' : `motion-${cssName(name)}`
+      expect(normalizedCss).toContain(`--a2l-${tokenName}: ${value.toLowerCase()};`)
     }
     expect(radiusTokens.control).toBe('11px')
   })

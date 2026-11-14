@@ -82,6 +82,17 @@ describe('forms', () => {
     expect(onValueChange).toHaveBeenLastCalledWith('')
   })
 
+  it('runs both the caller onClick and onCheckedChange', async () => {
+    const onClick = vi.fn()
+    const onCheckedChange = vi.fn()
+    render(
+      <Switch aria-label="启用通知" checked={false} onClick={onClick} onCheckedChange={onCheckedChange} />
+    )
+    await userEvent.click(screen.getByRole('switch', { name: '启用通知' }))
+    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onCheckedChange).toHaveBeenCalledWith(true)
+  })
+
   it('reports dropped and selected files', async () => {
     const onFiles = vi.fn()
     render(

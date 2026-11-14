@@ -9,7 +9,7 @@ export interface SwitchProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
 }
 
 export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
-  { checked, onCheckedChange, busy = false, disabled, className, ...rest },
+  { checked, onCheckedChange, busy = false, disabled, className, onClick, ...rest },
   ref
 ) {
   return (
@@ -22,7 +22,10 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
       disabled={disabled || busy}
       data-state={busy ? 'busy' : checked ? 'on' : 'off'}
       className={cx(styles.switch, className)}
-      onClick={() => onCheckedChange?.(!checked)}
+      onClick={(event) => {
+        onClick?.(event)
+        onCheckedChange?.(!checked)
+      }}
       {...rest}
     >
       <span className={styles.switchThumb} aria-hidden="true" />
