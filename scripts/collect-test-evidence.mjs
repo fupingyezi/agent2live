@@ -10,7 +10,7 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function normalizeRepoPath(rawPath, root) {
+function normalizeRepoPath(rawPath, root, base = root) {
   if (typeof rawPath !== 'string' || rawPath.trim() === '') {
     throw new Error('test path is malformed')
   }
@@ -23,7 +23,9 @@ function normalizeRepoPath(rawPath, root) {
     }
   }
   candidate = candidate.replaceAll('\\', '/')
-  const absolute = isAbsolute(candidate) ? resolve(candidate) : resolve(root, candidate)
+  // Relative paths are resolved against `base` (e.g. a report's rootDir) but
+  // must still land inside and be expressed relative to the repository root.
+  const absolute = isAbsolute(candidate) ? resolve(candidate) : resolve(base, candidate)
   const relativePath = relative(root, absolute)
   if (
     relativePath === '' ||
@@ -80,6 +82,13 @@ export function sanitizePlaywrightReport(report, { root = process.cwd() } = {}) 
     throw new Error('Playwright report is malformed')
   }
   const resolvedRoot = resolve(root)
+  // Playwright's JSON reporter emits spec paths relative to config.rootDir
+  // (which defaults to the testDir's parent), so resolve those against it
+  // while still expressing the result relative to the repository root.
+  const pathBase =
+    typeof report.config?.rootDir === 'string' && report.config.rootDir.trim() !== ''
+      ? resolve(report.config.rootDir)
+      : resolvedRoot
   const testsByFile = new Map()
 
   const walk = (suites, inheritedFile) => {
@@ -98,7 +107,11 @@ export function sanitizePlaywrightReport(report, { root = process.cwd() } = {}) 
         if (!isPlainObject(spec) || !Array.isArray(spec.tests)) {
           throw new Error('Playwright report is malformed')
         }
-        const file = normalizeRepoPath(typeof spec.file === 'string' ? spec.file : suiteFile, resolvedRoot)
+        const file = normalizeRepoPath(
+          typeof spec.file === 'string' ? spec.file : suiteFile,
+          resolvedRoot,
+          pathBase
+        )
         const tests = testsByFile.get(file) ?? []
         for (const playwrightTest of spec.tests) {
           if (!isPlainObject(playwrightTest) || !Array.isArray(playwrightTest.results)) {
