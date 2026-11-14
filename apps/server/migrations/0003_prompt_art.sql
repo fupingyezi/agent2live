@@ -47,18 +47,23 @@ CREATE INDEX ix_prompt_versions_parent ON prompt_versions(parent_version_id);
 
 CREATE TABLE prompt_reverse_results (
   id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE RESTRICT,
   art_project_id TEXT NOT NULL REFERENCES art_projects(id) ON DELETE RESTRICT,
   input_submission_id TEXT NOT NULL REFERENCES prompt_input_submissions(id) ON DELETE RESTRICT,
-  base_draft_id TEXT REFERENCES prompt_drafts(id) ON DELETE RESTRICT,
-  base_draft_revision INTEGER,
+  base_draft_id TEXT NOT NULL REFERENCES prompt_drafts(id) ON DELETE RESTRICT,
+  base_draft_revision INTEGER NOT NULL CHECK (base_draft_revision >= 1),
+  base_draft_row_version INTEGER NOT NULL CHECK (base_draft_row_version >= 1),
   base_content_hash TEXT NOT NULL CHECK (length(base_content_hash) = 64),
   state_json TEXT NOT NULL,
+  content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
   status TEXT NOT NULL CHECK (status IN ('ready','applied','discarded')),
-  provider_invocation_id TEXT REFERENCES provider_invocations(id) ON DELETE RESTRICT,
+  provider_invocation_id TEXT NOT NULL REFERENCES provider_invocations(id) ON DELETE RESTRICT,
   created_at INTEGER NOT NULL,
-  applied_at INTEGER
+  applied_at INTEGER,
+  CHECK ((status = 'applied' AND applied_at IS NOT NULL) OR (status <> 'applied' AND applied_at IS NULL))
 );
 CREATE INDEX ix_prompt_reverse_project ON prompt_reverse_results(art_project_id, status, created_at);
+CREATE INDEX ix_prompt_reverse_draft ON prompt_reverse_results(base_draft_id, created_at);
 
 CREATE TABLE prompt_suggestions (
   id TEXT PRIMARY KEY,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  promptReverseOutputSchema,
   promptSpecSchema,
   promptSuggestionOutputSchema,
   providerCapabilitiesSchema,
@@ -202,6 +203,53 @@ describe('provider capabilities', () => {
     const { supportsWeightSyntax: _ignored, ...without } = profile
     expect(() =>
       providerCapabilitiesSchema.parse({ schemaVersion: 'provider-capabilities/1', image: without })
+    ).toThrow()
+  })
+})
+
+describe('promptReverseOutputSchema', () => {
+  const block = {
+    id: 'subject.identity',
+    category: 'subject',
+    label: '人物身份',
+    text: '银白长发与蓝色眼睛',
+    weight: 1.2,
+    locked: false,
+    confidence: 0.8,
+    evidence: [],
+    source: 'vision-model',
+    priority: 100,
+    requirementRefs: ['req_identity'],
+    materialRefs: []
+  }
+
+  it('accepts vision-model output with positive and negative blocks', () => {
+    expect(
+      promptReverseOutputSchema.parse({
+        blocks: [block],
+        negativeBlocks: [
+          {
+            ...block,
+            id: 'negative.avoid',
+            category: 'negative',
+            text: '避免写实皮肤',
+            source: 'vision-model',
+            requirementRefs: []
+          }
+        ]
+      }).blocks
+    ).toHaveLength(1)
+  })
+
+  it('rejects locked, user-sourced, and mis-categorized blocks', () => {
+    expect(() => promptReverseOutputSchema.parse({ blocks: [{ ...block, locked: true }] })).toThrow()
+    expect(() => promptReverseOutputSchema.parse({ blocks: [{ ...block, source: 'user' }] })).toThrow()
+    expect(() => promptReverseOutputSchema.parse({ blocks: [{ ...block, category: 'negative' }] })).toThrow()
+    expect(() =>
+      promptReverseOutputSchema.parse({
+        blocks: [block],
+        negativeBlocks: [{ ...block, id: 'negative.avoid', category: 'style' }]
+      })
     ).toThrow()
   })
 })

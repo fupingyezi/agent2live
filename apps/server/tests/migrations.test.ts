@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { openDatabase } from '../src/db/client'
 import { migrate } from '../src/db/migrate'
 import { fileURLToPath } from 'node:url'
+import { createTestDatabase } from './helpers/app'
 
 const migrations = fileURLToPath(new URL('../migrations', import.meta.url))
 let db: Database.Database | null = null
@@ -430,5 +431,32 @@ describe('Phase 1 migrations', () => {
           1
         )
     ).toThrow(/CHARACTER/i)
+  })
+})
+
+describe('prompt reverse migration', () => {
+  it('enforces reverse result foreign keys and applied timestamp consistency', () => {
+    const fixture = createTestDatabase()
+    try {
+      const now = fixture.clock.now()
+      fixture.db
+        .prepare(
+          `insert into jobs (id, type, status, payload_json, payload_hash, created_at, updated_at, side_effect)
+           values ('job_rev_1', 'prompt.reverse', 'succeeded', '{}', ?, ?, ?, 'idempotent')`
+        )
+        .run('a'.repeat(64), now, now)
+      expect(() =>
+        fixture.db
+          .prepare(
+            `insert into prompt_reverse_results
+             (id, job_id, art_project_id, input_submission_id, base_draft_id, base_draft_revision, base_draft_row_version,
+              base_content_hash, state_json, content_hash, status, provider_invocation_id, created_at)
+             values ('prv_01J00000000000000000000000', 'job_rev_1', 'missing', 'missing', 'missing', 1, 1, ?, '{}', ?, 'ready', 'missing', ?)`
+          )
+          .run('a'.repeat(64), 'b'.repeat(64), now)
+      ).toThrow()
+    } finally {
+      fixture.db.close()
+    }
   })
 })

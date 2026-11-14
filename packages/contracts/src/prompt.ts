@@ -282,6 +282,64 @@ export const promptSuggestionOutputSchema = z
 export type PromptSuggestionOutput = z.infer<typeof promptSuggestionOutputSchema>
 export type PromptOperation = z.infer<typeof promptOperationSchema>
 
+export const promptReverseOutputSchema = z
+  .object({
+    blocks: z.array(promptBlockSchema).min(1).max(200),
+    negativeBlocks: z.array(promptBlockSchema).max(50).default([]),
+    warnings: z.array(z.string().max(500)).max(20).default([])
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    for (const [index, block] of value.blocks.entries()) {
+      if (block.source !== 'vision-model') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['blocks', index, 'source'],
+          message: 'reverse blocks must be vision-model sourced'
+        })
+      }
+      if (block.locked) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['blocks', index, 'locked'],
+          message: 'reverse output cannot lock blocks'
+        })
+      }
+      if (block.category === 'negative') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['blocks', index, 'category'],
+          message: 'negative category belongs to negativeBlocks'
+        })
+      }
+    }
+    for (const [index, block] of value.negativeBlocks.entries()) {
+      if (block.source !== 'vision-model') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['negativeBlocks', index, 'source'],
+          message: 'reverse blocks must be vision-model sourced'
+        })
+      }
+      if (block.locked) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['negativeBlocks', index, 'locked'],
+          message: 'reverse output cannot lock blocks'
+        })
+      }
+      if (block.category !== 'negative') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['negativeBlocks', index, 'category'],
+          message: 'negativeBlocks must use negative category'
+        })
+      }
+    }
+  })
+
+export type PromptReverseOutput = z.infer<typeof promptReverseOutputSchema>
+
 export const savePromptDraftInputSchema = z
   .object({
     state: promptSpecSchema

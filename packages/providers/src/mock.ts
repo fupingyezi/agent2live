@@ -39,22 +39,113 @@ function maybeFail(options: MockOptions): void {
   }
 }
 
+interface MockReverseEnvelope {
+  purpose: string
+  globalNotes?: string
+  requirements: Array<{ id: string; text: string; strength: 'must' | 'prefer' | 'avoid' }>
+  materials: Array<{ assetId: string; role: string; note: string; locked: boolean }>
+}
+
+export function structuredMockResponse(text: string): string | null {
+  const marker = text.split('\n').find((line) => line.startsWith('AGENT2LIVE_MOCK_INPUT='))
+  if (!marker) return null
+  let envelope: MockReverseEnvelope
+  try {
+    envelope = JSON.parse(
+      Buffer.from(marker.slice('AGENT2LIVE_MOCK_INPUT='.length), 'base64url').toString('utf8')
+    ) as MockReverseEnvelope
+  } catch {
+    return null
+  }
+  if (envelope.purpose !== 'prompt.reverse') return null
+  const must = envelope.requirements.filter((item) => item.strength === 'must')
+  const prefer = envelope.requirements.filter((item) => item.strength === 'prefer')
+  const avoid = envelope.requirements.filter((item) => item.strength === 'avoid')
+  const materialRefs = envelope.materials.map((item) => item.assetId).slice(0, 20)
+  const evidence = materialRefs.map((assetId) => ({ assetId }))
+  const base = {
+    weight: 1,
+    locked: false,
+    confidence: 0.8,
+    source: 'vision-model' as const,
+    priority: 0,
+    materialRefs: [] as string[]
+  }
+  const blocks: Array<Record<string, unknown>> = [
+    {
+      ...base,
+      id: 'subject.identity',
+      category: 'subject' as const,
+      label: '人物身份',
+      text: (must.map((item) => item.text).join('，') || envelope.globalNotes || '角色主体').slice(0, 4000),
+      evidence,
+      requirementRefs: must.map((item) => item.id).slice(0, 50),
+      materialRefs
+    }
+  ]
+  if (prefer.length > 0) {
+    blocks.push({
+      ...base,
+      id: 'style.requested',
+      category: 'style' as const,
+      label: '风格要求',
+      text: prefer
+        .map((item) => item.text)
+        .join('，')
+        .slice(0, 4000),
+      evidence: [],
+      requirementRefs: prefer.map((item) => item.id).slice(0, 50),
+      materialRefs: []
+    })
+  }
+  const negativeBlocks =
+    avoid.length > 0
+      ? [
+          {
+            weight: 1,
+            locked: false,
+            confidence: 0.8,
+            source: 'vision-model' as const,
+            priority: 0,
+            materialRefs: [] as string[],
+            evidence: [],
+            id: 'negative.avoid',
+            category: 'negative' as const,
+            label: '避免项',
+            text: avoid
+              .map((item) => item.text)
+              .join('，')
+              .slice(0, 4000),
+            requirementRefs: avoid.map((item) => item.id).slice(0, 50)
+          }
+        ]
+      : []
+  return JSON.stringify({ blocks, negativeBlocks, warnings: [] })
+}
+
+export function chatPromptText(request: ChatRequest): string {
+  const last = [...request.messages].reverse().find((message) => message.role === 'user')
+  if (!last) return ''
+  if (typeof last.content === 'string') return last.content
+  return last.content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n')
+}
+
 export function createMockChatProvider(options: MockOptions = {}): ChatProvider {
   return {
     kind: 'chat',
     async generate(request: ChatRequest, context: ProviderRequestContext): Promise<ChatResult> {
       await sleep(options.delayMs ?? 0, context.signal)
       maybeFail(options)
-      const last = [...request.messages].reverse().find((message) => message.role === 'user')
-      const text =
-        typeof last?.content === 'string'
-          ? last.content
-          : (last?.content.find((part) => part.type === 'text')?.text ?? '')
+      const text = chatPromptText(request)
+      const structured = structuredMockResponse(text)
       return {
-        text: `mock:${text}`,
+        text: structured ?? `mock:${text}`,
         model: request.model ?? 'mock-chat',
         providerRequestId: `mock-${context.requestId}`,
-        usage: { inputTokens: text.length, outputTokens: text.length + 5 }
+        usage: { inputTokens: text.length, outputTokens: (structured ?? text).length + 5 }
       }
     }
   }

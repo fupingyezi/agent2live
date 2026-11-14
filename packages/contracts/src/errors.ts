@@ -681,6 +681,35 @@ export const ERROR_REGISTRY = {
     '可以重试反推',
     z.object({ attempt: z.number().int().positive() }).strict()
   ),
+  PROMPT_REVERSE_STALE: def(
+    'PROMPT_REVERSE_STALE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptReverseStale',
+    'refresh_resource',
+    '反推基线已变化',
+    '请基于当前草稿重新反推',
+    z
+      .object({
+        baseDraftRowVersion: z.number().int().positive(),
+        currentDraftRowVersion: z.number().int().positive().nullable()
+      })
+      .strict()
+  ),
+  PROMPT_REVERSE_RESOLVED: def(
+    'PROMPT_REVERSE_RESOLVED',
+    409,
+    'conflict',
+    false,
+    'info',
+    'errors.promptReverseResolved',
+    'reload',
+    '反推结果已经处理',
+    '请刷新结果列表',
+    z.object({ status: z.enum(['applied', 'discarded']) }).strict()
+  ),
   PROMPT_DRAFT_EXISTS: def(
     'PROMPT_DRAFT_EXISTS',
     409,

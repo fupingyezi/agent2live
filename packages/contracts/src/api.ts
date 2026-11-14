@@ -251,9 +251,13 @@ export const promptSuggestionInputSchema = z
   })
   .strict()
 
-export const applyPromptReverseInputSchema = z
+export const applyPromptReverseInputSchema = z.object({}).strict()
+
+export const promptReverseResultStatusSchema = z.enum(['ready', 'applied', 'discarded'])
+export const listPromptReverseResultsQuerySchema = z
   .object({
-    expectedDraftRowVersion: z.number().int().positive()
+    status: promptReverseResultStatusSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50)
   })
   .strict()
 

@@ -53,6 +53,16 @@ function hashPayload(payload: unknown): string {
   return hashCanonical(payload)
 }
 
+function isUniqueConstraint(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return false
+  const code = String((error as { code: unknown }).code)
+  if (code === 'SQLITE_CONSTRAINT_UNIQUE') return true
+  return (
+    code === 'SQLITE_CONSTRAINT' &&
+    /UNIQUE constraint failed/i.test(String((error as { message?: unknown }).message ?? ''))
+  )
+}
+
 function parseJson<T>(raw: string | null, fallback: T): T {
   if (raw === null) return fallback
   try {
@@ -100,26 +110,42 @@ export class JobEngine {
   enqueue(input: EnqueueInput): JobDto {
     const handler = this.handler(input.type)
     const payload = handler.payloadSchema.parse(input.payload)
-    const now = this.deps.clock.now()
+    const payloadHash = hashPayload(payload)
     return withEvents(this.deps.db, this.deps.events, (events) => {
+      if (input.idempotencyKey) {
+        const existing = this.deps.db
+          .prepare('select * from jobs where idempotency_key = ?')
+          .get(input.idempotencyKey) as JobRow | undefined
+        if (existing) return this.requireSameEnqueue(existing, input.type, payloadHash)
+      }
       const id = newId('job')
-      this.deps.db
-        .prepare(
-          `insert into jobs
-           (id, type, status, payload_json, payload_hash, idempotency_key, attempts, max_attempts, side_effect, created_at, updated_at)
-           values (?, ?, 'queued', ?, ?, ?, 0, ?, ?, ?, ?)`
-        )
-        .run(
-          id,
-          input.type,
-          JSON.stringify(payload),
-          hashPayload(payload),
-          input.idempotencyKey ?? null,
-          handler.maxAttempts,
-          handler.sideEffect,
-          now,
-          now
-        )
+      const now = this.deps.clock.now()
+      try {
+        this.deps.db
+          .prepare(
+            `insert into jobs
+             (id, type, status, payload_json, payload_hash, idempotency_key, attempts, max_attempts, side_effect, created_at, updated_at)
+             values (?, ?, 'queued', ?, ?, ?, 0, ?, ?, ?, ?)`
+          )
+          .run(
+            id,
+            input.type,
+            JSON.stringify(payload),
+            payloadHash,
+            input.idempotencyKey ?? null,
+            handler.maxAttempts,
+            handler.sideEffect,
+            now,
+            now
+          )
+      } catch (error) {
+        if (!isUniqueConstraint(error) || !input.idempotencyKey) throw error
+        const existing = this.deps.db
+          .prepare('select * from jobs where idempotency_key = ?')
+          .get(input.idempotencyKey) as JobRow | undefined
+        if (!existing) throw error
+        return this.requireSameEnqueue(existing, input.type, payloadHash)
+      }
       events.append({
         type: 'job.created',
         scopeKind: 'job',
@@ -128,6 +154,13 @@ export class JobEngine {
       })
       return this.get(id)
     })
+  }
+
+  private requireSameEnqueue(row: JobRow, type: string, payloadHash: string): JobDto {
+    if (row.type !== type || row.payload_hash !== payloadHash) {
+      throw new AppError('IDEMPOTENCY_KEY_REUSED', { scope: 'job' })
+    }
+    return toDto(row)
   }
 
   get(id: string): JobDto {

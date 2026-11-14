@@ -15,6 +15,7 @@ import { registerJobRoutes } from './routes/jobs'
 import { registerMultipart } from './routes/multipart'
 import { registerProjectRoutes } from './routes/projects'
 import { registerPromptRoutes } from './routes/prompt'
+import { registerPromptReverseRoutes } from './routes/prompt-reverse'
 import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
 
@@ -144,6 +145,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
   const jobs = options.services?.jobs
   if (jobs) {
     registerJobRoutes(app, jobs)
+  }
+
+  const promptReverse = options.services?.promptReverse
+  if (promptReverse && jobs) {
+    registerPromptReverseRoutes(app, { promptReverse, jobs })
   }
 
   const characters = options.services?.characters

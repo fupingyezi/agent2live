@@ -9,6 +9,7 @@ import type {
   ProviderRequestContext
 } from './types'
 import { ProviderError } from './errors'
+import { chatPromptText, structuredMockResponse } from './mock'
 
 const CHAT_JSON = JSON.stringify({
   operations: [
@@ -56,13 +57,15 @@ export function createMockArtProvider(options: MockArtProviderOptions = {}): {
 
   const chat: ChatProvider = {
     kind: 'chat',
-    async generate(_request, context: ProviderRequestContext): Promise<ChatResult> {
+    async generate(request, context: ProviderRequestContext): Promise<ChatResult> {
       await sleep(context, delayMs)
+      const text = chatPromptText(request)
+      const structured = structuredMockResponse(text)
       return {
-        text: CHAT_JSON,
+        text: structured ?? CHAT_JSON,
         model: 'mock-art',
         providerRequestId: context.requestId,
-        usage: { inputTokens: 1, outputTokens: 1 }
+        usage: { inputTokens: text.length, outputTokens: structured?.length ?? 1 }
       }
     }
   }

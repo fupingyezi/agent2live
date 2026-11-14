@@ -14,10 +14,12 @@ import { PromptSubmissionRepository } from './prompt-submissions'
 import { PromptVersionService } from './prompt-versions'
 import { PromptDraftService } from './prompt-drafts'
 import { PromptInputService } from './prompt-inputs'
+import { PromptReverseService } from './prompt-reverse'
 import { ProviderConnectionService } from './provider-connections'
 import { ProviderInvocationService } from './provider-invocations'
 import { ProviderRegistry } from './provider-registry'
 import { JobEngine } from '../jobs/engine'
+import { PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob } from '../jobs/prompt-reverse'
 import type { JobDefinition } from '../jobs/types'
 import type { SecretResolver } from './secret-resolver'
 
@@ -49,6 +51,7 @@ export interface Services {
   versions: PromptVersionService
   drafts: PromptDraftService
   inputs: PromptInputService
+  promptReverse: PromptReverseService
   withEvents: typeof withEvents
 }
 
@@ -100,7 +103,23 @@ export function createServices(deps: ServiceDeps): Services {
     events: deps.events,
     audit
   })
+  const providerRegistry = new ProviderRegistry(providerConnections, deps.secrets)
+  const providerInvocations = new ProviderInvocationService(deps.db, deps.clock)
+  const promptReverse = new PromptReverseService({
+    db: deps.db,
+    clock: deps.clock,
+    drafts,
+    submissions,
+    briefs: characterBriefs,
+    assets,
+    connections: providerConnections,
+    registry: providerRegistry,
+    invocations: providerInvocations,
+    audit,
+    events: deps.events
+  })
   const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
+  handlers.set(PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob(promptReverse))
   const jobs = new JobEngine({
     db: deps.db,
     events: deps.events,
@@ -115,8 +134,8 @@ export function createServices(deps: ServiceDeps): Services {
     idempotency: new IdempotencyService(deps.db, deps.clock),
     secrets: deps.secrets,
     providerConnections,
-    providerRegistry: new ProviderRegistry(providerConnections, deps.secrets),
-    providerInvocations: new ProviderInvocationService(deps.db, deps.clock),
+    providerRegistry,
+    providerInvocations,
     jobs,
     characters,
     characterBriefs,
@@ -126,6 +145,7 @@ export function createServices(deps: ServiceDeps): Services {
     versions,
     drafts,
     inputs,
+    promptReverse,
     withEvents
   }
 }
