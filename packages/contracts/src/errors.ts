@@ -633,6 +633,42 @@ export const ERROR_REGISTRY = {
       })
       .strict()
   ),
+  PROMPT_OPERATION_INVALID: def(
+    'PROMPT_OPERATION_INVALID',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.promptOperationInvalid',
+    'fix_input',
+    'AI 操作不合法',
+    '请重新生成建议',
+    z.object({ reason: z.string().max(100) }).strict()
+  ),
+  PROMPT_OPERATION_STALE: def(
+    'PROMPT_OPERATION_STALE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptOperationStale',
+    'refresh_resource',
+    'AI 操作的基线已变化',
+    '请刷新草稿后重新生成建议',
+    z.object({ blockId: z.string().max(100) }).strict()
+  ),
+  PROMPT_BRIEF_PROJECTION_STALE: def(
+    'PROMPT_BRIEF_PROJECTION_STALE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptBriefProjectionStale',
+    'refresh_resource',
+    '角色设定投影已变化',
+    '请基于当前角色设定重新生成草稿',
+    z.object({}).strict()
+  ),
   PROMPT_REVERSE_INVALID_OUTPUT: def(
     'PROMPT_REVERSE_INVALID_OUTPUT',
     502,

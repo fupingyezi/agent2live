@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { promptSpecSchema, promptSuggestionOutputSchema, savePromptDraftInputSchema } from './prompt'
+import {
+  promptSpecSchema,
+  promptSuggestionOutputSchema,
+  providerCapabilitiesSchema,
+  savePromptDraftInputSchema
+} from './prompt'
 import { hashCanonical } from './hash'
 
 const spec = {
@@ -176,5 +181,27 @@ describe('PromptSpecV2', () => {
         operations: [{ op: 'replace', blockId: 'x', before: 'a', after: 'a' }]
       })
     ).toThrow(/no-op|unchanged/i)
+  })
+})
+
+describe('provider capabilities', () => {
+  it('requires supportsWeightSyntax on image profiles', () => {
+    const profile = {
+      maxReferenceImages: 4,
+      maxPromptChars: 4000,
+      supportsNegativePrompt: true,
+      supportsWeightSyntax: true,
+      supportsSeed: true,
+      maxCount: 4,
+      sizes: ['512x896']
+    }
+    expect(
+      providerCapabilitiesSchema.parse({ schemaVersion: 'provider-capabilities/1', image: profile }).image
+        ?.supportsWeightSyntax
+    ).toBe(true)
+    const { supportsWeightSyntax: _ignored, ...without } = profile
+    expect(() =>
+      providerCapabilitiesSchema.parse({ schemaVersion: 'provider-capabilities/1', image: without })
+    ).toThrow()
   })
 })
