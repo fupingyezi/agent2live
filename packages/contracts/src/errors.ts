@@ -848,6 +848,23 @@ export const ERROR_REGISTRY = {
     '请检查图片格式、尺寸与内容',
     z.object({ reasons: z.array(z.string().max(80)).max(20) }).strict()
   ),
+  ART_CANDIDATE_NOT_ACCEPTABLE: def(
+    'ART_CANDIDATE_NOT_ACCEPTABLE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.artCandidateNotAcceptable',
+    'refresh_resource',
+    '候选不可采纳',
+    '请刷新后选择仍然就绪的候选',
+    z
+      .object({
+        candidateId: z.string().max(64),
+        status: z.enum(['ready', 'accepted', 'rejected', 'expired'])
+      })
+      .strict()
+  ),
   FORK_BRANCH_CONFLICT: def(
     'FORK_BRANCH_CONFLICT',
     409,

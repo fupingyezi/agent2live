@@ -9,6 +9,7 @@ import { AppError, problemFor } from './errors'
 import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
 import { toAppError } from './http/errors'
+import { registerArtVersionRoutes } from './routes/art-versions'
 import { registerAssetRoutes } from './routes/assets'
 import { registerCharacterRoutes } from './routes/characters'
 import { registerGenerationRoutes } from './routes/generations'
@@ -162,6 +163,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
   const generations = options.services?.generations
   if (generations && jobs && idempotency) {
     registerGenerationRoutes(app, { generations, jobs, idempotency })
+  }
+
+  const artVersions = options.services?.artVersions
+  if (artVersions && idempotency) {
+    registerArtVersionRoutes(app, { artVersions, idempotency })
   }
 
   const characters = options.services?.characters

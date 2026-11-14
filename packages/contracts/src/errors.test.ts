@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ERROR_REGISTRY, buildProblem, getErrorDefinition, problemDetailsSchema } from './errors'
+import { acceptGenerationCandidateInputSchema, artVersionListQuerySchema } from './api'
 
 const base = {
   requestId: 'req_01J0000000000000000000000',
@@ -114,6 +115,7 @@ describe('error registry', () => {
       'ART_ACTIVE_VERSION_CHANGED',
       'ART_VERSION_IMMUTABLE',
       'ART_IMAGE_INVALID',
+      'ART_CANDIDATE_NOT_ACCEPTABLE',
       'FORK_BRANCH_CONFLICT',
       'FORK_SOURCE_UNCOMMITTED',
       'JOB_CANCEL_NOT_ALLOWED',
@@ -161,5 +163,25 @@ describe('error registry', () => {
       category: 'conflict',
       retryable: false
     })
+  })
+
+  it('registers the candidate acceptance conflict with CAS semantics', () => {
+    expect(getErrorDefinition('ART_CANDIDATE_NOT_ACCEPTABLE')).toMatchObject({
+      httpStatus: 409,
+      category: 'conflict',
+      retryable: false
+    })
+  })
+
+  it('parses candidate acceptance and art version list query inputs', () => {
+    expect(acceptGenerationCandidateInputSchema.parse({ expectedActiveArtVersionId: null })).toEqual({
+      expectedActiveArtVersionId: null
+    })
+    expect(() => acceptGenerationCandidateInputSchema.parse({})).toThrow()
+    expect(artVersionListQuerySchema.parse({})).toEqual({ limit: 50 })
+    expect(artVersionListQuerySchema.parse({ limit: '10' })).toEqual({ limit: 10 })
+    expect(() => artVersionListQuerySchema.parse({ limit: 0 })).toThrow()
+    expect(() => artVersionListQuerySchema.parse({ limit: 101 })).toThrow()
+    expect(() => artVersionListQuerySchema.parse({ extra: true })).toThrow()
   })
 })

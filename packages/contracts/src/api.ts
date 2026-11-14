@@ -283,6 +283,12 @@ export const activateArtVersionInputSchema = z
   })
   .strict()
 
+export const artVersionListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(50)
+  })
+  .strict()
+
 export const acceptGenerationCandidateInputSchema = z
   .object({
     expectedActiveArtVersionId: z.string().min(1).max(64).nullable()

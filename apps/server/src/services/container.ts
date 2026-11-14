@@ -90,7 +90,15 @@ export function createServices(deps: ServiceDeps): Services {
   })
   const submissions = new PromptSubmissionRepository(deps.db)
   const versions = new PromptVersionService(deps.db)
-  const artVersions = new ArtVersionService(deps.db)
+  const artVersions = new ArtVersionService({
+    db: deps.db,
+    clock: deps.clock,
+    projects,
+    promptVersions: versions,
+    assets,
+    audit,
+    events: deps.events
+  })
   const drafts = new PromptDraftService({
     db: deps.db,
     clock: deps.clock,
