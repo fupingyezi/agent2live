@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { RefinementCtx } from 'zod'
 import { materialRoleSchema, promptRequirementSchema, providerCapabilitiesSchema } from './prompt'
+import type { MaterialRole, PromptOperation, PromptRequirement, PromptSpecV2 } from './prompt'
+import type { ArtVersionReference } from './art-reference'
 import { characterBriefContentSchema } from './character-brief'
 
 const title = z.string().trim().min(1).max(100)
@@ -496,4 +498,184 @@ export interface ProviderConnectionDto {
   createdAt: number
   updatedAt: number
   rowVersion: number
+}
+
+export interface PromptDraftDto {
+  id: string
+  artProjectId: string
+  revision: number
+  status: 'active' | 'committed' | 'superseded'
+  state: PromptSpecV2
+  contentHash: string
+  inputSubmissionId: string | null
+  baseVersionId: string | null
+  rowVersion: number
+  updatedAt: number
+}
+
+export interface PromptInputMaterialDto {
+  id: string
+  assetId: string
+  role: MaterialRole
+  note: string
+  weight: number
+  locked: boolean
+  sortOrder: number
+}
+
+export interface PromptInputSubmissionDto {
+  id: string
+  artProjectId: string
+  draftId: string
+  revision: number
+  characterBriefVersionId: string | null
+  globalNotes: string
+  requirements: PromptRequirement[]
+  materials: PromptInputMaterialDto[]
+}
+
+export interface PromptVersionSummary {
+  id: string
+  versionNumber: number
+  parentVersionId: string | null
+  contentHash: string
+  createdAt: number
+}
+
+export interface PromptVersionDto extends PromptVersionSummary {
+  artProjectId: string
+  inputSubmissionId: string
+  characterBriefVersionId: string | null
+  state: PromptSpecV2
+}
+
+export interface PromptWorkspaceDto {
+  projectId: string
+  activeDraft: PromptDraftDto | null
+  activePromptVersion: PromptVersionDto | null
+  latestSubmission: PromptInputSubmissionDto | null
+  versions: PromptVersionSummary[]
+}
+
+export interface PromptInputResult {
+  submission: PromptInputSubmissionDto
+  draft: PromptDraftDto
+  warnings: string[]
+}
+
+export type PromptReverseResultStatus = 'ready' | 'applied' | 'discarded'
+
+export interface PromptReverseResultDto {
+  id: string
+  jobId: string
+  artProjectId: string
+  inputSubmissionId: string
+  baseDraftId: string
+  baseDraftRevision: number
+  baseDraftRowVersion: number
+  baseContentHash: string
+  state: PromptSpecV2 | null
+  contentHash: string
+  status: PromptReverseResultStatus
+  createdAt: number
+}
+
+export type PromptSuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'stale'
+
+export interface PromptSuggestionDto {
+  id: string
+  artProjectId: string
+  jobId: string
+  baseKind: 'prompt_version' | 'prompt_draft'
+  baseVersionId: string | null
+  baseDraftId: string | null
+  baseDraftRevision: number | null
+  baseDraftRowVersion: number | null
+  baseContentHash: string
+  operations: PromptOperation[]
+  warnings: string[]
+  intent: string
+  status: PromptSuggestionStatus
+  acceptedDraftId: string | null
+  acceptedDraftRevision: number | null
+  createdAt: number
+  resolvedAt: number | null
+}
+
+export type ArtVersionReferenceDto = ArtVersionReference & { id: string }
+
+export interface ArtVersionDto {
+  id: string
+  artProjectId: string
+  versionNumber: number
+  parentVersionId: string | null
+  originVersionId: string | null
+  promptVersionId: string
+  references: ArtVersionReferenceDto[]
+  source: Record<string, unknown>
+  validation: Record<string, unknown>
+  canvasTransform: Record<string, unknown>
+  contentHash: string
+  createdAt: number
+}
+
+export interface ArtVersionListDto {
+  items: ArtVersionDto[]
+  activeVersionId: string | null
+}
+
+export interface ArtVersionMutationDto {
+  artVersion: ArtVersionDto
+  project: ArtProjectDto
+}
+
+export interface GenerationCandidateDto {
+  id: string
+  generationJobId: string
+  assetId: string
+  asset: AssetDto | null
+  status: 'ready' | 'accepted' | 'rejected' | 'expired'
+  validation: Record<string, unknown>
+  acceptedArtVersionId: string | null
+  createdAt: number
+}
+
+export interface GenerationDto {
+  id: string
+  artProjectId: string
+  promptVersionId: string
+  baseArtVersionId: string | null
+  providerConnectionId: string | null
+  jobId: string
+  status: JobStatus
+  attempts: number
+  errorCode: string | null
+  progress: number | null
+  request: unknown
+  requestHash: string
+  candidates: GenerationCandidateDto[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CreateGenerationResultDto {
+  generationId: string
+  jobId: string
+  requestHash: string
+  baseArtVersionId: string | null
+  referenceAssetIds: string[]
+  references: unknown
+  warnings: string[]
+}
+
+export interface ForkResultDto {
+  fork: ForkLinkDto
+  childProject: ArtProjectDto
+  seedPromptVersion: PromptVersionDto
+  seedArtVersion: ArtVersionDto | null
+}
+
+export interface ForkLinkMutationDto {
+  fork: ForkLinkDto
+  childProject: ArtProjectDto
 }

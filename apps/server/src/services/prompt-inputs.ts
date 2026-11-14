@@ -3,6 +3,7 @@ import {
   newId,
   promptSpecSchema,
   type PromptInputMultipartMetadata,
+  type PromptInputResult,
   type PromptSpecV2
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
@@ -20,20 +21,12 @@ import {
   type PromptDraftDto,
   type PromptDraftService
 } from './prompt-drafts'
-import type {
-  PromptInputMaterialDto,
-  PromptInputSubmissionDto,
-  PromptSubmissionRepository
-} from './prompt-submissions'
+import type { PromptInputMaterialDto, PromptSubmissionRepository } from './prompt-submissions'
 import type { ProjectService } from './projects'
 import type { RequestIds } from './request-ids'
 import type { UploadedPart } from '../routes/multipart'
 
-export interface PromptInputResult {
-  submission: PromptInputSubmissionDto
-  draft: PromptDraftDto
-  warnings: string[]
-}
+export type { PromptInputResult }
 
 export interface PromptInputDeps {
   db: Database.Database

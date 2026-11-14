@@ -5,7 +5,9 @@ import {
   newId,
   promptSpecSchema,
   type CharacterBriefVersion,
-  type PromptSpecV2
+  type PromptDraftDto,
+  type PromptSpecV2,
+  type PromptWorkspaceDto
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { withEvents } from './events-buffer'
@@ -17,22 +19,11 @@ import { specContentHash } from '../prompt/compile'
 import type { AuditService } from './audit'
 import type { CharacterBriefService } from './character-briefs'
 import type { ArtProjectDto, ProjectService } from './projects'
-import type { PromptVersionDto, PromptVersionService, PromptVersionSummary } from './prompt-versions'
+import type { PromptVersionDto, PromptVersionService } from './prompt-versions'
 import type { PromptInputSubmissionDto, PromptSubmissionRepository } from './prompt-submissions'
 import type { RequestIds } from './request-ids'
 
-export interface PromptDraftDto {
-  id: string
-  artProjectId: string
-  revision: number
-  status: 'active' | 'committed' | 'superseded'
-  state: PromptSpecV2
-  contentHash: string
-  inputSubmissionId: string | null
-  baseVersionId: string | null
-  rowVersion: number
-  updatedAt: number
-}
+export type { PromptDraftDto, PromptWorkspaceDto }
 
 export interface PromptDraftRow {
   id: string
@@ -46,14 +37,6 @@ export interface PromptDraftRow {
   created_at: number
   updated_at: number
   row_version: number
-}
-
-export interface PromptWorkspaceDto {
-  projectId: string
-  activeDraft: PromptDraftDto | null
-  activePromptVersion: PromptVersionDto | null
-  latestSubmission: PromptInputSubmissionDto | null
-  versions: PromptVersionSummary[]
 }
 
 export interface PromptDraftDeps {

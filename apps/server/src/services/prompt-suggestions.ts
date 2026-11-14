@@ -7,9 +7,10 @@ import {
   promptSuggestionOutputSchema,
   providerCapabilitiesSchema,
   type CharacterBriefVersion,
-  type PromptOperation,
   type PromptSpecV2,
-  type PromptSuggestionOutput
+  type PromptSuggestionDto,
+  type PromptSuggestionOutput,
+  type PromptSuggestionStatus
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { withEvents } from './events-buffer'
@@ -36,27 +37,7 @@ export interface PromptSuggestionInput {
   intent: string
 }
 
-export type PromptSuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'stale'
-
-export interface PromptSuggestionDto {
-  id: string
-  artProjectId: string
-  jobId: string
-  baseKind: 'prompt_version' | 'prompt_draft'
-  baseVersionId: string | null
-  baseDraftId: string | null
-  baseDraftRevision: number | null
-  baseDraftRowVersion: number | null
-  baseContentHash: string
-  operations: PromptOperation[]
-  warnings: string[]
-  intent: string
-  status: PromptSuggestionStatus
-  acceptedDraftId: string | null
-  acceptedDraftRevision: number | null
-  createdAt: number
-  resolvedAt: number | null
-}
+export type { PromptSuggestionDto, PromptSuggestionStatus }
 
 interface PromptSuggestionRow {
   id: string

@@ -4,14 +4,16 @@ import {
   getErrorDefinition,
   newId,
   providerCapabilitiesSchema,
-  type CreateGenerationInput
+  type CreateGenerationInput,
+  type GenerationCandidateDto,
+  type GenerationDto as ContractGenerationDto
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { withEvents } from './events-buffer'
 import { compilePrompt } from '../prompt/compile'
 import { foldedReferenceInstruction, generationRequestSchema, planReferences } from '../generation/request'
 import type { GenerationRequest, PreparedGeneration } from '../generation/request'
-import type { AssetDto, AssetService } from './assets'
+import type { AssetService } from './assets'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
 import type { EventStore } from '../events/store'
@@ -71,33 +73,10 @@ interface JobRow {
   updated_at: number
 }
 
-export interface GenerationCandidateDto {
-  id: string
-  generationJobId: string
-  assetId: string
-  asset: AssetDto | null
-  status: 'ready' | 'accepted' | 'rejected' | 'expired'
-  validation: Record<string, unknown>
-  acceptedArtVersionId: string | null
-  createdAt: number
-}
+export type { GenerationCandidateDto }
 
-export interface GenerationDto {
-  id: string
-  artProjectId: string
-  promptVersionId: string
-  baseArtVersionId: string | null
-  providerConnectionId: string | null
-  jobId: string
-  status: JobStatus
-  attempts: number
-  errorCode: string | null
-  progress: number | null
+export type GenerationDto = Omit<ContractGenerationDto, 'request'> & {
   request: GenerationRequest
-  requestHash: string
-  candidates: GenerationCandidateDto[]
-  createdAt: number
-  updatedAt: number
 }
 
 function parseCheckpoint(json: string | null): { progress: number | null } {

@@ -6,25 +6,22 @@ import {
   promptSpecSchema,
   type CharacterLineageDto,
   type CreateForkInput,
+  type ForkLinkMutationDto,
+  type ForkResultDto,
   type LineageNodeDto,
   type PatchForkInput
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { specContentHash } from '../prompt/compile'
 import { withEvents } from './events-buffer'
-import {
-  parseObject,
-  type ArtVersionDto,
-  type ArtVersionReferenceDto,
-  type ArtVersionService
-} from './art-versions'
+import { parseObject, type ArtVersionReferenceDto, type ArtVersionService } from './art-versions'
 import type { AssetService } from './assets'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
 import type { EventStore } from '../events/store'
-import { loadForkLinkRow, toForkLinkDto, type ForkLinkDto, type ForkLinkRow } from './fork-query'
-import type { ArtProjectDto, ProjectService } from './projects'
-import type { PromptVersionDto, PromptVersionService } from './prompt-versions'
+import { loadForkLinkRow, toForkLinkDto, type ForkLinkRow } from './fork-query'
+import type { ProjectService } from './projects'
+import type { PromptVersionService } from './prompt-versions'
 import type { RequestIds } from './request-ids'
 
 export interface ForkServiceDeps {
@@ -38,19 +35,7 @@ export interface ForkServiceDeps {
   events: EventStore
 }
 
-export interface ForkResultDto {
-  fork: ForkLinkDto
-  childProject: ArtProjectDto
-  seedPromptVersion: PromptVersionDto
-  seedArtVersion: ArtVersionDto | null
-}
-
-export interface ForkLinkMutationDto {
-  fork: ForkLinkDto
-  childProject: ArtProjectDto
-}
-
-export type { CharacterLineageDto, LineageNodeDto }
+export type { CharacterLineageDto, ForkLinkMutationDto, ForkResultDto, LineageNodeDto }
 
 interface SourceProjectRow {
   id: string

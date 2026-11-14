@@ -4,6 +4,8 @@ import {
   newId,
   promptSpecSchema,
   providerCapabilitiesSchema,
+  type PromptReverseResultDto,
+  type PromptReverseResultStatus,
   type PromptSpecV2
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
@@ -29,7 +31,7 @@ import type { ProviderInvocationService } from './provider-invocations'
 import type { ProviderRegistry } from './provider-registry'
 import type { RequestIds } from './request-ids'
 
-export type PromptReverseResultStatus = 'ready' | 'applied' | 'discarded'
+export type { PromptReverseResultDto, PromptReverseResultStatus }
 
 interface PromptReverseResultRow {
   id: string
@@ -46,21 +48,6 @@ interface PromptReverseResultRow {
   provider_invocation_id: string
   created_at: number
   applied_at: number | null
-}
-
-export interface PromptReverseResultDto {
-  id: string
-  jobId: string
-  artProjectId: string
-  inputSubmissionId: string
-  baseDraftId: string
-  baseDraftRevision: number
-  baseDraftRowVersion: number
-  baseContentHash: string
-  state: PromptSpecV2 | null
-  contentHash: string
-  status: PromptReverseResultStatus
-  createdAt: number
 }
 
 export interface PromptReverseDeps {

@@ -7,11 +7,20 @@ export const queryKeys = {
   project: (id: string) => ['projects', id] as const,
   projectTree: (id: string) => ['projects', id, 'tree'] as const,
   prompt: (id: string) => ['projects', id, 'prompt'] as const,
+  workspace: (projectId: string) => ['projects', projectId, 'workspace'] as const,
   promptVersions: (id: string) => ['projects', id, 'prompt-versions'] as const,
+  promptVersion: (projectId: string, versionId: string) =>
+    ['projects', projectId, 'prompt-versions', versionId] as const,
   artVersions: (id: string) => ['projects', id, 'art-versions'] as const,
   generations: (id: string) => ['projects', id, 'generations'] as const,
+  generation: (projectId: string, generationId: string) =>
+    ['projects', projectId, 'generations', generationId] as const,
   reverseResults: (id: string) => ['projects', id, 'reverse-results'] as const,
+  reverseResult: (projectId: string, resultId: string) =>
+    ['projects', projectId, 'reverse-results', resultId] as const,
   suggestions: (id: string) => ['projects', id, 'suggestions'] as const,
+  suggestion: (projectId: string, suggestionId: string) =>
+    ['projects', projectId, 'suggestions', suggestionId] as const,
   job: (id: string) => ['jobs', id] as const,
   providers: ['providers'] as const,
   provider: (id: string) => ['providers', id] as const,

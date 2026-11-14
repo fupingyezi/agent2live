@@ -44,6 +44,8 @@ export const promptSourceSchema = z.enum(PROMPT_SOURCES)
 export const materialRoleSchema = z.enum(MATERIAL_ROLES)
 export const requirementStrengthSchema = z.enum(REQUIREMENT_STRENGTHS)
 
+export type MaterialRole = z.infer<typeof materialRoleSchema>
+
 const idSchema = z
   .string()
   .min(1)

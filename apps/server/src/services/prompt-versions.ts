@@ -1,26 +1,13 @@
 import type Database from 'better-sqlite3'
-import { promptSpecSchema, type PromptSpecV2 } from '@agent2live/contracts'
+import {
+  promptSpecSchema,
+  type PromptSpecV2,
+  type PromptVersionDto,
+  type PromptVersionSummary
+} from '@agent2live/contracts'
 import { AppError } from '../errors'
 
-export interface PromptVersionDto {
-  id: string
-  artProjectId: string
-  versionNumber: number
-  parentVersionId: string | null
-  inputSubmissionId: string
-  characterBriefVersionId: string | null
-  state: PromptSpecV2
-  contentHash: string
-  createdAt: number
-}
-
-export interface PromptVersionSummary {
-  id: string
-  versionNumber: number
-  parentVersionId: string | null
-  contentHash: string
-  createdAt: number
-}
+export type { PromptVersionDto, PromptVersionSummary }
 
 interface VersionRow {
   id: string

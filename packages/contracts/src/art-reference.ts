@@ -28,6 +28,7 @@ export const artVersionReferenceSchema = z
   .strict()
 
 export type ArtVersionReference = z.infer<typeof artVersionReferenceSchema>
+export type ArtVersionReferenceRole = z.infer<typeof artVersionReferenceRoleSchema>
 
 export const artVersionReferenceSetSchema = z
   .array(artVersionReferenceSchema)

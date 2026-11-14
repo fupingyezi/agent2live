@@ -1,28 +1,15 @@
 import type Database from 'better-sqlite3'
-import { materialRoleSchema, promptRequirementSchema, type PromptRequirement } from '@agent2live/contracts'
+import {
+  materialRoleSchema,
+  promptRequirementSchema,
+  type PromptInputMaterialDto,
+  type PromptInputSubmissionDto,
+  type PromptRequirement
+} from '@agent2live/contracts'
 import { z } from 'zod'
 import { AppError } from '../errors'
 
-export interface PromptInputMaterialDto {
-  id: string
-  assetId: string
-  role: z.infer<typeof materialRoleSchema>
-  note: string
-  weight: number
-  locked: boolean
-  sortOrder: number
-}
-
-export interface PromptInputSubmissionDto {
-  id: string
-  artProjectId: string
-  draftId: string
-  revision: number
-  characterBriefVersionId: string | null
-  globalNotes: string
-  requirements: PromptRequirement[]
-  materials: PromptInputMaterialDto[]
-}
+export type { PromptInputMaterialDto, PromptInputSubmissionDto }
 
 interface SubmissionRow {
   id: string

@@ -1,24 +1,52 @@
 import type {
   ArtProjectDto as ContractArtProjectDto,
+  ArtVersionDto as ContractArtVersionDto,
+  ArtVersionListDto as ContractArtVersionListDto,
+  ArtVersionMutationDto as ContractArtVersionMutationDto,
+  ArtVersionReferenceDto as ContractArtVersionReferenceDto,
   AssetDto as ContractAssetDto,
   CharacterDto as ContractCharacterDto,
   CharacterLineageDto as ContractCharacterLineageDto,
+  CreateGenerationResultDto as ContractCreateGenerationResultDto,
   ForkLinkDto as ContractForkLinkDto,
+  ForkLinkMutationDto as ContractForkLinkMutationDto,
+  ForkResultDto as ContractForkResultDto,
+  GenerationCandidateDto as ContractGenerationCandidateDto,
+  GenerationDto as ContractGenerationDto,
   JobDto as ContractJobDto,
   JobEventDto as ContractJobEventDto,
   LineageNodeDto as ContractLineageNodeDto,
+  PromptDraftDto as ContractPromptDraftDto,
+  PromptInputMaterialDto as ContractPromptInputMaterialDto,
+  PromptInputResult as ContractPromptInputResult,
+  PromptInputSubmissionDto as ContractPromptInputSubmissionDto,
+  PromptReverseResultDto as ContractPromptReverseResultDto,
+  PromptSuggestionDto as ContractPromptSuggestionDto,
+  PromptVersionDto as ContractPromptVersionDto,
+  PromptVersionSummary as ContractPromptVersionSummary,
+  PromptWorkspaceDto as ContractPromptWorkspaceDto,
   ProviderConnectionDto as ContractProviderConnectionDto
 } from '@agent2live/contracts'
 
 export type {
   ArtProjectStage,
+  ArtVersionReferenceRole,
   CreateArtProjectInput,
   CreateCharacterInput,
+  CreateForkInput,
   ErrorCategory,
   ErrorSeverity,
   FieldError,
   JobStatus,
+  MaterialRole,
+  PatchForkInput,
   ProblemDetails,
+  PromptBlock,
+  PromptOperation,
+  PromptRequirement,
+  PromptSpecV2,
+  PromptReverseResultStatus,
+  PromptSuggestionStatus,
   UserAction
 } from '@agent2live/contracts'
 
@@ -43,9 +71,16 @@ type TimestampKey =
 
 type IsoTimestamp<T> = T extends number ? string : T extends number | null ? string | null : T
 
-type WithIsoTimestamps<T> = {
-  [K in keyof T]: K extends TimestampKey ? IsoTimestamp<T[K]> : T[K]
-}
+/** Converts whitelisted millisecond fields to RFC 3339 strings at every nesting level. */
+export type WithIsoTimestamps<T> = T extends string | number | boolean | bigint | symbol | null | undefined
+  ? T
+  : T extends ReadonlyArray<infer U>
+    ? Array<WithIsoTimestamps<U>>
+    : T extends object
+      ? {
+          [K in keyof T]: K extends TimestampKey ? IsoTimestamp<T[K]> : WithIsoTimestamps<T[K]>
+        }
+      : T
 
 // The API boundary serializes whitelisted millisecond fields as RFC 3339 strings.
 // View models stay derived from wire contracts so any new field is reflected automatically.
@@ -56,6 +91,25 @@ export type JobDto = WithIsoTimestamps<ContractJobDto>
 export type JobEventDto = WithIsoTimestamps<ContractJobEventDto>
 export type AssetDto = WithIsoTimestamps<ContractAssetDto>
 export type ProviderConnectionDto = WithIsoTimestamps<ContractProviderConnectionDto>
+
+export type PromptDraftDto = WithIsoTimestamps<ContractPromptDraftDto>
+export type PromptInputMaterialDto = WithIsoTimestamps<ContractPromptInputMaterialDto>
+export type PromptInputSubmissionDto = WithIsoTimestamps<ContractPromptInputSubmissionDto>
+export type PromptVersionSummaryDto = WithIsoTimestamps<ContractPromptVersionSummary>
+export type PromptVersionDto = WithIsoTimestamps<ContractPromptVersionDto>
+export type PromptWorkspaceDto = WithIsoTimestamps<ContractPromptWorkspaceDto>
+export type SubmitPromptInputResult = WithIsoTimestamps<ContractPromptInputResult>
+export type PromptReverseResultDto = WithIsoTimestamps<ContractPromptReverseResultDto>
+export type PromptSuggestionDto = WithIsoTimestamps<ContractPromptSuggestionDto>
+export type ArtVersionReferenceDto = WithIsoTimestamps<ContractArtVersionReferenceDto>
+export type ArtVersionDto = WithIsoTimestamps<ContractArtVersionDto>
+export type ArtVersionListDto = WithIsoTimestamps<ContractArtVersionListDto>
+export type ArtVersionMutationDto = WithIsoTimestamps<ContractArtVersionMutationDto>
+export type GenerationCandidateDto = WithIsoTimestamps<ContractGenerationCandidateDto>
+export type GenerationDto = WithIsoTimestamps<ContractGenerationDto>
+export type CreateGenerationResultDto = WithIsoTimestamps<ContractCreateGenerationResultDto>
+export type ForkResultDto = WithIsoTimestamps<ContractForkResultDto>
+export type ForkLinkMutationDto = WithIsoTimestamps<ContractForkLinkMutationDto>
 
 export type LineageNodeDto = Omit<ContractLineageNodeDto, 'project' | 'fork' | 'children'> & {
   project: ArtProjectDto

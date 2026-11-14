@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./errors": "./src/errors.ts"
+    "./api": "./src/api.ts",
+    "./art-reference": "./src/art-reference.ts",
+    "./errors": "./src/errors.ts",
+    "./prompt": "./src/prompt.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

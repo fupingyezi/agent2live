@@ -3,7 +3,10 @@ import {
   artVersionReferenceSetSchema,
   hashCanonical,
   newId,
+  type ArtVersionDto,
+  type ArtVersionMutationDto,
   type ArtVersionReference,
+  type ArtVersionReferenceDto,
   type ReviseArtVersionReferencesInput
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
@@ -16,24 +19,7 @@ import type { EventStore } from '../events/store'
 import type { Clock } from './clock'
 import type { RequestIds } from './request-ids'
 
-export interface ArtVersionReferenceDto extends ArtVersionReference {
-  id: string
-}
-
-export interface ArtVersionDto {
-  id: string
-  artProjectId: string
-  versionNumber: number
-  parentVersionId: string | null
-  originVersionId: string | null
-  promptVersionId: string
-  references: ArtVersionReferenceDto[]
-  source: Record<string, unknown>
-  validation: Record<string, unknown>
-  canvasTransform: Record<string, unknown>
-  contentHash: string
-  createdAt: number
-}
+export type { ArtVersionDto, ArtVersionMutationDto, ArtVersionReferenceDto }
 
 export interface ArtVersionRow {
   id: string
@@ -126,11 +112,6 @@ export interface ArtVersionServiceDeps {
   assets: AssetService
   audit: AuditService
   events: EventStore
-}
-
-export interface ArtVersionMutationDto {
-  artVersion: ArtVersionDto
-  project: ArtProjectDto
 }
 
 export interface ArtVersionReferencesDto {

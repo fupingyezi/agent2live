@@ -1,22 +1,14 @@
 import React, { useEffect } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Button,
-  EmptyState,
-  KeyValueList,
-  PageHeader,
-  SectionHeader,
-  StatusPill,
-  SurfaceCard,
-  type EmptyProps
-} from '@agent2live/design-system'
+import { Button, EmptyState, PageHeader, StatusPill, type EmptyProps } from '@agent2live/design-system'
 import { flattenLineage, getArtProject, getCharacterLineage } from '../api/queries'
 import { ApiError } from '../api/client'
 import { queryKeys } from '../api/keys'
 import { StudioError } from '../components/StudioError'
 import { StudioLoading } from '../components/StudioLoading'
-import { formatDateTime, formatStage, shortId, stageTone } from '../format'
+import { formatStage, stageTone } from '../format'
+import { Workbench } from '../workbench/Workbench'
 
 export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
   const { characterId } = useParams<{ characterId: string }>()
@@ -134,40 +126,7 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
         description={project.description || '这个项目还没有描述。'}
         actions={<StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />}
       />
-
-      <SectionHeader
-        title="项目状态"
-        description="这里是完整美术工作台的稳定落点；版本与参考图编辑在下一步接入。"
-      />
-      <SurfaceCard>
-        <KeyValueList
-          items={[
-            {
-              label: '当前提示词版本',
-              value: project.activePromptVersionId ? (
-                <code title={project.activePromptVersionId}>{shortId(project.activePromptVersionId)}</code>
-              ) : (
-                '尚未提交提示词版本'
-              )
-            },
-            {
-              label: '当前美术版本',
-              value: project.activeVersionId ? (
-                <code title={project.activeVersionId}>{shortId(project.activeVersionId)}</code>
-              ) : (
-                '尚未激活美术版本'
-              )
-            },
-            {
-              label: '分支来源',
-              value: project.forkedFrom
-                ? `来自 ${project.forkedFrom.sourceKind === 'art_version' ? '美术版本' : '提示词版本'}分支`
-                : '主线项目'
-            },
-            { label: '最近更新', value: formatDateTime(project.updatedAt) }
-          ]}
-        />
-      </SurfaceCard>
+      <Workbench key={project.id} project={project} />
     </div>
   )
 }
