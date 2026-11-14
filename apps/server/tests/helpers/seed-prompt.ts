@@ -54,7 +54,7 @@ export async function postMetadataOnlyInput(
   headers: Record<string, string> = {}
 ) {
   const form = new FormData()
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('metadata', JSON.stringify(metadata))
   const { payload, contentType } = await multipartPayload(form)
   return ctx.app.inject({
     method: 'POST',

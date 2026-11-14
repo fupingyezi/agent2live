@@ -74,8 +74,7 @@ export class PromptInputService {
     for (const material of metadata.materials) {
       let assetId = material.assetId
       if (material.fileField) {
-        const file = files.get(material.fileField)
-        if (!file) throw new AppError('REQUEST_INVALID', { reason: 'missing_file_part' })
+        const file = files.get(material.fileField)!
         const ingested = await this.deps.assets.ingestUpload({
           bytes: file.bytes,
           declaredMime: file.mimeType,

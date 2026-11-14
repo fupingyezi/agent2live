@@ -1,29 +1,25 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AssetService } from '../services/assets'
 import { AppError } from '../errors'
-import { mapMultipartError } from './multipart'
+import { mapMultipartError, readMultipart, UPLOAD_FILE_LIMIT, type MultipartResult } from './multipart'
+
+async function readAssetMultipart(request: FastifyRequest): Promise<MultipartResult> {
+  try {
+    return await readMultipart(request, { maxFiles: 1, maxFileBytes: UPLOAD_FILE_LIMIT })
+  } catch (error) {
+    mapMultipartError(error)
+  }
+}
 
 export function registerAssetRoutes(app: FastifyInstance, assets: AssetService): void {
   app.post('/api/v1/assets', async (request, reply) => {
-    let part
-    try {
-      part = await request.file()
-    } catch (error) {
-      mapMultipartError(error)
-    }
-    if (!part) throw new AppError('REQUEST_INVALID', { reason: 'file is required' })
-    if (part.fieldname !== 'file') {
-      throw new AppError('REQUEST_INVALID', { reason: 'expected field file' })
-    }
-    let bytes: Buffer
-    try {
-      bytes = await part.toBuffer()
-    } catch (error) {
-      mapMultipartError(error)
-    }
+    const parsed = await readAssetMultipart(request)
+    if (parsed.files.size === 0) throw new AppError('REQUEST_INVALID', { reason: 'file is required' })
+    const part = parsed.files.get('file')
+    if (!part) throw new AppError('REQUEST_INVALID', { reason: 'expected field file' })
     const result = await assets.ingestUpload({
-      bytes,
-      declaredMime: part.mimetype,
+      bytes: part.bytes,
+      declaredMime: part.mimeType,
       originalName: part.filename,
       requestId: request.id,
       traceId: request.traceId

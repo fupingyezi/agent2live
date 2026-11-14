@@ -268,9 +268,6 @@ export class PromptDraftService {
       } else if (state.blocks.some((block) => block.source === 'character-brief')) {
         throw new AppError('PROMPT_BRIEF_PROJECTION_STALE', {})
       }
-      if (state.blocks.length === 0) {
-        throw new AppError('REQUEST_INVALID', { reason: 'prompt draft has no blocks' })
-      }
       const uncovered = uncoveredRequirements(state)
       if (uncovered.length > 0 && !acknowledge) {
         throw new AppError('PROMPT_REQUIREMENT_UNCOVERED', {

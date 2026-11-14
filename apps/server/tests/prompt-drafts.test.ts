@@ -11,30 +11,25 @@ async function postInput(
   const form = new FormData()
   form.append(
     'metadata',
-    new Blob(
-      [
-        JSON.stringify({
-          globalNotes: '保持清透',
-          requirements: [
-            { id: 'req_identity', text: '银白长发与蓝色眼睛', strength: 'must' },
-            { id: 'req_style', text: '清爽赛璐璐', strength: 'prefer' },
-            { id: 'req_avoid', text: '避免写实皮肤', strength: 'avoid' }
-          ],
-          materials: [
-            {
-              partName: 'face',
-              fileField: 'file_face',
-              role: 'identity_reference',
-              note: '脸型',
-              weight: 1,
-              locked: true,
-              sortOrder: 0
-            }
-          ]
-        })
+    JSON.stringify({
+      globalNotes: '保持清透',
+      requirements: [
+        { id: 'req_identity', text: '银白长发与蓝色眼睛', strength: 'must' },
+        { id: 'req_style', text: '清爽赛璐璐', strength: 'prefer' },
+        { id: 'req_avoid', text: '避免写实皮肤', strength: 'avoid' }
       ],
-      { type: 'application/json' }
-    )
+      materials: [
+        {
+          partName: 'face',
+          fileField: 'file_face',
+          role: 'identity_reference',
+          note: '脸型',
+          weight: 1,
+          locked: true,
+          sortOrder: 0
+        }
+      ]
+    })
   )
   const source = await png(320, 480)
   const faceBytes = new Uint8Array(source.length)
@@ -390,6 +385,211 @@ describe('prompt drafts and versions', () => {
         committed.json<{ version: { state: { characterBriefVersionId?: string } } }>().version.state
           .characterBriefVersionId
       ).toBe(body.submission.characterBriefVersionId)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('requires If-Match for draft writes and rejects repeated If-Match headers', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await seedProject(ctx)
+      const input = await postInput(ctx, project.id)
+      const body = input.json<{
+        draft: { id: string; rowVersion: number }
+        submission: { materials: Array<{ assetId: string }> }
+      }>()
+      const assetId = body.submission.materials[0]!.assetId
+
+      const missingPatch = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}`,
+        headers: ctx.auth,
+        payload: { state: specWithAsset(assetId) }
+      })
+      expect(missingPatch.statusCode).toBe(428)
+      expect(missingPatch.json()).toMatchObject({ error: { code: 'PRECONDITION_REQUIRED' } })
+
+      const missingCommit = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}/commit`,
+        headers: { ...ctx.auth, 'idempotency-key': 'commit-no-if-match' },
+        payload: {}
+      })
+      expect(missingCommit.statusCode).toBe(428)
+      expect(missingCommit.json()).toMatchObject({ error: { code: 'PRECONDITION_REQUIRED' } })
+
+      const repeated = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}`,
+        headers: { ...ctx.auth, 'if-match': ['"1"', '"2"'] } as unknown as Record<string, string>,
+        payload: { state: specWithAsset(assetId) }
+      })
+      expect(repeated.statusCode).toBe(400)
+      expect(repeated.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('requires an active prompt version when creating from active_version', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await seedProject(ctx)
+      const response = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts`,
+        headers: { ...ctx.auth, 'idempotency-key': 'draft-ver-0001' },
+        payload: { from: 'active_version' }
+      })
+      expect(response.statusCode).toBe(409)
+      expect(response.json()).toMatchObject({ error: { code: 'PROMPT_VERSION_REQUIRED' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects ingest that drops assets or requirements referenced by the active version', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, asset } = await seedProject(ctx)
+      const input = await postInput(ctx, project.id)
+      const body = input.json<{
+        draft: { id: string; rowVersion: number }
+        submission: { materials: Array<{ assetId: string }> }
+      }>()
+      const assetId = body.submission.materials[0]!.assetId
+      const saved = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${body.draft.rowVersion}"` },
+        payload: { state: specWithAsset(assetId) }
+      })
+      const committed = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}/commit`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${saved.json<{ rowVersion: number }>().rowVersion}"`,
+          'idempotency-key': 'commit-mismatch-0001'
+        },
+        payload: {}
+      })
+      expect(committed.statusCode).toBe(201)
+
+      const mismatch = await postMetadataOnlyInput(ctx, project.id, {
+        requirements: [],
+        materials: [{ partName: 'seed', assetId: asset.id, role: 'style_reference', sortOrder: 0 }]
+      })
+      expect(mismatch.statusCode).toBe(409)
+      expect(mismatch.json()).toMatchObject({ error: { code: 'PROMPT_INPUT_MISMATCH' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects a missing multipart file part for declared materials', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await seedProject(ctx)
+      const response = await postMetadataOnlyInput(ctx, project.id, {
+        requirements: [],
+        materials: [{ partName: 'face', fileField: 'file_face', role: 'identity_reference', sortOrder: 0 }]
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects metadata sent as a file part', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await seedProject(ctx)
+      const form = new FormData()
+      form.append(
+        'metadata',
+        new Blob([JSON.stringify({ requirements: [], materials: [] })], {
+          type: 'application/json'
+        })
+      )
+      const { payload, contentType } = await multipartPayload(form)
+      const response = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-inputs`,
+        headers: { ...ctx.auth, 'content-type': contentType },
+        payload
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toMatchObject({
+        error: { code: 'REQUEST_INVALID', details: { reason: 'metadata must be a field' } }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('serves committed prompt versions and rejects unknown version ids', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await seedProject(ctx)
+      const input = await postInput(ctx, project.id)
+      const body = input.json<{
+        draft: { id: string; rowVersion: number }
+        submission: { materials: Array<{ assetId: string }> }
+      }>()
+      const assetId = body.submission.materials[0]!.assetId
+      const saved = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${body.draft.rowVersion}"` },
+        payload: { state: specWithAsset(assetId) }
+      })
+      const commit = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}/commit`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${saved.json<{ rowVersion: number }>().rowVersion}"`,
+          'idempotency-key': 'commit-versions-0001'
+        },
+        payload: {}
+      })
+      expect(commit.statusCode).toBe(201)
+      const version = commit.json<{ version: { id: string; versionNumber: number; contentHash: string } }>()
+        .version
+
+      const list = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${project.id}/prompt-versions`,
+        headers: ctx.auth
+      })
+      expect(list.statusCode).toBe(200)
+      expect(list.json<{ items: Array<{ id: string; versionNumber: number }> }>().items[0]).toMatchObject({
+        id: version.id,
+        versionNumber: 1
+      })
+
+      const detail = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${project.id}/prompt-versions/${version.id}`,
+        headers: ctx.auth
+      })
+      expect(detail.statusCode).toBe(200)
+      expect(detail.json()).toMatchObject({
+        id: version.id,
+        versionNumber: version.versionNumber,
+        contentHash: version.contentHash
+      })
+
+      const unknown = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${project.id}/prompt-versions/pv_01J00000000000000000000000`,
+        headers: ctx.auth
+      })
+      expect(unknown.statusCode).toBe(404)
+      expect(unknown.json()).toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } })
     } finally {
       await ctx.close()
     }

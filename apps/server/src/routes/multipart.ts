@@ -35,12 +35,7 @@ export async function readMultipart(
       continue
     }
     if (part.fieldname === 'metadata') {
-      const bytes = await part.toBuffer()
-      if (part.file.truncated || bytes.length > (options.maxFieldBytes ?? 64 * 1024)) {
-        throw new Error('FIELD_TOO_LARGE')
-      }
-      fields.set('metadata', bytes.toString('utf8'))
-      continue
+      throw new AppError('REQUEST_INVALID', { reason: 'metadata must be a field' })
     }
     if (files.size >= options.maxFiles) throw new Error('TOO_MANY_FILES')
     const bytes = await part.toBuffer()
