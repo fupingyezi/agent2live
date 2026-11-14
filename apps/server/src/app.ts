@@ -12,6 +12,7 @@ import { toAppError } from './http/errors'
 import { registerArtVersionRoutes } from './routes/art-versions'
 import { registerAssetRoutes } from './routes/assets'
 import { registerCharacterRoutes } from './routes/characters'
+import { registerForkRoutes } from './routes/forks'
 import { registerGenerationRoutes } from './routes/generations'
 import { registerJobRoutes } from './routes/jobs'
 import { registerMultipart } from './routes/multipart'
@@ -168,6 +169,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
   const artVersions = options.services?.artVersions
   if (artVersions && idempotency) {
     registerArtVersionRoutes(app, { artVersions, idempotency })
+  }
+
+  const forks = options.services?.forks
+  if (forks && idempotency) {
+    registerForkRoutes(app, { forks, idempotency })
   }
 
   const characters = options.services?.characters

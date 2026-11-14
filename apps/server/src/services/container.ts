@@ -8,6 +8,7 @@ import { AuditService } from './audit'
 import { CharacterBriefService } from './character-briefs'
 import { CharacterService } from './characters'
 import { GenerationService } from './generations'
+import { ForkService } from './forks'
 import { IdempotencyService } from './idempotency'
 import { ProjectTreeService } from './project-tree'
 import { ProjectService } from './projects'
@@ -55,6 +56,7 @@ export interface Services {
   submissions: PromptSubmissionRepository
   versions: PromptVersionService
   artVersions: ArtVersionService
+  forks: ForkService
   generations: GenerationService
   drafts: PromptDraftService
   inputs: PromptInputService
@@ -95,6 +97,16 @@ export function createServices(deps: ServiceDeps): Services {
     clock: deps.clock,
     projects,
     promptVersions: versions,
+    assets,
+    audit,
+    events: deps.events
+  })
+  const forks = new ForkService({
+    db: deps.db,
+    clock: deps.clock,
+    projects,
+    promptVersions: versions,
+    artVersions,
     assets,
     audit,
     events: deps.events
@@ -191,6 +203,7 @@ export function createServices(deps: ServiceDeps): Services {
     submissions,
     versions,
     artVersions,
+    forks,
     generations,
     drafts,
     inputs,

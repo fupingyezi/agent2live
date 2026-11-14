@@ -306,10 +306,16 @@ export const createForkInputSchema = z
 export const patchForkInputSchema = z
   .object({
     branchLabel: z.string().trim().min(1).max(80).optional(),
-    detach: z.boolean().optional()
+    detach: z.literal(true).optional()
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: 'patch is empty' })
+
+export const characterLineageQuerySchema = z
+  .object({
+    characterId: z.string().min(1).max(64)
+  })
+  .strict()
 
 export const createBackupInputSchema = z.object({}).strict()
 
@@ -335,3 +341,4 @@ export type CreateProviderConnectionInput = z.infer<typeof createProviderConnect
 export type UpdateProviderConnectionInput = z.infer<typeof updateProviderConnectionInputSchema>
 export type CreateGenerationInput = z.infer<typeof createGenerationInputSchema>
 export type CreateForkInput = z.infer<typeof createForkInputSchema>
+export type PatchForkInput = z.infer<typeof patchForkInputSchema>

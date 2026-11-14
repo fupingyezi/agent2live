@@ -5,7 +5,19 @@ import type { EventStore } from '../events/store'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
 import { withEvents } from './events-buffer'
+import { projectForkSlice } from './fork-query'
 import type { RequestIds } from './request-ids'
+
+export interface ProjectForkSlice {
+  forkId: string
+  parentProjectId: string
+  rootProjectId: string
+  sourceKind: 'prompt_version' | 'art_version'
+  sourceVersionId: string
+  branchLabel: string
+  status: 'active' | 'detached'
+  parentDeleted: boolean
+}
 
 export interface ArtProjectDto {
   id: string
@@ -15,12 +27,7 @@ export interface ArtProjectDto {
   stage: string
   activeVersionId: string | null
   activePromptVersionId: string | null
-  forkedFrom: {
-    forkId: string
-    parentProjectId: string
-    sourceKind: 'prompt_version' | 'art_version'
-    sourceVersionId: string
-  } | null
+  forkedFrom: ProjectForkSlice | null
   createdAt: number
   updatedAt: number
   rowVersion: number
@@ -39,14 +46,6 @@ interface ProjectRow {
   updated_at: number
   deleted_at: number | null
   row_version: number
-}
-
-interface ForkRow {
-  id: string
-  child_project_id: string
-  parent_project_id: string
-  source_kind: 'prompt_version' | 'art_version'
-  source_version_id: string
 }
 
 export interface ProjectDeps {
@@ -203,9 +202,6 @@ export class ProjectService {
   }
 
   private toDto(row: ProjectRow): ArtProjectDto {
-    const fork = this.deps.db
-      .prepare('select * from project_forks where child_project_id = ?')
-      .get(row.id) as ForkRow | undefined
     return {
       id: row.id,
       characterId: row.character_id,
@@ -214,14 +210,7 @@ export class ProjectService {
       stage: row.stage,
       activeVersionId: row.active_version_id,
       activePromptVersionId: row.active_prompt_version_id,
-      forkedFrom: fork
-        ? {
-            forkId: fork.id,
-            parentProjectId: fork.parent_project_id,
-            sourceKind: fork.source_kind,
-            sourceVersionId: fork.source_version_id
-          }
-        : null,
+      forkedFrom: projectForkSlice(this.deps.db, row.id),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       rowVersion: row.row_version,
