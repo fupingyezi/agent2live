@@ -140,7 +140,11 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
   const mutationError = errorMessage(manualMutation.error) ?? errorMessage(activateMutation.error)
 
   return (
-    <section className="art-version-panel" data-testid="art-version-panel">
+    <section
+      className="art-version-panel"
+      data-testid="art-version-panel"
+      data-active-version-id={project.activeVersionId ?? ''}
+    >
       <SectionHeader
         title="美术版本"
         description="立绘"

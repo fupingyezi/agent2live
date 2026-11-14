@@ -37,7 +37,7 @@ test('packaged app starts sidecar, migrations, sqlite-vec, FTS5 and SSE route', 
     const health = await (await fetch(`${endpoint.baseUrl}/health`, { headers })).json()
     expect(health.data).toEqual({ db: true, events: true })
     expect(health.db.vectorDim).toBe(768)
-    expect(health.db.migration).toBe('0001_init')
+    expect(health.db.migration).toBe('0004_backups')
 
     const sse = await fetch(`${endpoint.baseUrl}/api/v1/events?after=0`, { headers })
     expect(sse.status).toBe(200)

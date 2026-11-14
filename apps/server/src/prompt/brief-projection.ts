@@ -147,7 +147,8 @@ export function projectBriefToPromptBlocks(brief: CharacterBriefContent): Prompt
       parts: labeled('表情', [appearance.defaultExpression])
     },
     {
-      id: `${BRIEF_BLOCK_PREFIX}behavior.bodyLanguage`,
+      // Block ids must stay within [a-z0-9._-] segments to satisfy the spec schema.
+      id: `${BRIEF_BLOCK_PREFIX}behavior.body-language`,
       category: 'pose',
       label: '行为·肢体语言',
       priority: 50,

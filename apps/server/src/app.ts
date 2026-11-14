@@ -30,7 +30,7 @@ export interface AppOptions {
   dataDir?: string
   db?: Database.Database
   eventStore?: EventStore
-  services?: Partial<Services>
+  services?: Services
 }
 
 declare module 'fastify' {
@@ -128,72 +128,60 @@ export function buildApp(options: AppOptions): FastifyInstance {
     })
   }
 
-  const assets = options.services?.assets
-  const inputs = options.services?.inputs
-  const drafts = options.services?.drafts
-  const versions = options.services?.versions
-  const idempotency = options.services?.idempotency
-  if (assets || (inputs && drafts && versions && idempotency)) {
+  // All domain routes live in a single root plugin so multipart is registered
+  // exactly once and `request.parts()` stays decorated across route groups.
+  const services = options.services
+  if (services) {
     app.register(async (scope) => {
       await registerMultipart(scope)
-      if (assets) registerAssetRoutes(scope, assets)
-      if (inputs && drafts && versions && idempotency) {
-        registerPromptRoutes(scope, { inputs, drafts, versions, idempotency })
-      }
-    })
-  }
-
-  const providerConnections = options.services?.providerConnections
-  const secrets = options.services?.secrets
-  if (providerConnections && secrets && idempotency) {
-    app.register(async (scope) => {
-      registerProviderRoutes(scope, { connections: providerConnections, secrets, idempotency })
-    })
-  }
-
-  const jobs = options.services?.jobs
-  if (jobs) {
-    registerJobRoutes(app, jobs)
-  }
-
-  const promptReverse = options.services?.promptReverse
-  if (promptReverse && jobs) {
-    registerPromptReverseRoutes(app, { promptReverse, jobs })
-  }
-
-  const promptSuggestions = options.services?.promptSuggestions
-  if (promptSuggestions && jobs) {
-    registerPromptSuggestionRoutes(app, { promptSuggestions, jobs })
-  }
-
-  const generations = options.services?.generations
-  if (generations && jobs && idempotency) {
-    registerGenerationRoutes(app, { generations, jobs, idempotency })
-  }
-
-  const artVersions = options.services?.artVersions
-  if (artVersions && idempotency) {
-    registerArtVersionRoutes(app, { artVersions, idempotency })
-  }
-
-  const forks = options.services?.forks
-  if (forks && idempotency) {
-    registerForkRoutes(app, { forks, idempotency })
-  }
-
-  const backups = options.services?.backups
-  if (backups && jobs && idempotency) {
-    registerBackupRoutes(app, { backups, jobs, idempotency })
-  }
-
-  const characters = options.services?.characters
-  const characterBriefs = options.services?.characterBriefs
-  const projects = options.services?.projects
-  const projectTree = options.services?.projectTree
-  if (characters && characterBriefs && projects && projectTree) {
-    app.register(async (scope) => {
-      registerCharacterRoutes(scope, { characters, characterBriefs, projects })
-      registerProjectRoutes(scope, { projects, projectTree })
+      registerAssetRoutes(scope, services.assets)
+      registerPromptRoutes(scope, {
+        inputs: services.inputs,
+        drafts: services.drafts,
+        versions: services.versions,
+        idempotency: services.idempotency
+      })
+      registerCharacterRoutes(scope, {
+        characters: services.characters,
+        characterBriefs: services.briefs,
+        projects: services.projects
+      })
+      registerProjectRoutes(scope, {
+        projects: services.projects,
+        projectTree: services.projectTree
+      })
+      registerProviderRoutes(scope, {
+        connections: services.providerConnections,
+        secrets: services.secrets,
+        idempotency: services.idempotency
+      })
+      registerJobRoutes(scope, services.jobs)
+      registerPromptReverseRoutes(scope, {
+        promptReverse: services.reverse,
+        jobs: services.jobs
+      })
+      registerPromptSuggestionRoutes(scope, {
+        promptSuggestions: services.suggestions,
+        jobs: services.jobs
+      })
+      registerGenerationRoutes(scope, {
+        generations: services.generations,
+        jobs: services.jobs,
+        idempotency: services.idempotency
+      })
+      registerArtVersionRoutes(scope, {
+        artVersions: services.artVersions,
+        idempotency: services.idempotency
+      })
+      registerForkRoutes(scope, {
+        forks: services.forks,
+        idempotency: services.idempotency
+      })
+      registerBackupRoutes(scope, {
+        backups: services.backups,
+        jobs: services.jobs,
+        idempotency: services.idempotency
+      })
     })
   }
 

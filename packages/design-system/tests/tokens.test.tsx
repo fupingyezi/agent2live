@@ -14,12 +14,12 @@ describe('design tokens', () => {
   it('locks the Ardot baseline colors', () => {
     expect(colorTokens.appBg).toBe('#F8FAF9')
     expect(colorTokens.surface).toBe('#FFFFFF')
-    expect(colorTokens.accent).toBe('#3FB0A0')
-    expect(colorTokens.accentStrong).toBe('#2E9183')
+    expect(colorTokens.accent).toBe('#1F826F')
+    expect(colorTokens.accentStrong).toBe('#18695C')
     expect(colorTokens.text).toBe('#252A32')
-    expect(colorTokens.textMuted).toBe('#A8AEB8')
+    expect(colorTokens.textMuted).toBe('#626C78')
     expect(colorTokens.border).toBe('#E7ECEA')
-    expect(colorTokens.warning).toBe('#B07C33')
+    expect(colorTokens.warning).toBe('#8F6423')
     expect(colorTokens.danger).toBe('#A85468')
   })
 

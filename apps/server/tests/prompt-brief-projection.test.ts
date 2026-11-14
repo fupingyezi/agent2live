@@ -56,7 +56,7 @@ describe('brief projection', () => {
       'brief.appearance.palette',
       'brief.appearance.pose',
       'brief.appearance.expression',
-      'brief.behavior.bodyLanguage'
+      'brief.behavior.body-language'
     ])
     expect(blocks.every((block) => block.locked)).toBe(true)
     expect(blocks.every((block) => block.source === 'character-brief')).toBe(true)
