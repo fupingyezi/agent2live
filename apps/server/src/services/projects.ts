@@ -1,5 +1,12 @@
 import type Database from 'better-sqlite3'
-import { hashCanonical, newId, type CreateArtProjectInput } from '@agent2live/contracts'
+import {
+  hashCanonical,
+  newId,
+  type ArtProjectDto,
+  type ArtProjectStage,
+  type CreateArtProjectInput,
+  type ProjectForkSlice
+} from '@agent2live/contracts'
 import { AppError } from '../errors'
 import type { EventStore } from '../events/store'
 import type { AuditService } from './audit'
@@ -8,31 +15,7 @@ import { withEvents } from './events-buffer'
 import { projectForkSlice } from './fork-query'
 import type { RequestIds } from './request-ids'
 
-export interface ProjectForkSlice {
-  forkId: string
-  parentProjectId: string
-  rootProjectId: string
-  sourceKind: 'prompt_version' | 'art_version'
-  sourceVersionId: string
-  branchLabel: string
-  status: 'active' | 'detached'
-  parentDeleted: boolean
-}
-
-export interface ArtProjectDto {
-  id: string
-  characterId: string
-  title: string
-  description: string | null
-  stage: string
-  activeVersionId: string | null
-  activePromptVersionId: string | null
-  forkedFrom: ProjectForkSlice | null
-  createdAt: number
-  updatedAt: number
-  rowVersion: number
-  deletedAt: number | null
-}
+export type { ArtProjectDto, ProjectForkSlice }
 
 interface ProjectRow {
   id: string
@@ -207,7 +190,7 @@ export class ProjectService {
       characterId: row.character_id,
       title: row.title,
       description: row.description,
-      stage: row.stage,
+      stage: row.stage as ArtProjectStage,
       activeVersionId: row.active_version_id,
       activePromptVersionId: row.active_prompt_version_id,
       forkedFrom: projectForkSlice(this.deps.db, row.id),

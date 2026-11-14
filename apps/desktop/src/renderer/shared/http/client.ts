@@ -1,4 +1,4 @@
-import { problemDetailsSchema } from '@agent2live/contracts'
+import { problemDetailsSchema } from '@agent2live/contracts/errors'
 import type { FieldError, ProblemDetails, SidecarInfo, UserAction } from '@agent2live/contracts'
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>

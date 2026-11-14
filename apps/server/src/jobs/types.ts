@@ -1,15 +1,7 @@
+import type { JobDto, JobEventDto, JobStatus } from '@agent2live/contracts'
 import type { z } from 'zod'
 
-export type JobStatus =
-  | 'queued'
-  | 'leased'
-  | 'running'
-  | 'waiting_user'
-  | 'succeeded'
-  | 'failed'
-  | 'retrying'
-  | 'cancelled'
-  | 'unknown_outcome'
+export type { JobDto, JobEventDto, JobStatus }
 
 export type SideEffect = 'idempotent' | 'non_idempotent'
 
@@ -43,26 +35,4 @@ export interface EnqueueInput<P = unknown> {
   type: string
   payload: P
   idempotencyKey?: string
-}
-
-export interface JobDto {
-  id: string
-  type: string
-  status: JobStatus
-  attempts: number
-  maxAttempts: number
-  progress: number | null
-  errorCode: string | null
-  result: unknown
-  cancelRequested: boolean
-  createdAt: number
-  updatedAt: number
-}
-
-export interface JobEventDto {
-  id: string
-  seq: number
-  type: 'log' | 'progress' | 'done' | 'error'
-  payload: unknown
-  createdAt: number
 }

@@ -1,0 +1,20 @@
+export const queryKeys = {
+  characters: ['characters'] as const,
+  character: (id: string) => ['characters', id] as const,
+  lineages: ['lineages'] as const,
+  lineage: (characterId: string) => ['lineages', characterId] as const,
+  projects: ['projects'] as const,
+  project: (id: string) => ['projects', id] as const,
+  projectTree: (id: string) => ['projects', id, 'tree'] as const,
+  prompt: (id: string) => ['projects', id, 'prompt'] as const,
+  promptVersions: (id: string) => ['projects', id, 'prompt-versions'] as const,
+  artVersions: (id: string) => ['projects', id, 'art-versions'] as const,
+  generations: (id: string) => ['projects', id, 'generations'] as const,
+  reverseResults: (id: string) => ['projects', id, 'reverse-results'] as const,
+  suggestions: (id: string) => ['projects', id, 'suggestions'] as const,
+  job: (id: string) => ['jobs', id] as const,
+  providers: ['providers'] as const,
+  provider: (id: string) => ['providers', id] as const,
+  assetContent: (id: string) => ['asset-content', id] as const,
+  backups: (characterId: string) => ['characters', characterId, 'backups'] as const
+}

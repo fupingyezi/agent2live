@@ -424,7 +424,7 @@ describe('project forks', () => {
       const beforeRoot = beforeDetach
         .json<{
           roots: Array<{
-            project: { id: string; deletedAt: number | null }
+            project: { id: string; deletedAt: string | null }
             children: Array<{ project: { id: string }; parentDeleted: boolean }>
           }>
         }>()
@@ -446,7 +446,7 @@ describe('project forks', () => {
           branchLabel: string
           parentProjectId: string
           sourceVersionId: string
-          detachedAt: number | null
+          detachedAt: string | null
         }
         childProject: { id: string; activePromptVersionId: string }
       }>()
@@ -456,7 +456,8 @@ describe('project forks', () => {
         parentProjectId: project.id,
         sourceVersionId: promptVersion.id
       })
-      expect(renamedBody.fork.detachedAt).toEqual(expect.any(Number))
+      expect(renamedBody.fork.detachedAt).toEqual(expect.any(String))
+      expect(Number.isNaN(Date.parse(renamedBody.fork.detachedAt!))).toBe(false)
       expect(renamedBody.childProject.activePromptVersionId).toBeTruthy()
 
       const afterDetach = await ctx.app.inject({

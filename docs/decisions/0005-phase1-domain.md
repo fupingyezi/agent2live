@@ -128,3 +128,10 @@ Status: accepted
 - Studio pages reproduce the Ardot screens 1.1/1.2/1.3/1.4/1.5/0A/0B/S8 at 1440×900.
 - Business components compose design-system primitives; no local Button/StatusPill/EmptyState/ErrorState/ConfirmDialog.
 - Hex colors, ad-hoc radii, and duplicate tokens are rejected by `scripts/token-lint.mjs`.
+
+## HTTP timestamp boundary
+
+- Persistence, services, job event rows, and backup archives keep timestamps as Unix milliseconds.
+- The HTTP JSON reply serializer converts only whitelisted timestamp keys (`createdAt`, `updatedAt`, `deletedAt`, `detachedAt`, and the other lifecycle stamps) to RFC 3339 strings exactly once, at the boundary; payloads without such keys are otherwise byte-identical.
+- SSE frames and backup ZIP streams bypass the serializer, so their raw bytes are unchanged; SSE `event/1` `createdAt` remains Unix milliseconds.
+- Studio view models derive from contract DTOs and override every whitelisted timestamp to `string`, including nested fork links, lineage nodes, job events, assets, and provider connections; data-layer contract types remain Unix milliseconds.

@@ -4,6 +4,7 @@ import {
   providerCapabilitiesSchema,
   newId,
   type CreateProviderConnectionInput,
+  type ProviderConnectionDto,
   type UpdateProviderConnectionInput
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
@@ -13,20 +14,7 @@ import type { RequestIds } from './request-ids'
 import { withEvents } from './events-buffer'
 import type { EventStore } from '../events/store'
 
-export interface ProviderConnectionDto {
-  id: string
-  label: string
-  kind: 'chat' | 'image'
-  adapter: 'openai-compatible' | 'seedream' | 'mock'
-  baseUrl: string | null
-  model: string | null
-  enabled: boolean
-  capabilities: unknown
-  hasSecret: boolean
-  createdAt: number
-  updatedAt: number
-  rowVersion: number
-}
+export type { ProviderConnectionDto }
 
 export interface ProviderConnectionRow {
   id: string

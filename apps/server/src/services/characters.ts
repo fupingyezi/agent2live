@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { hashCanonical, newId, type CreateCharacterInput } from '@agent2live/contracts'
+import { hashCanonical, newId, type CharacterDto, type CreateCharacterInput } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import type { EventStore } from '../events/store'
 import type { AuditService } from './audit'
@@ -7,15 +7,7 @@ import type { Clock } from './clock'
 import { withEvents } from './events-buffer'
 import type { RequestIds } from './request-ids'
 
-export interface CharacterDto {
-  id: string
-  title: string
-  summary: string | null
-  activeBriefVersionId: string | null
-  createdAt: number
-  updatedAt: number
-  rowVersion: number
-}
+export type { CharacterDto }
 
 interface CharacterRow {
   id: string

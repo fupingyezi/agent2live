@@ -1,4 +1,7 @@
 import type Database from 'better-sqlite3'
+import type { ForkLinkDto, ProjectForkSlice } from '@agent2live/contracts'
+
+export type { ForkLinkDto }
 
 export interface ForkLinkRow {
   id: string
@@ -12,20 +15,6 @@ export interface ForkLinkRow {
   status: 'active' | 'detached'
   created_at: number
   detached_at: number | null
-}
-
-export interface ForkLinkDto {
-  id: string
-  childProjectId: string
-  parentProjectId: string
-  rootProjectId: string
-  sourceKind: 'prompt_version' | 'art_version'
-  sourceVersionId: string
-  sourceHash: string
-  branchLabel: string
-  status: 'active' | 'detached'
-  createdAt: number
-  detachedAt: number | null
 }
 
 export function loadForkLinkRow(db: Database.Database, childProjectId: string): ForkLinkRow | null {
@@ -52,7 +41,7 @@ export function toForkLinkDto(row: ForkLinkRow): ForkLinkDto {
   }
 }
 
-export function projectForkSlice(db: Database.Database, projectId: string) {
+export function projectForkSlice(db: Database.Database, projectId: string): ProjectForkSlice | null {
   const row = loadForkLinkRow(db, projectId)
   if (!row) return null
   const parent = db.prepare('select deleted_at from art_projects where id = ?').get(row.parent_project_id) as

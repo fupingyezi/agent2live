@@ -8,6 +8,7 @@ import { latestMigrationVersion } from './db/migrate'
 import { AppError, problemFor } from './errors'
 import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
+import { apiJsonSerializer } from './http/api-json'
 import { toAppError } from './http/errors'
 import { registerArtVersionRoutes } from './routes/art-versions'
 import { registerAssetRoutes } from './routes/assets'
@@ -51,6 +52,9 @@ export function buildApp(options: AppOptions): FastifyInstance {
   })
 
   app.decorateRequest('traceId', '')
+  // API JSON is the only HTTP boundary that converts domain milliseconds to RFC 3339.
+  // SSE frames bypass this serializer because they are written to the hijacked raw stream.
+  app.setReplySerializer(apiJsonSerializer)
 
   void app.register(cors, {
     origin: (origin, callback) => {
@@ -61,7 +65,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
       }
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'if-match', 'idempotency-key'],
+    allowedHeaders: ['authorization', 'content-type', 'if-match', 'idempotency-key', 'last-event-id'],
     maxAge: 600
   })
 

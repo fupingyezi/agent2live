@@ -4,7 +4,9 @@ import {
   hashCanonical,
   newId,
   promptSpecSchema,
+  type CharacterLineageDto,
   type CreateForkInput,
+  type LineageNodeDto,
   type PatchForkInput
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
@@ -48,17 +50,7 @@ export interface ForkLinkMutationDto {
   childProject: ArtProjectDto
 }
 
-export interface LineageNodeDto {
-  project: ArtProjectDto
-  fork: ForkLinkDto | null
-  parentDeleted: boolean
-  children: LineageNodeDto[]
-}
-
-export interface CharacterLineageDto {
-  characterId: string
-  roots: LineageNodeDto[]
-}
+export type { CharacterLineageDto, LineageNodeDto }
 
 interface SourceProjectRow {
   id: string

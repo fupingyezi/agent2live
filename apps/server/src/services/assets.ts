@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { newId } from '@agent2live/contracts'
+import { newId, type AssetDto } from '@agent2live/contracts'
 import type { Clock } from './clock'
 import type { BlobStore } from './blobs'
 import { ImageValidationError, MAX_IMAGE_BYTES, inspectImage, type ImageInspection } from '../images/validate'
@@ -8,15 +8,7 @@ import { withEvents } from './events-buffer'
 import type { EventStore } from '../events/store'
 import type { AuditService } from './audit'
 
-export interface AssetDto {
-  id: string
-  sha256: string
-  mediaType: 'image/png' | 'image/jpeg' | 'image/webp'
-  byteSize: number
-  width: number | null
-  height: number | null
-  createdAt: number
-}
+export type { AssetDto }
 
 interface AssetRow {
   id: string

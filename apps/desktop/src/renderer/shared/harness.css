@@ -6,7 +6,7 @@ body,
   height: 100%;
   background: transparent;
   font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #252a32;
+  color: var(--a2l-color-text);
 }
 .harness {
   display: flex;
@@ -17,5 +17,5 @@ body,
   gap: 8px;
 }
 .studio-bg {
-  background: #f8faf9;
+  background: var(--a2l-color-app-bg);
 }

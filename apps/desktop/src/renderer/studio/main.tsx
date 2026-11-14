@@ -1,12 +1,23 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { Live2DProbe } from '@agent2live/live2d-runtime'
-import type { EmptyProps } from '../shared/model-types'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { HashRouter } from 'react-router-dom'
+import '@fontsource/noto-sans-sc/400.css'
+import '@fontsource/noto-sans-sc/500.css'
+import '@fontsource/noto-sans-sc/600.css'
+import '@fontsource/noto-sans-sc/700.css'
+import '@agent2live/design-system/styles.css'
+import '../shared/harness.css'
+import './app.css'
 import { mountModel } from '../shared/live2d-stage'
 import { ProbePanel } from '../shared/probe-panel'
-import '../shared/harness.css'
+import type { Live2DProbe } from '@agent2live/live2d-runtime'
+import { ApiError } from './api/client'
+import { App } from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import type { EmptyProps } from '@agent2live/design-system'
 
-export const Studio: React.FC<EmptyProps> = () => {
+const ModelHarness: React.FC<EmptyProps> = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [status, setStatus] = useState('loading')
   const [probe, setProbe] = useState<Live2DProbe | null>(null)
@@ -35,7 +46,7 @@ export const Studio: React.FC<EmptyProps> = () => {
   return (
     <main className="harness studio-bg" data-testid="studio-ready">
       <h1>agent2live Studio</h1>
-      <canvas ref={canvasRef} style={{ width: 420, height: 420 }} />
+      <canvas ref={canvasRef} className="studio-harness-canvas" />
       <div data-testid="model-status">{status}</div>
       {error ? <div role="alert">{error}</div> : null}
       {probe ? <ProbePanel probe={probe} /> : null}
@@ -43,4 +54,36 @@ export const Studio: React.FC<EmptyProps> = () => {
   )
 }
 
-createRoot(document.getElementById('root')!).render(<Studio />)
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        if (failureCount >= 2) return false
+        return !(error instanceof ApiError) || error.retryable
+      }
+    },
+    mutations: { retry: false }
+  }
+})
+
+const Root: React.FC<EmptyProps> = () => {
+  if (new URLSearchParams(window.location.search).has('model')) {
+    return <ModelHarness />
+  }
+  return (
+    <StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <HashRouter>
+            <App />
+          </HashRouter>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </StrictMode>
+  )
+}
+
+createRoot(document.getElementById('root')!).render(<Root />)

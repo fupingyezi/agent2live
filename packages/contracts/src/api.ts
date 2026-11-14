@@ -367,3 +367,133 @@ export type UpdateProviderConnectionInput = z.infer<typeof updateProviderConnect
 export type CreateGenerationInput = z.infer<typeof createGenerationInputSchema>
 export type CreateForkInput = z.infer<typeof createForkInputSchema>
 export type PatchForkInput = z.infer<typeof patchForkInputSchema>
+
+export type ArtProjectStage =
+  | 'idea_draft'
+  | 'prompt_draft'
+  | 'prompt_ready'
+  | 'generating'
+  | 'candidate_review'
+  | 'art_version_active'
+  | 'live2d_pending'
+  | 'blocked'
+
+export type JobStatus =
+  | 'queued'
+  | 'leased'
+  | 'running'
+  | 'waiting_user'
+  | 'succeeded'
+  | 'failed'
+  | 'retrying'
+  | 'cancelled'
+  | 'unknown_outcome'
+
+export interface CharacterDto {
+  id: string
+  title: string
+  summary: string | null
+  activeBriefVersionId: string | null
+  createdAt: number
+  updatedAt: number
+  rowVersion: number
+}
+
+export interface ProjectForkSlice {
+  forkId: string
+  parentProjectId: string
+  rootProjectId: string
+  sourceKind: 'prompt_version' | 'art_version'
+  sourceVersionId: string
+  branchLabel: string
+  status: 'active' | 'detached'
+  parentDeleted: boolean
+}
+
+export interface ArtProjectDto {
+  id: string
+  characterId: string
+  title: string
+  description: string | null
+  stage: ArtProjectStage
+  activeVersionId: string | null
+  activePromptVersionId: string | null
+  forkedFrom: ProjectForkSlice | null
+  createdAt: number
+  updatedAt: number
+  rowVersion: number
+  deletedAt: number | null
+}
+
+export interface ForkLinkDto {
+  id: string
+  childProjectId: string
+  parentProjectId: string
+  rootProjectId: string
+  sourceKind: 'prompt_version' | 'art_version'
+  sourceVersionId: string
+  sourceHash: string
+  branchLabel: string
+  status: 'active' | 'detached'
+  createdAt: number
+  detachedAt: number | null
+}
+
+export interface LineageNodeDto {
+  project: ArtProjectDto
+  fork: ForkLinkDto | null
+  parentDeleted: boolean
+  children: LineageNodeDto[]
+}
+
+export interface CharacterLineageDto {
+  characterId: string
+  roots: LineageNodeDto[]
+}
+
+export interface JobDto {
+  id: string
+  type: string
+  status: JobStatus
+  attempts: number
+  maxAttempts: number
+  progress: number | null
+  errorCode: string | null
+  result: unknown
+  cancelRequested: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface JobEventDto {
+  id: string
+  seq: number
+  type: 'log' | 'progress' | 'done' | 'error'
+  payload: unknown
+  createdAt: number
+}
+
+export interface AssetDto {
+  id: string
+  sha256: string
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp'
+  byteSize: number
+  width: number | null
+  height: number | null
+  createdAt: number
+}
+
+export interface ProviderConnectionDto {
+  id: string
+  label: string
+  kind: 'chat' | 'image'
+  adapter: 'openai-compatible' | 'seedream' | 'mock'
+  baseUrl: string | null
+  model: string | null
+  enabled: boolean
+  capabilities: unknown
+  hasSecret: boolean
+  createdAt: number
+  updatedAt: number
+  rowVersion: number
+}
