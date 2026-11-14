@@ -22,7 +22,7 @@ test('creates a character and art project, streams events, and survives reload',
     const accent = await studio.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--a2l-color-accent').trim()
     )
-    expect(accent).toBe('#3fb0a0')
+    expect(accent).toBe('#1f826f')
 
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await expect(studio.getByRole('heading', { name: '建立一个角色母体', level: 1 })).toBeVisible()
