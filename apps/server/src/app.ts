@@ -14,6 +14,7 @@ import { registerCharacterRoutes } from './routes/characters'
 import { registerJobRoutes } from './routes/jobs'
 import { registerMultipart } from './routes/multipart'
 import { registerProjectRoutes } from './routes/projects'
+import { registerPromptRoutes } from './routes/prompt'
 import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
 
@@ -118,16 +119,22 @@ export function buildApp(options: AppOptions): FastifyInstance {
   }
 
   const assets = options.services?.assets
-  if (assets) {
+  const inputs = options.services?.inputs
+  const drafts = options.services?.drafts
+  const versions = options.services?.versions
+  const idempotency = options.services?.idempotency
+  if (assets || (inputs && drafts && versions && idempotency)) {
     app.register(async (scope) => {
       await registerMultipart(scope)
-      registerAssetRoutes(scope, assets)
+      if (assets) registerAssetRoutes(scope, assets)
+      if (inputs && drafts && versions && idempotency) {
+        registerPromptRoutes(scope, { inputs, drafts, versions, idempotency })
+      }
     })
   }
 
   const providerConnections = options.services?.providerConnections
   const secrets = options.services?.secrets
-  const idempotency = options.services?.idempotency
   if (providerConnections && secrets && idempotency) {
     app.register(async (scope) => {
       registerProviderRoutes(scope, { connections: providerConnections, secrets, idempotency })

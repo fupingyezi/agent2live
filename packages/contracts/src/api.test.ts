@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  commitPromptDraftInputSchema,
   createForkInputSchema,
   createGenerationInputSchema,
   createProviderConnectionInputSchema,
@@ -185,6 +186,15 @@ describe('API schemas', () => {
         materials: [{ ...base, fileField: 'file_face' }]
       }).materials[0]!.fileField
     ).toBe('file_face')
+  })
+
+  it('accepts an empty prompt draft commit body and applies the acknowledgement default', () => {
+    expect(commitPromptDraftInputSchema.parse({}).acknowledgeUncoveredRequirements).toBe(false)
+    expect(
+      commitPromptDraftInputSchema.parse({ acknowledgeUncoveredRequirements: true })
+        .acknowledgeUncoveredRequirements
+    ).toBe(true)
+    expect(() => commitPromptDraftInputSchema.parse({ acknowledge: true })).toThrow()
   })
 
   it('rejects duplicate part names and file fields', () => {

@@ -290,6 +290,110 @@ describe('Phase 1 migrations', () => {
     ).toThrow(/ART_VERSION_IMMUTABLE/i)
   })
 
+  it('enforces prompt draft hashes, same-project refs, and version numbers', () => {
+    const database = fresh()
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000000', 'A', 1, 1)
+    for (const projectId of ['artp_01J00000000000000000000000', 'artp_01J00000000000000000000001']) {
+      database
+        .prepare(
+          'insert into art_projects (id,character_id,title,stage,created_at,updated_at,row_version) values (?,?,?,?,?,?,1)'
+        )
+        .run(projectId, 'chr_01J00000000000000000000000', projectId, 'idea_draft', 1, 1)
+    }
+    const draft = database.prepare(
+      'insert into prompt_drafts (id,art_project_id,revision,status,state_json,content_hash,created_at,updated_at,row_version) values (?,?,?,?,?,?,?,?,1)'
+    )
+    draft.run(
+      'pd_01J00000000000000000000000',
+      'artp_01J00000000000000000000000',
+      1,
+      'active',
+      '{}',
+      'a'.repeat(64),
+      1,
+      1
+    )
+    draft.run(
+      'pd_01J00000000000000000000001',
+      'artp_01J00000000000000000000001',
+      1,
+      'active',
+      '{}',
+      'b'.repeat(64),
+      1,
+      1
+    )
+    expect(() =>
+      database
+        .prepare(
+          'insert into prompt_drafts (id,art_project_id,revision,status,state_json,content_hash,created_at,updated_at,row_version) values (?,?,?,?,?,?,?,?,1)'
+        )
+        .run('pd_bad', 'artp_01J00000000000000000000000', 2, 'committed', '{}', '', 1, 1)
+    ).toThrow()
+
+    database
+      .prepare(
+        'insert into prompt_input_submissions (id,art_project_id,draft_id,revision,requirements_json,created_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run(
+        'pin_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pd_01J00000000000000000000000',
+        1,
+        '[]',
+        1
+      )
+    database
+      .prepare(
+        'insert into prompt_input_submissions (id,art_project_id,draft_id,revision,requirements_json,created_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run(
+        'pin_01J00000000000000000000001',
+        'artp_01J00000000000000000000001',
+        'pd_01J00000000000000000000001',
+        1,
+        '[]',
+        1
+      )
+
+    expect(() =>
+      database
+        .prepare('update prompt_drafts set input_submission_id = ? where id = ?')
+        .run('pin_01J00000000000000000000001', 'pd_01J00000000000000000000000')
+    ).toThrow(/PROMPT_DRAFT_INPUT_INVALID/)
+
+    const version = database.prepare(
+      'insert into prompt_versions (id,art_project_id,input_submission_id,content_json,content_hash,version_number,created_at) values (?,?,?,?,?,?,?)'
+    )
+    version.run(
+      'pv_01J00000000000000000000000',
+      'artp_01J00000000000000000000001',
+      'pin_01J00000000000000000000001',
+      '{}',
+      'b'.repeat(64),
+      1,
+      1
+    )
+    expect(() =>
+      database
+        .prepare('update prompt_drafts set base_version_id = ? where id = ?')
+        .run('pv_01J00000000000000000000000', 'pd_01J00000000000000000000000')
+    ).toThrow(/PROMPT_DRAFT_BASE_INVALID/)
+    expect(() =>
+      version.run(
+        'pv_01J00000000000000000000001',
+        'artp_01J00000000000000000000001',
+        'pin_01J00000000000000000000001',
+        '{}',
+        'c'.repeat(64),
+        1,
+        1
+      )
+    ).toThrow(/UNIQUE/i)
+  })
+
   it('enforces same-character forks with a trigger', () => {
     const database = fresh()
     database

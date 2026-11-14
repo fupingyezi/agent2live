@@ -681,6 +681,71 @@ export const ERROR_REGISTRY = {
     '可以重试反推',
     z.object({ attempt: z.number().int().positive() }).strict()
   ),
+  PROMPT_DRAFT_EXISTS: def(
+    'PROMPT_DRAFT_EXISTS',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptDraftExists',
+    'reload',
+    '项目已有活动草稿',
+    '请刷新后继续编辑现有草稿',
+    z.object({ draftId: z.string().max(64) }).strict()
+  ),
+  PROMPT_INPUT_REQUIRED: def(
+    'PROMPT_INPUT_REQUIRED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptInputRequired',
+    'fix_input',
+    '需要先上传素材与要求',
+    '请先提交素材和要求',
+    z.object({ artProjectId: z.string().max(64) }).strict()
+  ),
+  PROMPT_INPUT_MISMATCH: def(
+    'PROMPT_INPUT_MISMATCH',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptInputMismatch',
+    'fix_input',
+    '提示词引用了失效的输入',
+    '请先移除失效引用',
+    z
+      .object({
+        missingAssetIds: z.array(z.string().max(64)).max(20),
+        missingRequirementIds: z.array(z.string().max(80)).max(50)
+      })
+      .strict()
+  ),
+  PROMPT_REQUIREMENT_UNCOVERED: def(
+    'PROMPT_REQUIREMENT_UNCOVERED',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.promptRequirementUncovered',
+    'fix_input',
+    '有必须要求未被覆盖',
+    '请补充块或确认忽略',
+    z.object({ requirementIds: z.array(z.string().max(80)).max(50) }).strict()
+  ),
+  PROMPT_VERSION_REQUIRED: def(
+    'PROMPT_VERSION_REQUIRED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptVersionRequired',
+    'fix_input',
+    '需要先提交提示词版本',
+    '请先完成提示词并提交版本',
+    z.object({ artProjectId: z.string().max(64) }).strict()
+  ),
   ART_ACTIVE_VERSION_CHANGED: def(
     'ART_ACTIVE_VERSION_CHANGED',
     409,

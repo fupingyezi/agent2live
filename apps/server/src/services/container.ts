@@ -10,6 +10,10 @@ import { IdempotencyService } from './idempotency'
 import { ProjectTreeService } from './project-tree'
 import { ProjectService } from './projects'
 import { withEvents } from './events-buffer'
+import { PromptSubmissionRepository } from './prompt-submissions'
+import { PromptVersionService } from './prompt-versions'
+import { PromptDraftService } from './prompt-drafts'
+import { PromptInputService } from './prompt-inputs'
 import { ProviderConnectionService } from './provider-connections'
 import { ProviderInvocationService } from './provider-invocations'
 import { ProviderRegistry } from './provider-registry'
@@ -41,6 +45,10 @@ export interface Services {
   characterBriefs: CharacterBriefService
   projects: ProjectService
   projectTree: ProjectTreeService
+  submissions: PromptSubmissionRepository
+  versions: PromptVersionService
+  drafts: PromptDraftService
+  inputs: PromptInputService
   withEvents: typeof withEvents
 }
 
@@ -62,6 +70,36 @@ export function createServices(deps: ServiceDeps): Services {
   })
   const projects = new ProjectService({ db: deps.db, clock: deps.clock, events: deps.events, audit })
   const projectTree = new ProjectTreeService({ db: deps.db, projects })
+  const assets = new AssetService({
+    db: deps.db,
+    blobs,
+    events: deps.events,
+    audit,
+    clock: deps.clock
+  })
+  const submissions = new PromptSubmissionRepository(deps.db)
+  const versions = new PromptVersionService(deps.db)
+  const drafts = new PromptDraftService({
+    db: deps.db,
+    clock: deps.clock,
+    events: deps.events,
+    audit,
+    projects,
+    briefs: characterBriefs,
+    versions,
+    submissions
+  })
+  const inputs = new PromptInputService({
+    db: deps.db,
+    assets,
+    briefs: characterBriefs,
+    drafts,
+    submissions,
+    projects,
+    clock: deps.clock,
+    events: deps.events,
+    audit
+  })
   const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
   const jobs = new JobEngine({
     db: deps.db,
@@ -72,13 +110,7 @@ export function createServices(deps: ServiceDeps): Services {
   })
   return {
     blobs,
-    assets: new AssetService({
-      db: deps.db,
-      blobs,
-      events: deps.events,
-      audit,
-      clock: deps.clock
-    }),
+    assets,
     audit,
     idempotency: new IdempotencyService(deps.db, deps.clock),
     secrets: deps.secrets,
@@ -90,6 +122,10 @@ export function createServices(deps: ServiceDeps): Services {
     characterBriefs,
     projects,
     projectTree,
+    submissions,
+    versions,
+    drafts,
+    inputs,
     withEvents
   }
 }

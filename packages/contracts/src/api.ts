@@ -309,6 +309,12 @@ export const createDraftInputSchema = z
   })
   .strict()
 
+export const commitPromptDraftInputSchema = z
+  .object({
+    acknowledgeUncoveredRequirements: z.boolean().default(false)
+  })
+  .strict()
+
 export const emptyBodySchema = z.object({}).strict()
 
 export type CreateCharacterInput = z.infer<typeof createCharacterInputSchema>
