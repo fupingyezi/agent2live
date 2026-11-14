@@ -26,4 +26,18 @@ describe('ids', () => {
     const values = new Set(Array.from({ length: 2000 }, () => newId('job')))
     expect(values.size).toBe(2000)
   })
+
+  it('creates Phase 1 brief, reverse, provenance and backup IDs and keeps the Phase 0 suggestion prefix', () => {
+    expect(newId('characterBrief')).toMatch(/^cbv_[0-9A-HJKMNP-TV-Z]{26}$/)
+    expect(newId('promptReverse')).toMatch(/^prv_[0-9A-HJKMNP-TV-Z]{26}$/)
+    expect(newId('promptSuggestion')).toMatch(/^psg_[0-9A-HJKMNP-TV-Z]{26}$/)
+    expect(newId('assetProvenance')).toMatch(/^aprov_[0-9A-HJKMNP-TV-Z]{26}$/)
+    expect(newId('backup')).toMatch(/^bkp_[0-9A-HJKMNP-TV-Z]{26}$/)
+    expect(newId('secretRef')).toMatch(/^sec_[0-9A-HJKMNP-TV-Z]{26}$/)
+    expect(isId('characterBrief', newId('characterBrief'))).toBe(true)
+    expect(isId('promptReverse', newId('promptReverse'))).toBe(true)
+    expect(isId('promptSuggestion', newId('promptSuggestion'))).toBe(true)
+    expect(isId('assetProvenance', newId('assetProvenance'))).toBe(true)
+    expect(isId('backup', newId('promptReverse'))).toBe(false)
+  })
 })

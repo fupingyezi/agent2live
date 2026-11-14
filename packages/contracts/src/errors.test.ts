@@ -78,4 +78,76 @@ describe('error registry', () => {
     expect(problem.error.fieldErrors).toHaveLength(1)
     expect(problem.retryAfterMs).toBe(1500)
   })
+
+  it('registers Phase 1 domain errors with stable retry semantics', () => {
+    const codes = [
+      'PRECONDITION_REQUIRED',
+      'IDEMPOTENCY_KEY_REQUIRED',
+      'IDEMPOTENCY_KEY_REUSED',
+      'CHARACTER_BRIEF_IMMUTABLE',
+      'CHARACTER_BRIEF_NOT_FOUND',
+      'CHARACTER_BRIEF_INPUT_CONFLICT',
+      'CHARACTER_BRIEF_STALE',
+      'ART_REFERENCE_SET_INVALID',
+      'ART_REFERENCE_PRIMARY_REQUIRED',
+      'ART_REFERENCE_ORDER_INVALID',
+      'PROMPT_INPUT_EMPTY',
+      'PROMPT_BASE_STALE',
+      'PROMPT_BLOCK_LOCKED',
+      'PROMPT_DRAFT_REQUIRED',
+      'PROMPT_VERSION_IMMUTABLE',
+      'PROMPT_REFERENCE_LIMIT',
+      'PROMPT_LENGTH_EXCEEDS_LIMIT',
+      'PROMPT_REVERSE_INVALID_OUTPUT',
+      'ART_ACTIVE_VERSION_CHANGED',
+      'ART_VERSION_IMMUTABLE',
+      'ART_IMAGE_INVALID',
+      'FORK_BRANCH_CONFLICT',
+      'FORK_SOURCE_UNCOMMITTED',
+      'JOB_CANCEL_NOT_ALLOWED',
+      'JOB_LEASE_LOST',
+      'PROVIDER_NOT_CONFIGURED',
+      'PROVIDER_CAPABILITY_UNSUPPORTED',
+      'BACKUP_FAILED',
+      'BACKUP_TOO_LARGE',
+      'ASSET_INVALID',
+      'ASSET_TOO_LARGE',
+      'ASSET_NOT_FOUND',
+      'PROJECT_HAS_ACTIVE_JOBS',
+      'RESOURCE_DELETED',
+      'ROW_VERSION_CONFLICT'
+    ] as const
+    for (const code of codes) {
+      const definition = getErrorDefinition(code)
+      expect(definition.code).toBe(code)
+      expect(definition.detailsSchema).toBeDefined()
+    }
+    expect(getErrorDefinition('ART_ACTIVE_VERSION_CHANGED')).toMatchObject({
+      httpStatus: 409,
+      category: 'conflict',
+      retryable: false,
+      userAction: 'refresh_resource'
+    })
+    expect(getErrorDefinition('PROMPT_BLOCK_LOCKED')).toMatchObject({
+      httpStatus: 423,
+      category: 'conflict',
+      retryable: false,
+      userAction: 'unlock_block'
+    })
+    expect(getErrorDefinition('CHARACTER_BRIEF_IMMUTABLE')).toMatchObject({
+      httpStatus: 409,
+      category: 'conflict',
+      retryable: false
+    })
+    expect(getErrorDefinition('ART_REFERENCE_SET_INVALID')).toMatchObject({
+      httpStatus: 422,
+      category: 'validation',
+      retryable: false
+    })
+    expect(getErrorDefinition('JOB_CANCEL_NOT_ALLOWED')).toMatchObject({
+      httpStatus: 409,
+      category: 'conflict',
+      retryable: false
+    })
+  })
 })

@@ -88,7 +88,16 @@ export const ERROR_REGISTRY = {
     'errors.requestInvalid',
     'fix_input',
     '请求无效',
-    '请求格式或参数无效'
+    '请求格式或参数无效',
+    z
+      .object({
+        reason: z.string().max(200).optional(),
+        issues: z
+          .array(z.object({ path: z.string().max(200), code: z.string().max(80) }))
+          .max(50)
+          .optional()
+      })
+      .strict()
   ),
   VALIDATION_FAILED: def(
     'VALIDATION_FAILED',
@@ -394,6 +403,480 @@ export const ERROR_REGISTRY = {
     'none',
     '已取消',
     '请求已取消'
+  ),
+  PRECONDITION_REQUIRED: def(
+    'PRECONDITION_REQUIRED',
+    428,
+    'validation',
+    false,
+    'warning',
+    'errors.preconditionRequired',
+    'refresh_resource',
+    '请求缺少前置条件',
+    '请刷新后重试',
+    z.object({ header: z.literal('If-Match') }).strict()
+  ),
+  IDEMPOTENCY_KEY_REQUIRED: def(
+    'IDEMPOTENCY_KEY_REQUIRED',
+    428,
+    'validation',
+    false,
+    'warning',
+    'errors.idempotencyKeyRequired',
+    'retry',
+    '请求缺少幂等键',
+    '请使用幂等键重试',
+    z.object({}).strict()
+  ),
+  IDEMPOTENCY_KEY_REUSED: def(
+    'IDEMPOTENCY_KEY_REUSED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.idempotencyKeyReused',
+    'retry',
+    '幂等键用于了不同请求',
+    '请使用新的幂等键',
+    z.object({ scope: z.string().max(120) }).strict()
+  ),
+  CHARACTER_BRIEF_IMMUTABLE: def(
+    'CHARACTER_BRIEF_IMMUTABLE',
+    409,
+    'conflict',
+    false,
+    'error',
+    'errors.characterBriefImmutable',
+    'refresh_resource',
+    '角色设定版本不可修改',
+    '请基于当前版本创建新的设定版本',
+    z.object({ versionId: z.string().max(64) }).strict()
+  ),
+  CHARACTER_BRIEF_NOT_FOUND: def(
+    'CHARACTER_BRIEF_NOT_FOUND',
+    404,
+    'not_found',
+    false,
+    'warning',
+    'errors.characterBriefNotFound',
+    'reload',
+    '角色设定版本不存在',
+    '请刷新角色后重试',
+    z.object({ versionId: z.string().max(64).optional() }).strict()
+  ),
+  CHARACTER_BRIEF_INPUT_CONFLICT: def(
+    'CHARACTER_BRIEF_INPUT_CONFLICT',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.characterBriefInputConflict',
+    'fix_input',
+    '不能同时提交内联设定和设定版本',
+    '请只保留一种设定来源',
+    z.object({}).strict()
+  ),
+  CHARACTER_BRIEF_STALE: def(
+    'CHARACTER_BRIEF_STALE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.characterBriefStale',
+    'refresh_resource',
+    '角色设定已变化',
+    '请刷新角色后重新提交',
+    z
+      .object({
+        expected: z.string().max(64).nullable(),
+        actual: z.string().max(64).nullable()
+      })
+      .strict()
+  ),
+  ART_REFERENCE_SET_INVALID: def(
+    'ART_REFERENCE_SET_INVALID',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.artReferenceSetInvalid',
+    'fix_input',
+    '参考图集合无效',
+    '请至少保留一张且不重复使用图片',
+    z.object({ reasons: z.array(z.string().max(120)).max(20) }).strict()
+  ),
+  ART_REFERENCE_PRIMARY_REQUIRED: def(
+    'ART_REFERENCE_PRIMARY_REQUIRED',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.artReferencePrimaryRequired',
+    'fix_input',
+    '必须指定一张主参考图',
+    '请将一张参考图设为主图',
+    z.object({}).strict()
+  ),
+  ART_REFERENCE_ORDER_INVALID: def(
+    'ART_REFERENCE_ORDER_INVALID',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.artReferenceOrderInvalid',
+    'fix_input',
+    '参考图顺序无效',
+    '主图必须为 0，其余从 1 连续编号',
+    z
+      .object({
+        primarySortOrder: z.number().int().nonnegative(),
+        orders: z.array(z.number().int().nonnegative()).max(32)
+      })
+      .strict()
+  ),
+  PROMPT_INPUT_EMPTY: def(
+    'PROMPT_INPUT_EMPTY',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.promptInputEmpty',
+    'fix_input',
+    '没有可用的初始输入',
+    '请填写角色设定或上传至少一张参考图',
+    z.object({}).strict()
+  ),
+  PROMPT_BASE_STALE: def(
+    'PROMPT_BASE_STALE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptBaseStale',
+    'refresh_resource',
+    '提示词基线已变化',
+    '请刷新草稿后重新生成建议',
+    z
+      .object({
+        expectedHash: z.string().regex(/^[0-9a-f]{64}$/),
+        actualHash: z.string().regex(/^[0-9a-f]{64}$/)
+      })
+      .strict()
+  ),
+  PROMPT_BLOCK_LOCKED: def(
+    'PROMPT_BLOCK_LOCKED',
+    423,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptBlockLocked',
+    'unlock_block',
+    '锁定块不可修改',
+    '请先解锁该块再采纳建议',
+    z.object({ blockId: z.string().max(100) }).strict()
+  ),
+  PROMPT_DRAFT_REQUIRED: def(
+    'PROMPT_DRAFT_REQUIRED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptDraftRequired',
+    'reload',
+    '需要先创建草稿',
+    '请从当前提示词版本创建草稿',
+    z.object({ artProjectId: z.string().max(64) }).strict()
+  ),
+  PROMPT_VERSION_IMMUTABLE: def(
+    'PROMPT_VERSION_IMMUTABLE',
+    409,
+    'conflict',
+    false,
+    'error',
+    'errors.promptVersionImmutable',
+    'refresh_resource',
+    '提示词版本不可修改',
+    '已提交版本只能 Fork 或新建草稿',
+    z.object({ versionId: z.string().max(64) }).strict()
+  ),
+  PROMPT_REFERENCE_LIMIT: def(
+    'PROMPT_REFERENCE_LIMIT',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.promptReferenceLimit',
+    'fix_input',
+    '参考图数量超出模型能力',
+    '请减少素材或切换模型',
+    z
+      .object({
+        requested: z.number().int().nonnegative(),
+        limit: z.number().int().nonnegative()
+      })
+      .strict()
+  ),
+  PROMPT_LENGTH_EXCEEDS_LIMIT: def(
+    'PROMPT_LENGTH_EXCEEDS_LIMIT',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.promptLengthExceedsLimit',
+    'fix_input',
+    '提示词超出模型上限',
+    '请缩短非锁定块或更换模型',
+    z
+      .object({
+        length: z.number().int().nonnegative(),
+        limit: z.number().int().nonnegative()
+      })
+      .strict()
+  ),
+  PROMPT_REVERSE_INVALID_OUTPUT: def(
+    'PROMPT_REVERSE_INVALID_OUTPUT',
+    502,
+    'dependency',
+    true,
+    'warning',
+    'errors.promptReverseInvalidOutput',
+    'retry',
+    '反推结果无法解析',
+    '可以重试反推',
+    z.object({ attempt: z.number().int().positive() }).strict()
+  ),
+  ART_ACTIVE_VERSION_CHANGED: def(
+    'ART_ACTIVE_VERSION_CHANGED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.artActiveVersionChanged',
+    'refresh_resource',
+    '当前立绘版本已变化',
+    '请刷新后重新比较候选',
+    z
+      .object({
+        expected: z.string().max(64).nullable(),
+        actual: z.string().max(64).nullable()
+      })
+      .strict()
+  ),
+  ART_VERSION_IMMUTABLE: def(
+    'ART_VERSION_IMMUTABLE',
+    409,
+    'conflict',
+    false,
+    'error',
+    'errors.artVersionImmutable',
+    'refresh_resource',
+    '立绘版本不可修改',
+    '请新建版本或切换 active',
+    z.object({ versionId: z.string().max(64) }).strict()
+  ),
+  ART_IMAGE_INVALID: def(
+    'ART_IMAGE_INVALID',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.artImageInvalid',
+    'fix_input',
+    '立绘图片无效',
+    '请检查图片格式、尺寸与内容',
+    z.object({ reasons: z.array(z.string().max(80)).max(20) }).strict()
+  ),
+  FORK_BRANCH_CONFLICT: def(
+    'FORK_BRANCH_CONFLICT',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.forkBranchConflict',
+    'fix_input',
+    '分支名在父项目中已存在',
+    '请更换分支名',
+    z
+      .object({
+        parentProjectId: z.string().max(64),
+        branchLabel: z.string().max(80)
+      })
+      .strict()
+  ),
+  FORK_SOURCE_UNCOMMITTED: def(
+    'FORK_SOURCE_UNCOMMITTED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.forkSourceUncommitted',
+    'reload',
+    'Fork 源尚未提交',
+    '请先提交版本',
+    z.object({}).strict()
+  ),
+  JOB_CANCEL_NOT_ALLOWED: def(
+    'JOB_CANCEL_NOT_ALLOWED',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.jobCancelNotAllowed',
+    'refresh_resource',
+    '任务当前不可取消',
+    '请刷新任务状态',
+    z
+      .object({
+        status: z.enum(['succeeded', 'failed', 'cancelled', 'unknown_outcome'])
+      })
+      .strict()
+  ),
+  JOB_LEASE_LOST: def(
+    'JOB_LEASE_LOST',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.jobLeaseLost',
+    'retry',
+    '任务租约已失效',
+    '请重试操作',
+    z.object({ jobId: z.string().max(64) }).strict()
+  ),
+  PROVIDER_NOT_CONFIGURED: def(
+    'PROVIDER_NOT_CONFIGURED',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.providerNotConfigured',
+    'open_settings',
+    '模型服务未配置',
+    '请在设置中启用并填写模型服务',
+    z.object({ connectionId: z.string().max(64).optional() }).strict()
+  ),
+  PROVIDER_CAPABILITY_UNSUPPORTED: def(
+    'PROVIDER_CAPABILITY_UNSUPPORTED',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.providerCapabilityUnsupported',
+    'choose_other',
+    '模型缺少所需能力',
+    '请更换支持参考图的生图模型',
+    z.object({ capability: z.string().max(80) }).strict()
+  ),
+  BACKUP_FAILED: def(
+    'BACKUP_FAILED',
+    500,
+    'resource',
+    true,
+    'error',
+    'errors.backupFailed',
+    'retry',
+    '备份失败',
+    '请重试导出',
+    z.object({}).strict()
+  ),
+  BACKUP_TOO_LARGE: def(
+    'BACKUP_TOO_LARGE',
+    413,
+    'resource',
+    false,
+    'warning',
+    'errors.backupTooLarge',
+    'choose_other',
+    '备份体积超过上限',
+    '请先清理未引用资产',
+    z
+      .object({
+        bytes: z.number().int().nonnegative(),
+        limit: z.number().int().positive()
+      })
+      .strict()
+  ),
+  ASSET_INVALID: def(
+    'ASSET_INVALID',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.assetInvalid',
+    'fix_input',
+    '素材文件无效',
+    '仅支持 PNG/JPEG/WebP 图片',
+    z.object({ reasons: z.array(z.string().max(80)).max(20) }).strict()
+  ),
+  ASSET_TOO_LARGE: def(
+    'ASSET_TOO_LARGE',
+    413,
+    'validation',
+    false,
+    'warning',
+    'errors.assetTooLarge',
+    'fix_input',
+    '素材文件过大',
+    '请上传更小的图片',
+    z
+      .object({
+        bytes: z.number().int().nonnegative(),
+        limit: z.number().int().positive()
+      })
+      .strict()
+  ),
+  ASSET_NOT_FOUND: def(
+    'ASSET_NOT_FOUND',
+    404,
+    'not_found',
+    false,
+    'warning',
+    'errors.assetNotFound',
+    'reload',
+    '素材不存在',
+    '请刷新素材列表',
+    z.object({}).strict()
+  ),
+  PROJECT_HAS_ACTIVE_JOBS: def(
+    'PROJECT_HAS_ACTIVE_JOBS',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.projectHasActiveJobs',
+    'refresh_resource',
+    '项目仍有任务运行',
+    '请等待或取消任务后再删除',
+    z.object({ jobIds: z.array(z.string().max(64)).max(20) }).strict()
+  ),
+  RESOURCE_DELETED: def(
+    'RESOURCE_DELETED',
+    410,
+    'not_found',
+    false,
+    'warning',
+    'errors.resourceDeleted',
+    'reload',
+    '资源已删除',
+    '该资源已被删除',
+    z.object({ resource: z.enum(['character', 'artProject']) }).strict()
+  ),
+  ROW_VERSION_CONFLICT: def(
+    'ROW_VERSION_CONFLICT',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.rowVersionConflict',
+    'refresh_resource',
+    '资源已被修改',
+    '请刷新后重试',
+    z
+      .object({
+        expected: z.number().int().nonnegative(),
+        actual: z.number().int().nonnegative().optional()
+      })
+      .strict()
   )
 } satisfies Record<string, ErrorDefinition>
 
