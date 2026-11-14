@@ -1,0 +1,330 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import Database from 'better-sqlite3'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { openDatabase } from '../src/db/client'
+import { migrate } from '../src/db/migrate'
+import { fileURLToPath } from 'node:url'
+
+const migrations = fileURLToPath(new URL('../migrations', import.meta.url))
+let db: Database.Database | null = null
+
+afterEach(() => {
+  db?.close()
+  db = null
+})
+
+function fresh() {
+  const dir = mkdtempSync(join(tmpdir(), 'agent2live-p1-'))
+  db = openDatabase(join(dir, 'app.sqlite'))
+  migrate(db, migrations)
+  return db
+}
+
+describe('Phase 1 migrations', () => {
+  it('applies 0002 and 0003 after 0001', () => {
+    const database = fresh()
+    const names = (
+      database.prepare('select version from schema_migrations order by version').all() as Array<{
+        version: string
+      }>
+    ).map((row) => row.version)
+    expect(names).toEqual(expect.arrayContaining(['0001_init', '0002_core_domain', '0003_prompt_art']))
+    expect(database.pragma('foreign_keys', { simple: true })).toBe(1)
+    expect(migrate(database, migrations).applied).toEqual([])
+  })
+
+  it('enforces one active draft and one fork child', () => {
+    const database = fresh()
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000000', 'A', 1, 1)
+    database
+      .prepare(
+        'insert into art_projects (id,character_id,title,stage,created_at,updated_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run('artp_01J00000000000000000000000', 'chr_01J00000000000000000000000', 'main', 'idea_draft', 1, 1)
+    database
+      .prepare(
+        'insert into art_projects (id,character_id,title,stage,created_at,updated_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run('artp_01J00000000000000000000001', 'chr_01J00000000000000000000000', 'parent', 'idea_draft', 1, 1)
+    const insert = database.prepare(
+      'insert into prompt_drafts (id,art_project_id,revision,status,state_json,content_hash,created_at,updated_at,row_version) values (?,?,?,?,?,?,?,?,1)'
+    )
+    insert.run(
+      'pd_01J00000000000000000000000',
+      'artp_01J00000000000000000000000',
+      1,
+      'active',
+      '{}',
+      'a'.repeat(64),
+      1,
+      1
+    )
+    expect(() =>
+      insert.run(
+        'pd_01J00000000000000000000001',
+        'artp_01J00000000000000000000000',
+        2,
+        'active',
+        '{}',
+        'b'.repeat(64),
+        1,
+        1
+      )
+    ).toThrow(/UNIQUE/i)
+    const fork = database.prepare(
+      'insert into project_forks (id,child_project_id,parent_project_id,root_project_id,source_kind,source_version_id,source_hash,branch_label,status,created_at) values (?,?,?,?,?,?,?,?,?,?)'
+    )
+    fork.run(
+      'frk_01J00000000000000000000000',
+      'artp_01J00000000000000000000000',
+      'artp_01J00000000000000000000001',
+      'artp_01J00000000000000000000001',
+      'prompt_version',
+      'pv_x',
+      'a'.repeat(64),
+      'x',
+      'active',
+      1
+    )
+    expect(() =>
+      fork.run(
+        'frk_01J00000000000000000000001',
+        'artp_01J00000000000000000000000',
+        'artp_01J00000000000000000000001',
+        'artp_01J00000000000000000000001',
+        'prompt_version',
+        'pv_x',
+        'a'.repeat(64),
+        'x',
+        'active',
+        1
+      )
+    ).toThrow(/UNIQUE/i)
+  })
+
+  it('rejects updates and deletes of committed versions', () => {
+    const database = fresh()
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000000', 'A', 1, 1)
+    database
+      .prepare(
+        'insert into art_projects (id,character_id,title,stage,created_at,updated_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run('artp_01J00000000000000000000000', 'chr_01J00000000000000000000000', 'main', 'idea_draft', 1, 1)
+    database
+      .prepare(
+        'insert into prompt_drafts (id,art_project_id,revision,status,state_json,content_hash,created_at,updated_at,row_version) values (?,?,?,?,?,?,?,?,1)'
+      )
+      .run(
+        'pd_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        1,
+        'active',
+        '{}',
+        'a'.repeat(64),
+        1,
+        1
+      )
+    database
+      .prepare(
+        'insert into prompt_input_submissions (id,art_project_id,draft_id,revision,requirements_json,created_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run(
+        'pin_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pd_01J00000000000000000000000',
+        1,
+        '[]',
+        1
+      )
+    database
+      .prepare(
+        'insert into prompt_versions (id,art_project_id,input_submission_id,content_json,content_hash,version_number,created_at) values (?,?,?,?,?,?,?)'
+      )
+      .run(
+        'pv_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pin_01J00000000000000000000000',
+        '{}',
+        'a'.repeat(64),
+        1,
+        1
+      )
+    expect(() =>
+      database
+        .prepare('update prompt_versions set content_hash = ? where id = ?')
+        .run('b'.repeat(64), 'pv_01J00000000000000000000000')
+    ).toThrow(/PROMPT_VERSION_IMMUTABLE/i)
+    expect(() =>
+      database.prepare('delete from prompt_versions where id = ?').run('pv_01J00000000000000000000000')
+    ).toThrow(/PROMPT_VERSION_IMMUTABLE/i)
+  })
+
+  it('keeps character brief versions immutable and validates the active pointer', () => {
+    const database = fresh()
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000000', 'A', 1, 1)
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000001', 'B', 1, 1)
+    database
+      .prepare(
+        'insert into character_brief_versions (id,character_id,parent_version_id,schema_version,content_json,content_hash,source_kind,created_at) values (?,?,?,?,?,?,?,?)'
+      )
+      .run(
+        'cbv_01J00000000000000000000000',
+        'chr_01J00000000000000000000000',
+        null,
+        'character-brief/1',
+        '{}',
+        'a'.repeat(64),
+        'user',
+        1
+      )
+    database
+      .prepare('update characters set active_brief_version_id = ? where id = ?')
+      .run('cbv_01J00000000000000000000000', 'chr_01J00000000000000000000000')
+    expect(() =>
+      database
+        .prepare('update characters set active_brief_version_id = ? where id = ?')
+        .run('cbv_01J00000000000000000000000', 'chr_01J00000000000000000000001')
+    ).toThrow(/ACTIVE_BRIEF_CHARACTER_MISMATCH/i)
+    expect(() =>
+      database
+        .prepare('update character_brief_versions set content_hash = ? where id = ?')
+        .run('b'.repeat(64), 'cbv_01J00000000000000000000000')
+    ).toThrow(/CHARACTER_BRIEF_IMMUTABLE/i)
+    expect(() =>
+      database
+        .prepare('delete from character_brief_versions where id = ?')
+        .run('cbv_01J00000000000000000000000')
+    ).toThrow(/CHARACTER_BRIEF_IMMUTABLE/i)
+  })
+
+  it('enforces art_version reference primary, asset, and order uniqueness', () => {
+    const database = fresh()
+    for (const id of ['ast_01J00000000000000000000000', 'ast_01J00000000000000000000001']) {
+      database
+        .prepare(
+          'insert into assets (id,sha256,media_type,byte_size,storage_key,metadata_json,created_at) values (?,?,?,?,?,?,?)'
+        )
+        .run(id, id.slice(-1).repeat(64), 'image/png', 1, `blobs/${id}`, '{}', 1)
+    }
+    const insert = database.prepare(
+      'insert into asset_links (id,asset_id,owner_type,owner_id,role,weight,sort_order,is_primary,created_at) values (?,?,?,?,?,?,?,?,?)'
+    )
+    insert.run(
+      'lnk_01J00000000000000000000000',
+      'ast_01J00000000000000000000000',
+      'art_version',
+      'artv_01J00000000000000000000000',
+      'identity_reference',
+      1,
+      0,
+      1,
+      1
+    )
+    expect(() =>
+      insert.run(
+        'lnk_01J00000000000000000000001',
+        'ast_01J00000000000000000000001',
+        'art_version',
+        'artv_01J00000000000000000000000',
+        'style_reference',
+        1,
+        0,
+        1,
+        1
+      )
+    ).toThrow(/UNIQUE/i)
+    insert.run(
+      'lnk_01J00000000000000000000002',
+      'ast_01J00000000000000000000001',
+      'art_version',
+      'artv_01J00000000000000000000000',
+      'style_reference',
+      1,
+      1,
+      0,
+      1
+    )
+    expect(() =>
+      insert.run(
+        'lnk_01J00000000000000000000003',
+        'ast_01J00000000000000000000000',
+        'art_version',
+        'artv_01J00000000000000000000000',
+        'other',
+        1,
+        2,
+        0,
+        1
+      )
+    ).toThrow(/UNIQUE/i)
+    expect(() =>
+      insert.run(
+        'lnk_01J00000000000000000000004',
+        'ast_01J00000000000000000000000',
+        'art_version',
+        'artv_01J00000000000000000000000',
+        'other',
+        1,
+        1,
+        0,
+        1
+      )
+    ).toThrow(/UNIQUE/i)
+    expect(() =>
+      database
+        .prepare('update asset_links set weight = 0.5 where id = ?')
+        .run('lnk_01J00000000000000000000000')
+    ).toThrow(/ART_VERSION_IMMUTABLE/i)
+    expect(() =>
+      database.prepare('delete from asset_links where id = ?').run('lnk_01J00000000000000000000000')
+    ).toThrow(/ART_VERSION_IMMUTABLE/i)
+  })
+
+  it('enforces same-character forks with a trigger', () => {
+    const database = fresh()
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000000', 'A', 1, 1)
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000001', 'B', 1, 1)
+    for (const [projectId, characterId] of [
+      ['artp_01J00000000000000000000000', 'chr_01J00000000000000000000000'],
+      ['artp_01J00000000000000000000001', 'chr_01J00000000000000000000001']
+    ]) {
+      database
+        .prepare(
+          'insert into art_projects (id,character_id,title,stage,created_at,updated_at,row_version) values (?,?,?,?,?,?,1)'
+        )
+        .run(projectId, characterId, projectId, 'idea_draft', 1, 1)
+    }
+    expect(() =>
+      database
+        .prepare(
+          'insert into project_forks (id,child_project_id,parent_project_id,root_project_id,source_kind,source_version_id,source_hash,branch_label,status,created_at) values (?,?,?,?,?,?,?,?,?,?)'
+        )
+        .run(
+          'frk_01J00000000000000000000000',
+          'artp_01J00000000000000000000001',
+          'artp_01J00000000000000000000000',
+          'artp_01J00000000000000000000000',
+          'prompt_version',
+          'pv_x',
+          'a'.repeat(64),
+          'x',
+          'active',
+          1
+        )
+    ).toThrow(/CHARACTER/i)
+  })
+})

@@ -92,7 +92,12 @@ it('reports db, migration, wal, and vector metadata when a database is configure
   const res = await app.inject({ url: '/health', headers: { authorization: 'Bearer t' } })
   const body = res.json()
   expect(body.data).toEqual({ db: true, events: true })
-  expect(body.db).toEqual({ schemaVersion: 'sqlite/1', migration: '0001_init', wal: true, vectorDim: 768 })
+  expect(body.db).toEqual({
+    schemaVersion: 'sqlite/1',
+    migration: '0003_prompt_art',
+    wal: true,
+    vectorDim: 768
+  })
 })
 
 it('streams event_log with SSE and replay cursor', async () => {

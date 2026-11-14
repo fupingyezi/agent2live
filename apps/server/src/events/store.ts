@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { createLogger } from '@agent2live/logging'
 
 export interface EventInput {
   type: string
@@ -20,6 +21,10 @@ export interface EventRecord {
   createdAt: number
 }
 
+export interface AppendOptions {
+  notify?: boolean
+}
+
 interface EventRow {
   seq: number
   type: string
@@ -34,6 +39,7 @@ interface EventRow {
 type Listener = (event: EventRecord) => void
 
 const COLUMNS = 'seq, type, scope_kind, scope_id, payload_json, request_id, trace_id, created_at'
+const log = createLogger({ level: process.env.LOG_LEVEL ?? 'info' })
 
 export class EventStore {
   private readonly listeners = new Set<Listener>()
@@ -51,7 +57,7 @@ export class EventStore {
     this.selectSeq = db.prepare(`select ${COLUMNS} from event_log where seq = ?`)
   }
 
-  append(input: EventInput): EventRecord {
+  append(input: EventInput, options: AppendOptions = {}): EventRecord {
     const result = this.insert.run({
       type: input.type,
       scopeKind: input.scopeKind,
@@ -63,8 +69,20 @@ export class EventStore {
     })
     const row = this.selectSeq.get(Number(result.lastInsertRowid)) as EventRow
     const event = toEventRecord(row)
-    for (const listener of this.listeners) listener(event)
+    if (options.notify !== false) this.notify(event)
     return event
+  }
+
+  // A listener failure must not surface as a failed write: the row is already committed
+  // and stream clients recover by replaying event_log from their cursor.
+  notify(event: EventRecord): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch (error) {
+        log.error({ err: error, seq: event.seq, type: event.type }, 'event listener failed')
+      }
+    }
   }
 
   listAfter(seq: number, limit = 500): EventRecord[] {
