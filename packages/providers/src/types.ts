@@ -31,13 +31,18 @@ export interface ChatResult {
 export interface ImageReference {
   mimeType: 'image/png' | 'image/jpeg' | 'image/webp'
   data: Buffer
+  role?: string
+  weight?: number
+  note?: string
 }
 
 export interface ImageRequest {
   prompt: string
+  negativePrompt?: string
   referenceImages?: ImageReference[]
   count?: number
   size: string
+  seed?: number
 }
 
 export interface GeneratedImage {

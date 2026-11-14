@@ -2,10 +2,12 @@ import type Database from 'better-sqlite3'
 import type { Clock } from './clock'
 import type { EventStore } from '../events/store'
 import { BlobStore } from './blobs'
+import { ArtVersionService } from './art-versions'
 import { AssetService } from './assets'
 import { AuditService } from './audit'
 import { CharacterBriefService } from './character-briefs'
 import { CharacterService } from './characters'
+import { GenerationService } from './generations'
 import { IdempotencyService } from './idempotency'
 import { ProjectTreeService } from './project-tree'
 import { ProjectService } from './projects'
@@ -20,6 +22,7 @@ import { ProviderConnectionService } from './provider-connections'
 import { ProviderInvocationService } from './provider-invocations'
 import { ProviderRegistry } from './provider-registry'
 import { JobEngine } from '../jobs/engine'
+import { IMAGE_GENERATION_JOB_TYPE, createImageGenerationJob } from '../jobs/image-generation'
 import { PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob } from '../jobs/prompt-reverse'
 import { PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob } from '../jobs/prompt-suggestion'
 import type { JobDefinition } from '../jobs/types'
@@ -51,6 +54,8 @@ export interface Services {
   projectTree: ProjectTreeService
   submissions: PromptSubmissionRepository
   versions: PromptVersionService
+  artVersions: ArtVersionService
+  generations: GenerationService
   drafts: PromptDraftService
   inputs: PromptInputService
   promptReverse: PromptReverseService
@@ -85,6 +90,7 @@ export function createServices(deps: ServiceDeps): Services {
   })
   const submissions = new PromptSubmissionRepository(deps.db)
   const versions = new PromptVersionService(deps.db)
+  const artVersions = new ArtVersionService(deps.db)
   const drafts = new PromptDraftService({
     db: deps.db,
     clock: deps.clock,
@@ -135,9 +141,24 @@ export function createServices(deps: ServiceDeps): Services {
     audit,
     events: deps.events
   })
+  const generations = new GenerationService({
+    db: deps.db,
+    clock: deps.clock,
+    projects,
+    versions,
+    submissions,
+    artVersions,
+    assets,
+    connections: providerConnections,
+    registry: providerRegistry,
+    invocations: providerInvocations,
+    audit,
+    events: deps.events
+  })
   const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
   handlers.set(PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob(promptReverse))
   handlers.set(PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob(promptSuggestions))
+  handlers.set(IMAGE_GENERATION_JOB_TYPE, createImageGenerationJob(generations))
   const jobs = new JobEngine({
     db: deps.db,
     events: deps.events,
@@ -161,6 +182,8 @@ export function createServices(deps: ServiceDeps): Services {
     projectTree,
     submissions,
     versions,
+    artVersions,
+    generations,
     drafts,
     inputs,
     promptReverse,

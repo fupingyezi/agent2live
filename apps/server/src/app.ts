@@ -11,6 +11,7 @@ import { EventStore } from './events/store'
 import { toAppError } from './http/errors'
 import { registerAssetRoutes } from './routes/assets'
 import { registerCharacterRoutes } from './routes/characters'
+import { registerGenerationRoutes } from './routes/generations'
 import { registerJobRoutes } from './routes/jobs'
 import { registerMultipart } from './routes/multipart'
 import { registerProjectRoutes } from './routes/projects'
@@ -156,6 +157,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
   const promptSuggestions = options.services?.promptSuggestions
   if (promptSuggestions && jobs) {
     registerPromptSuggestionRoutes(app, { promptSuggestions, jobs })
+  }
+
+  const generations = options.services?.generations
+  if (generations && jobs && idempotency) {
+    registerGenerationRoutes(app, { generations, jobs, idempotency })
   }
 
   const characters = options.services?.characters

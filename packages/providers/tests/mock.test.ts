@@ -38,6 +38,16 @@ describe('mock providers', () => {
     expect(result.images[1]!.sha256).not.toBe(result.images[0]!.sha256)
   })
 
+  it('keeps unseeded mock images stable and conditions output on the seed', async () => {
+    const provider = createMockImageProvider()
+    const base = { prompt: 'a character', size: '512x896', count: 1 }
+    const first = await provider.generate(base, { requestId: 'mock-seed-1' })
+    const repeat = await provider.generate(base, { requestId: 'mock-seed-2' })
+    const seeded = await provider.generate({ ...base, seed: 2 }, { requestId: 'mock-seed-3' })
+    expect(repeat.images[0]!.sha256).toBe(first.images[0]!.sha256)
+    expect(seeded.images[0]!.sha256).not.toBe(first.images[0]!.sha256)
+  })
+
   it('returns schema-valid reverse JSON for the mock marker', async () => {
     const provider = createMockChatProvider()
     const envelope = {

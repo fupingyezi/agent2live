@@ -52,6 +52,7 @@ describe('SeedreamImageProvider', () => {
         prompt: 'a flat illustration',
         referenceImages: [{ mimeType: 'image/png', data: image }],
         count: 2,
+        seed: 42,
         size: '1024x1024'
       },
       { requestId: 'req-image-1' }
@@ -66,6 +67,7 @@ describe('SeedreamImageProvider', () => {
       model: 'test-seedream-model',
       prompt: 'a flat illustration',
       size: '1024x1024',
+      seed: 42,
       response_format: 'url',
       watermark: false,
       sequential_image_generation: 'auto',

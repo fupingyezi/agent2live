@@ -1,0 +1,430 @@
+import { describe, expect, it } from 'vitest'
+import { hashCanonical, newId } from '@agent2live/contracts'
+import { createTestApp } from './helpers/app'
+import { multipartPayload, seedProject, specWithAsset } from './helpers/seed-prompt'
+import { png } from './helpers/files'
+
+type Ctx = Awaited<ReturnType<typeof createTestApp>>
+
+async function committedPrompt(ctx: Ctx, options: { materials?: number } = {}) {
+  const { project } = await seedProject(ctx)
+  const materialCount = options.materials ?? 1
+  const materials = Array.from({ length: materialCount }, (_, index) => ({
+    partName: index === 0 ? 'face' : `part_${index}`,
+    fileField: `file_${index}`,
+    role: index === 0 ? 'identity_reference' : 'style_reference',
+    note: index === 0 ? '脸型' : `参考${index}`,
+    weight: 1,
+    locked: index === 0,
+    sortOrder: index
+  }))
+  const form = new FormData()
+  form.append(
+    'metadata',
+    JSON.stringify({
+      globalNotes: '清透',
+      requirements: [
+        { id: 'req_identity', text: '银白长发与蓝色眼睛', strength: 'must' },
+        { id: 'req_style', text: '清爽赛璐璐', strength: 'prefer' },
+        { id: 'req_avoid', text: '避免写实皮肤', strength: 'avoid' }
+      ],
+      materials
+    })
+  )
+  for (const material of materials) {
+    const source = await png(320, 480 + material.sortOrder * 10)
+    const bytes = new Uint8Array(source.length)
+    bytes.set(source)
+    form.append(material.fileField, new Blob([bytes], { type: 'image/png' }), `${material.fileField}.png`)
+  }
+  const packed = await multipartPayload(form)
+  const input = await ctx.app.inject({
+    method: 'POST',
+    url: `/api/v1/art-projects/${project.id}/prompt-inputs`,
+    headers: { ...ctx.auth, 'content-type': packed.contentType },
+    payload: packed.payload
+  })
+  expect(input.statusCode).toBe(201)
+  const inputBody = input.json<{
+    submission: { id: string; materials: Array<{ assetId: string }> }
+    draft: { id: string; rowVersion: number }
+  }>()
+  const saved = await ctx.app.inject({
+    method: 'PATCH',
+    url: `/api/v1/art-projects/${project.id}/prompt-drafts/${inputBody.draft.id}`,
+    headers: { ...ctx.auth, 'if-match': `"${inputBody.draft.rowVersion}"` },
+    payload: { state: specWithAsset(inputBody.submission.materials[0]!.assetId) }
+  })
+  expect(saved.statusCode).toBe(200)
+  const draft = saved.json<{ rowVersion: number }>()
+  const commit = await ctx.app.inject({
+    method: 'POST',
+    url: `/api/v1/art-projects/${project.id}/prompt-drafts/${inputBody.draft.id}/commit`,
+    headers: { ...ctx.auth, 'if-match': `"${draft.rowVersion}"`, 'idempotency-key': 'gen-commit-0001' },
+    payload: {}
+  })
+  expect(commit.statusCode).toBe(201)
+  return {
+    project,
+    version: commit.json<{ version: { id: string } }>().version,
+    materialAssetIds: inputBody.submission.materials.map((material) => material.assetId)
+  }
+}
+
+let providerCreateSeq = 0
+function nextProviderKey(prefix: string): string {
+  providerCreateSeq += 1
+  return `${prefix}-${String(providerCreateSeq).padStart(4, '0')}`
+}
+
+async function mockImageConnection(ctx: Ctx, overrides: Record<string, unknown> = {}) {
+  const response = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/v1/providers',
+    headers: { ...ctx.auth, 'idempotency-key': nextProviderKey('provider-mock-image') },
+    payload: {
+      label: 'Mock image',
+      kind: 'image',
+      adapter: 'mock',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        image: {
+          maxReferenceImages: 4,
+          maxPromptChars: 20_000,
+          supportsNegativePrompt: true,
+          supportsWeightSyntax: true,
+          supportsSeed: true,
+          maxCount: 4,
+          sizes: ['512x896', '1024x1792'],
+          ...overrides
+        }
+      }
+    }
+  })
+  expect(response.statusCode).toBe(201)
+  return response.json<{ id: string }>()
+}
+
+function seedActiveArtVersion(
+  ctx: Ctx,
+  projectId: string,
+  promptVersionId: string,
+  assetIds: string[]
+): string {
+  const now = ctx.clock.now()
+  const versionId = newId('artVersion')
+  ctx.db
+    .prepare(
+      `insert into art_versions
+     (id, art_project_id, parent_version_id, origin_version_id, prompt_version_id,
+      source_json, validation_json, canvas_transform_json, content_hash, version_number, created_at)
+     values (?, ?, null, ?, ?, '{}', '{}', '{}', ?, 1, ?)`
+    )
+    .run(versionId, projectId, versionId, promptVersionId, hashCanonical({ versionId }), now)
+  const insertLink = ctx.db.prepare(
+    `insert into asset_links
+     (id, asset_id, owner_type, owner_id, role, note, weight, sort_order, is_primary, locked, created_at)
+     values (?, ?, 'art_version', ?, ?, ?, 1, ?, ?, 0, ?)`
+  )
+  for (const [index, assetId] of assetIds.entries()) {
+    insertLink.run(
+      newId('assetLink'),
+      assetId,
+      versionId,
+      index === 0 ? 'identity_reference' : 'style_reference',
+      index === 0 ? '主参考' : `辅参考${index}`,
+      index,
+      index === 0 ? 1 : 0,
+      now
+    )
+  }
+  ctx.db
+    .prepare(
+      `update art_projects
+     set active_version_id = ?, stage = 'art_version_active', updated_at = ?, row_version = row_version + 1
+     where id = ?`
+    )
+    .run(versionId, now, projectId)
+  return versionId
+}
+
+describe('generation jobs', () => {
+  it('runs a mock generation and records decodable ready candidates', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const connection = await mockImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0001' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 2,
+          size: '512x896',
+          seed: 7
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const createdBody = created.json<{
+        generationId: string
+        jobId: string
+        referenceAssetIds: string[]
+        references: {
+          mode: string
+          requested: Array<{ source: string }>
+          fingerprint: string
+        }
+      }>()
+      expect(createdBody.referenceAssetIds).toHaveLength(1)
+      expect(createdBody.references.mode).toBe('full')
+      expect(createdBody.references.requested).toHaveLength(1)
+      expect(createdBody.references.requested[0]!.source).toBe('prompt_material')
+      expect(createdBody.references.fingerprint).toHaveLength(64)
+      await ctx.services.jobs.tick()
+
+      const generation = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${createdBody.generationId}`,
+        headers: ctx.auth
+      })
+      expect(generation.statusCode).toBe(200)
+      const body = generation.json<{
+        status: string
+        baseArtVersionId: string | null
+        candidates: Array<{
+          status: string
+          assetId: string
+          validation: { width: number; height: number; sha256: string }
+          asset: { id: string; mediaType: string }
+        }>
+      }>()
+      expect(body.status).toBe('succeeded')
+      expect(body.baseArtVersionId).toBeNull()
+      expect(body.candidates).toHaveLength(2)
+      for (const candidate of body.candidates) {
+        expect(candidate.status).toBe('ready')
+        expect(candidate.asset.id).toBe(candidate.assetId)
+        expect(candidate.asset.mediaType).toBe('image/png')
+        expect(candidate.validation.width).toBe(512)
+        expect(candidate.validation.height).toBe(896)
+        expect(candidate.validation.sha256).toHaveLength(64)
+      }
+
+      const replay = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0001' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 2,
+          size: '512x896',
+          seed: 7
+        }
+      })
+      expect(replay.statusCode).toBe(202)
+      expect(replay.json()).toMatchObject({
+        generationId: createdBody.generationId,
+        jobId: createdBody.jobId
+      })
+
+      const reused = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0001' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896',
+          seed: 7
+        }
+      })
+      expect(reused.statusCode).toBe(409)
+      expect(reused.json()).toMatchObject({
+        error: {
+          code: 'IDEMPOTENCY_KEY_REUSED',
+          details: { scope: `generation.create:${project.id}` }
+        }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects sizes, counts, and seeds outside the connection profile', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const noSeed = await mockImageConnection(ctx, { supportsSeed: false })
+      const unsupportedSize = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0002' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: noSeed.id,
+          count: 1,
+          size: '999x999'
+        }
+      })
+      expect(unsupportedSize.statusCode).toBe(400)
+      expect(unsupportedSize.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+
+      const unsupportedCount = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0003' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: noSeed.id,
+          count: 9,
+          size: '512x896'
+        }
+      })
+      expect(unsupportedCount.statusCode).toBe(400)
+      expect(unsupportedCount.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+
+      const unsupportedSeed = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0004' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: noSeed.id,
+          count: 1,
+          size: '512x896',
+          seed: 1
+        }
+      })
+      expect(unsupportedSeed.statusCode).toBe(422)
+      expect(unsupportedSeed.json()).toMatchObject({
+        error: { code: 'PROVIDER_CAPABILITY_UNSUPPORTED' }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('freezes the full active reference set and reports budget truncation', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 3 })
+      const activeVersionId = seedActiveArtVersion(ctx, project.id, version.id, materialAssetIds)
+      const connection = await mockImageConnection(ctx, { maxReferenceImages: 2 })
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0005' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896'
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const body = created.json<{
+        generationId: string
+        baseArtVersionId: string
+        referenceAssetIds: string[]
+        references: {
+          mode: string
+          primaryAssetId: string
+          requested: Array<{ assetId: string; source: string; sortOrder: number }>
+          sentAssetIds: string[]
+          droppedAssetIds: string[]
+          warnings: string[]
+          fingerprint: string
+        }
+      }>()
+      expect(body.baseArtVersionId).toBe(activeVersionId)
+      expect(body.referenceAssetIds).toEqual(materialAssetIds.slice(0, 2))
+      expect(body.references.mode).toBe('truncated')
+      expect(body.references.primaryAssetId).toBe(materialAssetIds[0])
+      expect(body.references.requested.map((reference) => reference.assetId)).toEqual(materialAssetIds)
+      expect(body.references.requested.every((reference) => reference.source === 'art_version')).toBe(true)
+      expect(body.references.sentAssetIds).toEqual(materialAssetIds.slice(0, 2))
+      expect(body.references.droppedAssetIds).toEqual([materialAssetIds[2]])
+      expect(body.references.warnings).toContain('reference_budget_exceeded')
+      expect(body.references.fingerprint).toHaveLength(64)
+
+      const generation = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${body.generationId}`,
+        headers: ctx.auth
+      })
+      const snapshot = generation.json<{
+        request: { references: { requested: unknown[]; droppedAssetIds: string[] } }
+      }>()
+      expect(snapshot.request.references.requested).toHaveLength(3)
+      expect(snapshot.request.references.droppedAssetIds).toEqual([materialAssetIds[2]])
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('folds auxiliary references into the frozen prompt for a single-image provider', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 2 })
+      const connection = await mockImageConnection(ctx, { maxReferenceImages: 1 })
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0006' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896'
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const body = created.json<{
+        generationId: string
+        referenceAssetIds: string[]
+        references: {
+          mode: string
+          sentAssetIds: string[]
+          foldedAssetIds: string[]
+          warnings: string[]
+        }
+      }>()
+      expect(body.referenceAssetIds).toEqual([materialAssetIds[0]])
+      expect(body.references.mode).toBe('folded_single_image')
+      expect(body.references.sentAssetIds).toEqual([materialAssetIds[0]])
+      expect(body.references.foldedAssetIds).toEqual([materialAssetIds[1]])
+      expect(body.references.warnings).toContain('auxiliary_images_folded')
+
+      const generation = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${body.generationId}`,
+        headers: ctx.auth
+      })
+      const snapshot = generation.json<{
+        request: {
+          compiled: { prompt: string; warnings: string[] }
+          references: { requested: unknown[]; foldedAssetIds: string[] }
+        }
+      }>()
+      expect(snapshot.request.references.requested).toHaveLength(2)
+      expect(snapshot.request.references.foldedAssetIds).toEqual([materialAssetIds[1]])
+      expect(snapshot.request.compiled.prompt).toContain('were not sent to the image model')
+      expect(snapshot.request.compiled.prompt).toContain('参考1')
+      expect(snapshot.request.compiled.warnings).toContain('auxiliary_images_folded')
+
+      await ctx.services.jobs.tick()
+      const finished = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${body.generationId}`,
+        headers: ctx.auth
+      })
+      expect(finished.json<{ status: string }>().status).toBe('succeeded')
+    } finally {
+      await ctx.close()
+    }
+  })
+})

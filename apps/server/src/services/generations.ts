@@ -1,0 +1,520 @@
+import { createHash } from 'node:crypto'
+import type Database from 'better-sqlite3'
+import {
+  getErrorDefinition,
+  newId,
+  providerCapabilitiesSchema,
+  type CreateGenerationInput
+} from '@agent2live/contracts'
+import { AppError } from '../errors'
+import { withEvents } from './events-buffer'
+import { compilePrompt } from '../prompt/compile'
+import { foldedReferenceInstruction, generationRequestSchema, planReferences } from '../generation/request'
+import type { GenerationRequest, PreparedGeneration } from '../generation/request'
+import type { AssetDto, AssetService } from './assets'
+import type { AuditService } from './audit'
+import type { Clock } from './clock'
+import type { EventStore } from '../events/store'
+import type { PromptSubmissionRepository } from './prompt-submissions'
+import type { ProviderConnectionService } from './provider-connections'
+import type { ProviderInvocationService } from './provider-invocations'
+import type { ProviderRegistry } from './provider-registry'
+import type { ProjectService } from './projects'
+import type { PromptVersionService } from './prompt-versions'
+import type { RequestIds } from './request-ids'
+import type { ArtVersionService } from './art-versions'
+import type { JobHandlerContext, JobStatus } from '../jobs/types'
+
+export interface GenerationServiceDeps {
+  db: Database.Database
+  clock: Clock
+  projects: ProjectService
+  versions: PromptVersionService
+  submissions: PromptSubmissionRepository
+  artVersions: ArtVersionService
+  assets: AssetService
+  connections: ProviderConnectionService
+  registry: ProviderRegistry
+  invocations: ProviderInvocationService
+  audit: AuditService
+  events: EventStore
+}
+
+interface GenerationRow {
+  id: string
+  art_project_id: string
+  prompt_version_id: string
+  base_art_version_id: string | null
+  provider_connection_id: string | null
+  request_json: string
+  request_hash: string
+  job_id: string
+  created_at: number
+}
+
+interface CandidateRow {
+  id: string
+  generation_job_id: string
+  asset_id: string
+  validation_json: string
+  status: 'ready' | 'accepted' | 'rejected' | 'expired'
+  accepted_art_version_id: string | null
+  created_at: number
+}
+
+interface JobRow {
+  id: string
+  status: string
+  attempts: number
+  error_json: string | null
+  checkpoint_json: string | null
+  updated_at: number
+}
+
+export interface GenerationCandidateDto {
+  id: string
+  generationJobId: string
+  assetId: string
+  asset: AssetDto | null
+  status: 'ready' | 'accepted' | 'rejected' | 'expired'
+  validation: Record<string, unknown>
+  acceptedArtVersionId: string | null
+  createdAt: number
+}
+
+export interface GenerationDto {
+  id: string
+  artProjectId: string
+  promptVersionId: string
+  baseArtVersionId: string | null
+  providerConnectionId: string | null
+  jobId: string
+  status: JobStatus
+  attempts: number
+  errorCode: string | null
+  progress: number | null
+  request: GenerationRequest
+  requestHash: string
+  candidates: GenerationCandidateDto[]
+  createdAt: number
+  updatedAt: number
+}
+
+function parseCheckpoint(json: string | null): { progress: number | null } {
+  if (!json) return { progress: null }
+  try {
+    const value = JSON.parse(json) as { progress?: unknown }
+    return { progress: typeof value.progress === 'number' ? value.progress : null }
+  } catch {
+    return { progress: null }
+  }
+}
+
+function parseErrorCode(json: string | null): string | null {
+  if (!json) return null
+  try {
+    const value = JSON.parse(json) as { code?: unknown }
+    return typeof value.code === 'string' ? value.code : null
+  } catch {
+    return null
+  }
+}
+
+function parseStoredObject(json: string, field: string): Record<string, unknown> {
+  let value: unknown
+  try {
+    value = JSON.parse(json)
+  } catch {
+    throw new AppError('SYS_INTERNAL', { reason: `${field} is not valid JSON` })
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AppError('SYS_INTERNAL', { reason: `${field} is not an object` })
+  }
+  return value as Record<string, unknown>
+}
+
+/** Provider failures must never spill raw messages into persisted rows. */
+function invocationErrorCode(error: unknown): string {
+  const candidate = (error as { code?: unknown }).code
+  if (
+    typeof candidate === 'string' &&
+    candidate.length <= 80 &&
+    getErrorDefinition(candidate).code === candidate
+  ) {
+    return candidate
+  }
+  return 'SYS_INTERNAL'
+}
+
+export class GenerationService {
+  constructor(private readonly deps: GenerationServiceDeps) {}
+
+  prepare(projectId: string, input: CreateGenerationInput): PreparedGeneration {
+    this.deps.projects.getWritable(projectId)
+    const version = this.deps.versions.get(projectId, input.promptVersionId)
+    const connection = this.deps.connections.getRow(input.providerConnectionId)
+    if (!connection.enabled) {
+      throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId: connection.id })
+    }
+    if (connection.kind !== 'image') {
+      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image' })
+    }
+    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
+    const image = capabilities.image
+    if (!image) {
+      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image' })
+    }
+
+    if (input.count > image.maxCount) {
+      throw new AppError('REQUEST_INVALID', { reason: `count must be <= ${image.maxCount}` })
+    }
+    const size = input.size ?? image.sizes[0]!
+    if (!image.sizes.includes(size)) {
+      throw new AppError('REQUEST_INVALID', { reason: `unsupported size ${size}` })
+    }
+    const seed = input.seed ?? null
+    if (seed !== null && !image.supportsSeed) {
+      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image.seed' })
+    }
+
+    const compiled = compilePrompt(version.state, image)
+    if (compiled.promptLength > image.maxPromptChars) {
+      throw new AppError('PROMPT_LENGTH_EXCEEDS_LIMIT', {
+        length: compiled.promptLength,
+        limit: image.maxPromptChars
+      })
+    }
+    const submission = this.deps.submissions.get(projectId, version.inputSubmissionId)
+    const activeArt = this.deps.artVersions.active(projectId)
+    const activeReferences =
+      activeArt?.references.map((reference) => ({
+        assetId: reference.assetId,
+        role: reference.role,
+        note: reference.note,
+        weight: reference.weight,
+        sortOrder: reference.sortOrder,
+        isPrimary: reference.isPrimary
+      })) ?? []
+    const promptMaterials = [...submission.materials]
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.assetId.localeCompare(right.assetId))
+      .map((material) => ({
+        assetId: material.assetId,
+        role: material.role,
+        note: material.note,
+        weight: material.weight
+      }))
+    const referencePlan = planReferences({
+      activeReferences,
+      promptMaterials,
+      limit: image.maxReferenceImages
+    })
+    for (const reference of referencePlan.requested) {
+      this.deps.assets.getAsset(reference.assetId)
+    }
+    const folded = referencePlan.requested.filter((reference) =>
+      referencePlan.foldedAssetIds.includes(reference.assetId)
+    )
+    const foldedText = foldedReferenceInstruction(folded)
+    const prompt = foldedText === '' ? compiled.prompt : `${compiled.prompt}\n\n${foldedText}`
+    if (prompt.length > image.maxPromptChars) {
+      throw new AppError('PROMPT_LENGTH_EXCEEDS_LIMIT', {
+        length: prompt.length,
+        limit: image.maxPromptChars
+      })
+    }
+    const warnings = [
+      ...new Set([
+        ...compiled.warnings,
+        ...referencePlan.warnings,
+        ...(referencePlan.duplicateMaterialAssetIds.length > 0 ? ['prompt_material_duplicate_asset'] : [])
+      ])
+    ]
+
+    return {
+      artProjectId: projectId,
+      promptVersionId: version.id,
+      baseArtVersionId: activeArt?.id ?? null,
+      providerConnectionId: connection.id,
+      promptContentHash: version.contentHash,
+      compiled: { ...compiled, prompt, promptLength: prompt.length, warnings },
+      referenceAssetIds: referencePlan.sentAssetIds,
+      primaryReferenceAssetId: referencePlan.primaryAssetId,
+      references: referencePlan,
+      count: input.count,
+      size,
+      seed
+    }
+  }
+
+  createRecord(request: GenerationRequest, jobId: string, ids: RequestIds): GenerationDto {
+    const now = this.deps.clock.now()
+    return withEvents(this.deps.db, this.deps.events, (events) => {
+      this.deps.db
+        .prepare(
+          `insert into generation_jobs
+           (id, art_project_id, prompt_version_id, base_art_version_id, provider_connection_id,
+            request_json, request_hash, job_id, created_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          request.generationJobId,
+          request.artProjectId,
+          request.promptVersionId,
+          request.baseArtVersionId,
+          request.providerConnectionId,
+          JSON.stringify(request),
+          request.requestHash,
+          jobId,
+          now
+        )
+      this.deps.db
+        .prepare(
+          `update art_projects set stage = 'generating', updated_at = ?, row_version = row_version + 1 where id = ?`
+        )
+        .run(now, request.artProjectId)
+      this.deps.audit.append({
+        actor: { kind: 'local-user' },
+        action: 'generation.created',
+        targetType: 'generation_job',
+        targetId: request.generationJobId,
+        outcome: 'success',
+        requestId: ids.requestId,
+        traceId: ids.traceId,
+        metadata: {
+          sourceVersionId: request.promptVersionId,
+          baseArtVersionId: request.baseArtVersionId,
+          providerConnectionId: request.providerConnectionId,
+          referenceCount: request.referenceAssetIds.length,
+          referenceMode: request.references.mode,
+          referenceSetHash: request.references.fingerprint,
+          referenceFoldedCount: request.references.foldedAssetIds.length,
+          referenceDroppedCount: request.references.droppedAssetIds.length
+        }
+      })
+      events.append({
+        type: 'generation.created',
+        scopeKind: 'project',
+        scopeId: request.artProjectId,
+        payload: { generationId: request.generationJobId, jobId },
+        requestId: ids.requestId,
+        traceId: ids.traceId
+      })
+      return this.get(request.generationJobId)
+    })
+  }
+
+  get(generationId: string): GenerationDto {
+    const row = this.deps.db.prepare('select * from generation_jobs where id = ?').get(generationId) as
+      | GenerationRow
+      | undefined
+    if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'generation' })
+    const job = this.deps.db.prepare('select * from jobs where id = ?').get(row.job_id) as JobRow | undefined
+    if (!job) throw new AppError('SYS_INTERNAL', { reason: 'generation job missing' })
+    const candidateRows = this.deps.db
+      .prepare('select * from generation_candidates where generation_job_id = ? order by created_at, id')
+      .all(generationId) as CandidateRow[]
+    const assets = this.deps.assets.listByIds(candidateRows.map((candidate) => candidate.asset_id))
+    const byId = new Map(assets.map((asset) => [asset.id, asset]))
+    const checkpoint = parseCheckpoint(job.checkpoint_json)
+    let request: GenerationRequest
+    try {
+      request = generationRequestSchema.parse(JSON.parse(row.request_json))
+    } catch {
+      throw new AppError('SYS_INTERNAL', { reason: 'generation request snapshot is invalid' })
+    }
+    return {
+      id: row.id,
+      artProjectId: row.art_project_id,
+      promptVersionId: row.prompt_version_id,
+      baseArtVersionId: row.base_art_version_id,
+      providerConnectionId: row.provider_connection_id,
+      jobId: row.job_id,
+      status: job.status as JobStatus,
+      attempts: job.attempts,
+      errorCode: parseErrorCode(job.error_json),
+      progress: checkpoint.progress,
+      request,
+      requestHash: row.request_hash,
+      candidates: candidateRows.map((candidate) => ({
+        id: candidate.id,
+        generationJobId: candidate.generation_job_id,
+        assetId: candidate.asset_id,
+        asset: byId.get(candidate.asset_id) ?? null,
+        status: candidate.status,
+        validation: parseStoredObject(candidate.validation_json, 'validation_json'),
+        acceptedArtVersionId: candidate.accepted_art_version_id,
+        createdAt: candidate.created_at
+      })),
+      createdAt: row.created_at,
+      updatedAt: job.updated_at
+    }
+  }
+
+  async run(
+    context: JobHandlerContext<GenerationRequest>
+  ): Promise<{ generationId: string; candidateIds: string[] }> {
+    const request = context.payload
+    const row = this.deps.db
+      .prepare('select * from generation_jobs where id = ?')
+      .get(request.generationJobId) as GenerationRow | undefined
+    if (!row) throw new AppError('SYS_INTERNAL', { reason: 'generation row missing' })
+    if (row.job_id !== context.jobId || row.request_hash !== request.requestHash) {
+      throw new AppError('SYS_INTERNAL', { reason: 'generation snapshot mismatch' })
+    }
+    const existing = this.deps.db
+      .prepare('select id from generation_candidates where generation_job_id = ? order by created_at, id')
+      .all(request.generationJobId) as Array<{ id: string }>
+    if (existing.length > 0) {
+      return { generationId: request.generationJobId, candidateIds: existing.map((item) => item.id) }
+    }
+
+    const connection = this.deps.connections.getRow(request.providerConnectionId)
+    if (!connection.enabled || connection.kind !== 'image') {
+      throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId: connection.id })
+    }
+    const provider = await this.deps.registry.image(connection.id)
+    const planned = new Map(request.references.requested.map((reference) => [reference.assetId, reference]))
+    const references = request.referenceAssetIds.map((assetId) => {
+      const opened = this.deps.assets.openContent(assetId)
+      const reference = planned.get(assetId)
+      if (!reference) {
+        throw new AppError('SYS_INTERNAL', { reason: 'sent reference missing from plan' })
+      }
+      return {
+        mimeType: opened.asset.mediaType,
+        data: opened.bytes,
+        role: reference.role,
+        weight: reference.weight,
+        note: reference.note
+      }
+    })
+    context.progress(10, 'references loaded')
+    const invocationId = this.deps.invocations.start({
+      connectionId: connection.id,
+      purpose: 'image.generate',
+      requestHash: request.requestHash,
+      model: connection.model
+    })
+    const startedAt = this.deps.clock.now()
+    let providerResult: Awaited<ReturnType<typeof provider.generate>>
+    try {
+      providerResult = await provider.generate(
+        {
+          prompt: request.compiled.prompt,
+          ...(request.compiled.negativePrompt ? { negativePrompt: request.compiled.negativePrompt } : {}),
+          referenceImages: references,
+          count: request.count,
+          size: request.size,
+          ...(request.seed === null ? {} : { seed: request.seed })
+        },
+        { requestId: context.jobId, signal: context.signal, timeoutMs: 120_000 }
+      )
+      this.deps.invocations.succeed(invocationId, {
+        latencyMs: this.deps.clock.now() - startedAt
+      })
+    } catch (error) {
+      const code = invocationErrorCode(error)
+      this.deps.invocations.fail(invocationId, code, this.deps.clock.now() - startedAt)
+      // Rethrow a code-only error so provider response bodies never reach error_json or logs.
+      throw new AppError(code)
+    }
+    const images = providerResult.images.slice(0, request.count)
+    if (images.length === 0) {
+      throw new AppError('ART_IMAGE_INVALID', { reasons: ['provider returned no images'] })
+    }
+    context.progress(60, 'images received')
+
+    const ingested: Array<{
+      candidateId: string
+      assetId: string
+      validation: Record<string, unknown>
+    }> = []
+    for (const [index, image] of images.entries()) {
+      const sha256 = createHash('sha256').update(image.data).digest('hex')
+      if (sha256 !== image.sha256) {
+        throw new AppError('ART_IMAGE_INVALID', { reasons: ['sha256 mismatch'] })
+      }
+      if (image.width < 64 || image.height < 64 || image.width > 8192 || image.height > 8192) {
+        throw new AppError('ART_IMAGE_INVALID', { reasons: ['dimension out of range'] })
+      }
+      let asset: Awaited<ReturnType<AssetService['ingestGenerated']>>
+      try {
+        asset = await this.deps.assets.ingestGenerated({
+          bytes: image.data,
+          mimeType: image.mimeType,
+          sourceRef: `${request.generationJobId}:${index}`,
+          modelRef: providerResult.model,
+          requestId: context.jobId,
+          traceId: context.jobId
+        })
+      } catch (error) {
+        if (error instanceof AppError && error.code.startsWith('ASSET_')) {
+          throw new AppError('ART_IMAGE_INVALID', { reasons: ['provider image could not be validated'] })
+        }
+        // Storage failures are internal; keep their raw messages out of job evidence.
+        throw new AppError('SYS_INTERNAL')
+      }
+      ingested.push({
+        candidateId: newId('generationCandidate'),
+        assetId: asset.asset.id,
+        validation: {
+          width: image.width,
+          height: image.height,
+          mimeType: image.mimeType,
+          sha256,
+          providerRequestId: providerResult.providerRequestId,
+          model: providerResult.model
+        }
+      })
+    }
+
+    const now = this.deps.clock.now()
+    withEvents(this.deps.db, this.deps.events, (events) => {
+      for (const candidate of ingested) {
+        this.deps.db
+          .prepare(
+            `insert into generation_candidates
+             (id, generation_job_id, asset_id, validation_json, status, accepted_art_version_id, created_at)
+             values (?, ?, ?, ?, 'ready', null, ?)`
+          )
+          .run(
+            candidate.candidateId,
+            request.generationJobId,
+            candidate.assetId,
+            JSON.stringify(candidate.validation),
+            now
+          )
+      }
+      this.deps.db
+        .prepare(
+          `update art_projects set stage = 'candidate_review', updated_at = ?, row_version = row_version + 1 where id = ?`
+        )
+        .run(now, request.artProjectId)
+      this.deps.audit.append({
+        actor: { kind: 'system', component: 'image-generation' },
+        action: 'generation.succeeded',
+        targetType: 'generation_job',
+        targetId: request.generationJobId,
+        outcome: 'success',
+        requestId: context.jobId,
+        traceId: context.jobId,
+        metadata: { candidateCount: ingested.length }
+      })
+      events.append({
+        type: 'generation.succeeded',
+        scopeKind: 'project',
+        scopeId: request.artProjectId,
+        payload: {
+          generationId: request.generationJobId,
+          candidateIds: ingested.map((candidate) => candidate.candidateId)
+        },
+        requestId: context.jobId,
+        traceId: context.jobId
+      })
+    })
+    return {
+      generationId: request.generationJobId,
+      candidateIds: ingested.map((candidate) => candidate.candidateId)
+    }
+  }
+}

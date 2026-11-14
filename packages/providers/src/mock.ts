@@ -218,7 +218,9 @@ export function createMockImageProvider(options: MockOptions = {}): ImageProvide
       const count = Math.max(1, Math.min(request.count ?? 1, 4))
       const images: GeneratedImage[] = []
       for (let index = 0; index < count; index++) {
-        const digest = createHash('sha256').update(`${request.prompt}:${index}`).digest()
+        const digest = createHash('sha256')
+          .update(`${request.prompt}:${index}${request.seed === undefined ? '' : `|${request.seed}`}`)
+          .digest()
         const bytes = await sharp({
           create: {
             width: 256,
