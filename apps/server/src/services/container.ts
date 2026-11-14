@@ -4,7 +4,11 @@ import type { EventStore } from '../events/store'
 import { BlobStore } from './blobs'
 import { AssetService } from './assets'
 import { AuditService } from './audit'
+import { CharacterBriefService } from './character-briefs'
+import { CharacterService } from './characters'
 import { IdempotencyService } from './idempotency'
+import { ProjectTreeService } from './project-tree'
+import { ProjectService } from './projects'
 import { withEvents } from './events-buffer'
 import { ProviderConnectionService } from './provider-connections'
 import { ProviderInvocationService } from './provider-invocations'
@@ -33,6 +37,10 @@ export interface Services {
   providerRegistry: ProviderRegistry
   providerInvocations: ProviderInvocationService
   jobs: JobEngine
+  characters: CharacterService
+  characterBriefs: CharacterBriefService
+  projects: ProjectService
+  projectTree: ProjectTreeService
   withEvents: typeof withEvents
 }
 
@@ -45,6 +53,15 @@ export function createServices(deps: ServiceDeps): Services {
     audit,
     clock: deps.clock
   })
+  const characters = new CharacterService({ db: deps.db, clock: deps.clock, events: deps.events, audit })
+  const characterBriefs = new CharacterBriefService({
+    db: deps.db,
+    clock: deps.clock,
+    events: deps.events,
+    audit
+  })
+  const projects = new ProjectService({ db: deps.db, clock: deps.clock, events: deps.events, audit })
+  const projectTree = new ProjectTreeService({ db: deps.db, projects })
   const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
   const jobs = new JobEngine({
     db: deps.db,
@@ -69,6 +86,10 @@ export function createServices(deps: ServiceDeps): Services {
     providerRegistry: new ProviderRegistry(providerConnections, deps.secrets),
     providerInvocations: new ProviderInvocationService(deps.db, deps.clock),
     jobs,
+    characters,
+    characterBriefs,
+    projects,
+    projectTree,
     withEvents
   }
 }

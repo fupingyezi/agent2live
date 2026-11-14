@@ -8,9 +8,12 @@ import { latestMigrationVersion } from './db/migrate'
 import { AppError, problemFor } from './errors'
 import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
+import { toAppError } from './http/errors'
 import { registerAssetRoutes } from './routes/assets'
+import { registerCharacterRoutes } from './routes/characters'
 import { registerJobRoutes } from './routes/jobs'
 import { registerMultipart } from './routes/multipart'
+import { registerProjectRoutes } from './routes/projects'
 import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
 
@@ -136,12 +139,24 @@ export function buildApp(options: AppOptions): FastifyInstance {
     registerJobRoutes(app, jobs)
   }
 
+  const characters = options.services?.characters
+  const characterBriefs = options.services?.characterBriefs
+  const projects = options.services?.projects
+  const projectTree = options.services?.projectTree
+  if (characters && characterBriefs && projects && projectTree) {
+    app.register(async (scope) => {
+      registerCharacterRoutes(scope, { characters, characterBriefs, projects })
+      registerProjectRoutes(scope, { projects, projectTree })
+    })
+  }
+
   app.setNotFoundHandler((request, _reply) => {
     throw new AppError('RESOURCE_NOT_FOUND', { resource: request.url.split('?')[0] })
   })
 
   app.setErrorHandler((error, request, reply) => {
-    const problem = problemFor(error, {
+    const appError = toAppError(error)
+    const problem = problemFor(appError, {
       requestId: request.id,
       traceId: request.traceId,
       instance: request.url

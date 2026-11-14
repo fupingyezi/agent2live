@@ -30,13 +30,19 @@ function zodIssues(error: unknown): FieldIssue[] | null {
   })
 }
 
+// Zod copies from different workspace packages share no class identity, so detection is by name.
+export function zodErrorDetails(error: unknown): { issues: FieldIssue[] } | null {
+  const issues = zodIssues(error)
+  return issues ? { issues } : null
+}
+
 export function problemFor(
   error: unknown,
   ids: { requestId: string; traceId: string; instance: string; supportId?: string }
 ): ProblemDetails {
-  const issues = zodIssues(error)
-  if (issues) {
-    return buildProblem({ ...ids, code: 'REQUEST_INVALID', details: { issues } })
+  const zodDetails = zodErrorDetails(error)
+  if (zodDetails) {
+    return buildProblem({ ...ids, code: 'REQUEST_INVALID', details: zodDetails })
   }
   if (error instanceof AppError) {
     return buildProblem({ ...ids, code: error.code, details: error.details })
