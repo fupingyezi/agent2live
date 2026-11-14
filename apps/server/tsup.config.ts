@@ -10,5 +10,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   external: ['better-sqlite3', 'sqlite-vec'],
-  noExternal: ['@agent2live/contracts', '@agent2live/logging']
+  noExternal: ['@agent2live/contracts', '@agent2live/logging', '@agent2live/providers']
 })

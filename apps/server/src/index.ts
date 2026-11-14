@@ -5,8 +5,23 @@ import { openDatabase } from './db/client'
 import { migrate } from './db/migrate'
 import { removeEndpointFile, writeEndpointFile } from './endpoint'
 import { EventStore } from './events/store'
+import { BrokerSecretResolver, type BrokerPort } from './services/broker-resolver'
 import { systemClock } from './services/clock'
 import { createServices } from './services/container'
+import { StaticSecretResolver, type SecretResolver } from './services/secret-resolver'
+
+interface ParentPort {
+  postMessage(message: unknown): void
+  on(event: 'message', listener: (event: { data: unknown }) => void): void
+}
+
+const parentPort = (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort
+const secrets: SecretResolver = parentPort
+  ? new BrokerSecretResolver({
+      postMessage: (message) => parentPort.postMessage(message),
+      onMessage: (listener) => parentPort.on('message', (event) => listener(event.data))
+    } satisfies BrokerPort)
+  : new StaticSecretResolver(new Map())
 
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -17,7 +32,8 @@ async function main(): Promise<void> {
     db,
     dataDir: config.dataDir,
     events: eventStore,
-    clock: systemClock
+    clock: systemClock,
+    secrets
   })
   const app = buildApp({
     token: config.token,

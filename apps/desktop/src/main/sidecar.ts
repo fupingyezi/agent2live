@@ -3,6 +3,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseSidecarEndpoint, type SidecarInfo } from '@agent2live/contracts'
+import { getSecretVault } from './secrets'
 
 let child: UtilityProcess | null = null
 let info: SidecarInfo | null = null
@@ -29,6 +30,22 @@ function dataDir(): string {
   return process.env.AGENT2LIVE_DATA_DIR ?? app.getPath('userData')
 }
 
+function respondToSecretRequest(proc: UtilityProcess, message: unknown): void {
+  const request = message as { type?: string; id?: string; secretRef?: string }
+  if (request.type !== 'secret.request' || !request.id || !request.secretRef) return
+  let value: string | null = null
+  try {
+    value = getSecretVault().resolve(request.secretRef)
+  } catch {
+    value = null
+  }
+  try {
+    proc.postMessage({ type: 'secret.response', id: request.id, value })
+  } catch {
+    // The sidecar exited with the request in flight; its pending resolve already fails closed.
+  }
+}
+
 export async function startSidecar(): Promise<SidecarInfo> {
   if (info) return info
   const entry = serverEntry()
@@ -46,10 +63,12 @@ export async function startSidecar(): Promise<SidecarInfo> {
     env.AGENT2LIVE_MIGRATIONS_DIR = join(process.resourcesPath, 'server', 'migrations')
   }
 
-  child = utilityProcess.fork(entry, [], { env, stdio: 'pipe' })
-  child.stdout?.on('data', (chunk: Buffer) => console.log(`[sidecar] ${chunk.toString().trimEnd()}`))
-  child.stderr?.on('data', (chunk: Buffer) => console.error(`[sidecar] ${chunk.toString().trimEnd()}`))
-  child.on('exit', (code) => {
+  const proc = utilityProcess.fork(entry, [], { env, stdio: 'pipe' })
+  child = proc
+  proc.stdout?.on('data', (chunk: Buffer) => console.log(`[sidecar] ${chunk.toString().trimEnd()}`))
+  proc.stderr?.on('data', (chunk: Buffer) => console.error(`[sidecar] ${chunk.toString().trimEnd()}`))
+  proc.on('message', (message: unknown) => respondToSecretRequest(proc, message))
+  proc.on('exit', (code) => {
     lastError = new Error(`sidecar exited with code ${code}`)
     info = null
     child = null

@@ -13,6 +13,7 @@
   "dependencies": {
     "@agent2live/contracts": "workspace:*",
     "@agent2live/logging": "workspace:*",
+    "@agent2live/providers": "workspace:*",
     "@fastify/cors": "^11.4.1",
     "@fastify/multipart": "^9.0.1",
     "better-sqlite3": "^13.0.3",

@@ -10,6 +10,7 @@ import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
 import { registerAssetRoutes } from './routes/assets'
 import { registerMultipart } from './routes/multipart'
+import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
 
 export interface AppOptions {
@@ -117,6 +118,15 @@ export function buildApp(options: AppOptions): FastifyInstance {
     app.register(async (scope) => {
       await registerMultipart(scope)
       registerAssetRoutes(scope, assets)
+    })
+  }
+
+  const providerConnections = options.services?.providerConnections
+  const secrets = options.services?.secrets
+  const idempotency = options.services?.idempotency
+  if (providerConnections && secrets && idempotency) {
+    app.register(async (scope) => {
+      registerProviderRoutes(scope, { connections: providerConnections, secrets, idempotency })
     })
   }
 

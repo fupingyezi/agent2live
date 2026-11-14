@@ -111,6 +111,9 @@ importers:
       '@agent2live/logging':
         specifier: workspace:*
         version: link:../../packages/logging
+      '@agent2live/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@fastify/cors':
         specifier: ^11.4.1
         version: 11.4.1

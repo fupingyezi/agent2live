@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import { createPetWindow, createStudioWindow } from './windows'
-import { registerWindowIpc } from './ipc'
+import { registerSecretIpc, registerWindowIpc } from './ipc'
 import { registerModelProtocol, registerModelScheme } from './model-protocol'
 import { startSidecar, stopSidecar } from './sidecar'
 
@@ -19,6 +19,7 @@ function modelRoot(): string | null {
 async function bootstrap(): Promise<void> {
   registerModelProtocol(modelRoot)
   registerWindowIpc()
+  registerSecretIpc()
   if (process.env.AGENT2LIVE_SKIP_SIDECAR !== '1') {
     try {
       await startSidecar()

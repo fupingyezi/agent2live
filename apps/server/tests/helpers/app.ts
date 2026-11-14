@@ -8,6 +8,7 @@ import { migrate } from '../../src/db/migrate'
 import { EventStore } from '../../src/events/store'
 import { FakeClock } from '../../src/services/clock'
 import { createServices, type Services } from '../../src/services/container'
+import { StaticSecretResolver, type SecretResolver } from '../../src/services/secret-resolver'
 
 const migrations = fileURLToPath(new URL('../../migrations', import.meta.url))
 
@@ -27,10 +28,13 @@ export function createTestDatabase(): TestDatabase {
   return { db, dataDir, clock, eventStore }
 }
 
-export async function createTestApp(options: { now?: number; services?: Partial<Services> } = {}): Promise<
+export async function createTestApp(
+  options: { now?: number; services?: Partial<Services>; secrets?: SecretResolver } = {}
+): Promise<
   TestDatabase & {
     clock: FakeClock
     services: Services
+    secrets: SecretResolver
     app: ReturnType<typeof buildApp>
     auth: { authorization: string }
     close: () => Promise<void>
@@ -40,8 +44,9 @@ export async function createTestApp(options: { now?: number; services?: Partial<
   if (options.now !== undefined) fixture.clock.set(options.now)
   const clock = fixture.clock
   const events = fixture.eventStore
+  const secrets = options.secrets ?? options.services?.secrets ?? new StaticSecretResolver(new Map())
   const services = {
-    ...createServices({ db: fixture.db, dataDir: fixture.dataDir, events, clock }),
+    ...createServices({ db: fixture.db, dataDir: fixture.dataDir, events, clock, secrets }),
     ...options.services
   }
   const app = buildApp({
@@ -56,6 +61,7 @@ export async function createTestApp(options: { now?: number; services?: Partial<
     ...fixture,
     clock,
     services,
+    secrets,
     app,
     auth: { authorization: 'Bearer test-token-0123456789' },
     close: async () => {
