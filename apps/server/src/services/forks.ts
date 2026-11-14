@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import {
   artVersionReferenceSetSchema,
+  hashCanonical,
   newId,
   promptSpecSchema,
   type CreateForkInput,
@@ -214,7 +215,7 @@ export class ForkService {
         outcome: 'success',
         requestId: ctx.requestId,
         traceId: ctx.traceId,
-        metadata: { branchLabel, detached: detach }
+        metadata: { branchLabelHash: hashCanonical(branchLabel), detached: detach }
       })
       events.append({
         type: detach ? 'artProject.forkDetached' : 'artProject.forkUpdated',
@@ -269,6 +270,9 @@ export class ForkService {
         keep.add(fork.parent_project_id)
         cursor = fork.parent_project_id
       }
+    }
+    for (const id of keep) {
+      if (!rowById.has(id)) throw new AppError('SYS_INTERNAL', { reason: 'fork target missing' })
     }
 
     const build = (id: string, stack: Set<string>): LineageNodeDto => {
@@ -450,7 +454,7 @@ export class ForkService {
           rootProjectId,
           sourceIsArt: input.sourceKind === 'art_version',
           sourceVersionId: input.sourceVersionId,
-          branchLabel,
+          branchLabelHash: hashCanonical(branchLabel),
           seedVersionId: seedPrompt.id,
           seedArtVersionId
         }

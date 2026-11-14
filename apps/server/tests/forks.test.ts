@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { newId } from '@agent2live/contracts'
 import { createTestApp } from './helpers/app'
 import { multipartPayload, postMetadataOnlyInput, seedProject, specWithAsset } from './helpers/seed-prompt'
 import { png } from './helpers/files'
@@ -596,6 +597,158 @@ describe('project forks', () => {
       }>()
       expect(draftBody.state.characterBriefVersionId).toBe(briefVersionId)
       expect(draftBody.state.blocks.some((block) => block.source === 'character-brief')).toBe(true)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('stores only a hash of the branch label in fork audit metadata', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { promptVersion } = await committedPrompt(ctx, 'fork-commit-audit')
+      const label = 'Prompt改'
+      const response = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${promptVersion.id}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-audit-0001' },
+        payload: { title: '分支', branchLabel: label }
+      })
+      expect(response.statusCode).toBe(201)
+      const audits = ctx.db
+        .prepare(`select metadata_json from audit_events where action = 'art_project.forked'`)
+        .all() as Array<{ metadata_json: string }>
+      expect(audits).toHaveLength(1)
+      const metadata = JSON.parse(audits[0]!.metadata_json) as Record<string, unknown>
+      expect(metadata.branchLabelHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(metadata.branchLabel).toBeUndefined()
+      expect(audits[0]!.metadata_json).not.toContain(label)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('allows renaming a fork link to a label the audit guard would forbid', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { promptVersion } = await committedPrompt(ctx, 'fork-commit-rename')
+      const forked = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${promptVersion.id}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-rename-0001' },
+        payload: { title: '重命名', branchLabel: '原始' }
+      })
+      expect(forked.statusCode).toBe(201)
+      const childId = forked.json<{ childProject: { id: string } }>().childProject.id
+      const renamed = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${childId}/fork-link`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-rename-0002' },
+        payload: { branchLabel: '/Users/本地' }
+      })
+      expect(renamed.statusCode).toBe(200)
+      expect(renamed.json<{ fork: { branchLabel: string } }>().fork.branchLabel).toBe('/Users/本地')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects a fork whose prompt source hash does not match the committed content', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { promptVersion } = await committedPrompt(ctx, 'fork-commit-bad')
+      const source = ctx.db
+        .prepare('select art_project_id, input_submission_id, content_json from prompt_versions where id = ?')
+        .get(promptVersion.id) as {
+        art_project_id: string
+        input_submission_id: string
+        content_json: string
+      }
+      const badVersionId = newId('promptVersion')
+      ctx.db
+        .prepare(
+          `insert into prompt_versions
+           (id, art_project_id, parent_version_id, parent_project_version_id, origin_version_id,
+            input_submission_id, content_json, content_hash, version_number, created_at)
+           values (?, ?, null, null, null, ?, ?, ?, 2, ?)`
+        )
+        .run(
+          badVersionId,
+          source.art_project_id,
+          source.input_submission_id,
+          source.content_json,
+          '0'.repeat(64),
+          Date.now()
+        )
+      const response = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${badVersionId}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-bad-0001' },
+        payload: { title: '坏源', branchLabel: '坏源' }
+      })
+      expect(response.statusCode).toBe(409)
+      expect(response.json()).toMatchObject({
+        error: { code: 'FORK_SOURCE_UNCOMMITTED', details: {} }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('treats sibling branch labels case-insensitively for the conflict', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, promptVersion } = await committedPrompt(ctx, 'fork-commit-case')
+      const first = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${promptVersion.id}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-case-0001' },
+        payload: { title: 'V1 分支', branchLabel: 'V1' }
+      })
+      expect(first.statusCode).toBe(201)
+      const conflict = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${promptVersion.id}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-case-0002' },
+        payload: { title: 'v1 重复', branchLabel: 'v1' }
+      })
+      expect(conflict.statusCode).toBe(409)
+      expect(conflict.json()).toMatchObject({
+        error: {
+          code: 'FORK_BRANCH_CONFLICT',
+          details: { parentProjectId: project.id, branchLabel: 'v1' }
+        }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('allows reusing a branch label after the sibling link is detached', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { promptVersion } = await committedPrompt(ctx, 'fork-commit-reuse')
+      const first = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${promptVersion.id}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-reuse-0001' },
+        payload: { title: '实验分支', branchLabel: '实验分支' }
+      })
+      expect(first.statusCode).toBe(201)
+      const childId = first.json<{ childProject: { id: string } }>().childProject.id
+      const detached = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${childId}/fork-link`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-reuse-0002' },
+        payload: { detach: true }
+      })
+      expect(detached.statusCode).toBe(200)
+      const second = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-versions/${promptVersion.id}/forks`,
+        headers: { ...ctx.auth, 'idempotency-key': 'fork-reuse-0003' },
+        payload: { title: '再分支', branchLabel: '实验分支' }
+      })
+      expect(second.statusCode).toBe(201)
     } finally {
       await ctx.close()
     }
