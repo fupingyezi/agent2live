@@ -110,6 +110,35 @@ describe('mock providers', () => {
     expect(parsed.operations[0]).toMatchObject({ op: 'add', block: { source: 'ai-suggestion' } })
   })
 
+  it('falls back when a suggestion marker envelope is malformed', async () => {
+    const provider = createMockChatProvider()
+    const envelopes = [
+      { purpose: 'prompt.suggestion' },
+      { purpose: 'prompt.suggestion', intent: 42, blocks: [{ id: 'a', weight: 1, locked: false }] },
+      { purpose: 'prompt.suggestion', intent: '增加逆光', blocks: 'nope' },
+      { purpose: 'prompt.suggestion', intent: '增加逆光', blocks: [null] },
+      { purpose: 'prompt.suggestion', intent: '增加逆光', blocks: [{ id: 'a' }] }
+    ]
+    for (const envelope of envelopes) {
+      const marker = `AGENT2LIVE_MOCK_INPUT=${Buffer.from(JSON.stringify(envelope)).toString('base64url')}`
+      const result = await provider.generate(
+        {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'suggest' },
+                { type: 'text', text: marker }
+              ]
+            }
+          ]
+        },
+        { requestId: 'r3' }
+      )
+      expect(result.text.startsWith('mock:')).toBe(true)
+    }
+  })
+
   it('supports cancellation and failure injection', async () => {
     const controller = new AbortController()
     controller.abort()

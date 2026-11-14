@@ -52,6 +52,22 @@ interface MockSuggestionEnvelope {
   blocks: Array<{ id: string; weight: number; locked: boolean }>
 }
 
+function isMockSuggestionEnvelope(value: unknown): value is MockSuggestionEnvelope {
+  if (typeof value !== 'object' || value === null) return false
+  const envelope = value as Record<string, unknown>
+  if (typeof envelope.intent !== 'string' || !Array.isArray(envelope.blocks)) return false
+  return envelope.blocks.every((block) => {
+    if (typeof block !== 'object' || block === null) return false
+    const entry = block as Record<string, unknown>
+    return (
+      typeof entry.id === 'string' &&
+      typeof entry.weight === 'number' &&
+      Number.isFinite(entry.weight) &&
+      typeof entry.locked === 'boolean'
+    )
+  })
+}
+
 function mockSuggestion(envelope: MockSuggestionEnvelope): string {
   const used = new Set(envelope.blocks.map((block) => block.id))
   let id = 'ai.suggestion.mock'
@@ -96,7 +112,7 @@ export function structuredMockResponse(text: string): string | null {
     return null
   }
   if (parsed.purpose === 'prompt.suggestion') {
-    return mockSuggestion(parsed as unknown as MockSuggestionEnvelope)
+    return isMockSuggestionEnvelope(parsed) ? mockSuggestion(parsed) : null
   }
   if (parsed.purpose !== 'prompt.reverse') return null
   const envelope = parsed as unknown as MockReverseEnvelope
