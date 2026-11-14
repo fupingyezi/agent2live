@@ -460,3 +460,18 @@ describe('prompt reverse migration', () => {
     }
   })
 })
+
+describe('prompt suggestions migration', () => {
+  it('rejects suggestion rows with mismatched base or resolution fields', () => {
+    const database = fresh()
+    const now = Date.now()
+    const insert = database.prepare(
+      `insert into prompt_suggestions
+       (id, job_id, base_kind, base_version_id, base_draft_id, base_draft_revision, base_draft_row_version,
+        base_content_hash, operations_json, intent, status, provider_invocation_id, created_at)
+       values (?, 'missing-job', 'prompt_version', 'missing-version', ?, ?, ?, ?, '[]', 'test', 'proposed', 'missing', ?)`
+    )
+    expect(() => insert.run('psg_1', null, null, null, 'a'.repeat(64), now)).toThrow()
+    expect(() => insert.run('psg_2', 'missing-draft', 1, 1, 'a'.repeat(64), now)).toThrow()
+  })
+})

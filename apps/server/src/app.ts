@@ -16,6 +16,7 @@ import { registerMultipart } from './routes/multipart'
 import { registerProjectRoutes } from './routes/projects'
 import { registerPromptRoutes } from './routes/prompt'
 import { registerPromptReverseRoutes } from './routes/prompt-reverse'
+import { registerPromptSuggestionRoutes } from './routes/prompt-suggestions'
 import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
 
@@ -150,6 +151,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
   const promptReverse = options.services?.promptReverse
   if (promptReverse && jobs) {
     registerPromptReverseRoutes(app, { promptReverse, jobs })
+  }
+
+  const promptSuggestions = options.services?.promptSuggestions
+  if (promptSuggestions && jobs) {
+    registerPromptSuggestionRoutes(app, { promptSuggestions, jobs })
   }
 
   const characters = options.services?.characters

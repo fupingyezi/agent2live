@@ -710,6 +710,38 @@ export const ERROR_REGISTRY = {
     '请刷新结果列表',
     z.object({ status: z.enum(['applied', 'discarded']) }).strict()
   ),
+  PROMPT_SUGGESTION_INVALID_OUTPUT: def(
+    'PROMPT_SUGGESTION_INVALID_OUTPUT',
+    502,
+    'dependency',
+    true,
+    'warning',
+    'errors.promptSuggestionInvalidOutput',
+    'retry',
+    '建议无法解析或不可应用',
+    '可以重试生成建议',
+    z
+      .object({
+        attempt: z.number().int().positive()
+      })
+      .strict()
+  ),
+  PROMPT_SUGGESTION_RESOLVED: def(
+    'PROMPT_SUGGESTION_RESOLVED',
+    409,
+    'conflict',
+    false,
+    'info',
+    'errors.promptSuggestionResolved',
+    'reload',
+    '建议已经处理',
+    '请刷新建议列表',
+    z
+      .object({
+        status: z.enum(['accepted', 'rejected', 'stale'])
+      })
+      .strict()
+  ),
   PROMPT_DRAFT_EXISTS: def(
     'PROMPT_DRAFT_EXISTS',
     409,

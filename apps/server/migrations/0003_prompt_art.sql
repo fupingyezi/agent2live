@@ -67,28 +67,40 @@ CREATE INDEX ix_prompt_reverse_draft ON prompt_reverse_results(base_draft_id, cr
 
 CREATE TABLE prompt_suggestions (
   id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE RESTRICT,
   base_kind TEXT NOT NULL CHECK (base_kind IN ('prompt_version','prompt_draft')),
   base_version_id TEXT REFERENCES prompt_versions(id) ON DELETE RESTRICT,
   base_draft_id TEXT REFERENCES prompt_drafts(id) ON DELETE RESTRICT,
   base_draft_revision INTEGER,
+  base_draft_row_version INTEGER,
   base_content_hash TEXT NOT NULL CHECK (length(base_content_hash) = 64),
   operations_json TEXT NOT NULL,
-  context_json TEXT NOT NULL DEFAULT '{}',
+  warnings_json TEXT NOT NULL DEFAULT '[]',
   intent TEXT NOT NULL CHECK (length(intent) BETWEEN 1 AND 2000),
   status TEXT NOT NULL CHECK (status IN ('proposed','accepted','rejected','stale')),
   accepted_draft_id TEXT REFERENCES prompt_drafts(id) ON DELETE RESTRICT,
   accepted_draft_revision INTEGER,
-  provider_invocation_id TEXT REFERENCES provider_invocations(id) ON DELETE RESTRICT,
+  provider_invocation_id TEXT NOT NULL REFERENCES provider_invocations(id) ON DELETE RESTRICT,
   created_at INTEGER NOT NULL,
   resolved_at INTEGER,
   CHECK (
-    (base_kind = 'prompt_version' AND base_version_id IS NOT NULL AND base_draft_id IS NULL AND base_draft_revision IS NULL)
+    (base_kind = 'prompt_version'
+      AND base_version_id IS NOT NULL
+      AND base_draft_id IS NULL AND base_draft_revision IS NULL AND base_draft_row_version IS NULL)
     OR
-    (base_kind = 'prompt_draft' AND base_version_id IS NULL AND base_draft_id IS NOT NULL AND base_draft_revision IS NOT NULL)
+    (base_kind = 'prompt_draft'
+      AND base_version_id IS NULL
+      AND base_draft_id IS NOT NULL AND base_draft_revision IS NOT NULL AND base_draft_row_version IS NOT NULL)
+  ),
+  CHECK (
+    (status = 'accepted' AND accepted_draft_id IS NOT NULL AND accepted_draft_revision IS NOT NULL AND resolved_at IS NOT NULL)
+    OR (status IN ('rejected','stale') AND accepted_draft_id IS NULL AND accepted_draft_revision IS NULL AND resolved_at IS NOT NULL)
+    OR (status = 'proposed' AND accepted_draft_id IS NULL AND accepted_draft_revision IS NULL AND resolved_at IS NULL)
   )
 );
-CREATE INDEX ix_prompt_suggestions_version ON prompt_suggestions(base_version_id, status);
-CREATE INDEX ix_prompt_suggestions_draft ON prompt_suggestions(base_draft_id, status);
+CREATE INDEX ix_prompt_suggestions_version ON prompt_suggestions(base_version_id, created_at);
+CREATE INDEX ix_prompt_suggestions_draft ON prompt_suggestions(base_draft_id, created_at);
+CREATE INDEX ix_prompt_suggestions_status ON prompt_suggestions(status, created_at);
 
 CREATE TABLE generation_jobs (
   id TEXT PRIMARY KEY,

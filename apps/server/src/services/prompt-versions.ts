@@ -77,4 +77,12 @@ export class PromptVersionService {
     if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'promptVersion' })
     return toVersionDto(row)
   }
+
+  requireById(versionId: string): PromptVersionDto {
+    const row = this.db.prepare('select * from prompt_versions where id = ?').get(versionId) as
+      | VersionRow
+      | undefined
+    if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'promptVersion' })
+    return toVersionDto(row)
+  }
 }

@@ -15,11 +15,13 @@ import { PromptVersionService } from './prompt-versions'
 import { PromptDraftService } from './prompt-drafts'
 import { PromptInputService } from './prompt-inputs'
 import { PromptReverseService } from './prompt-reverse'
+import { PromptSuggestionService } from './prompt-suggestions'
 import { ProviderConnectionService } from './provider-connections'
 import { ProviderInvocationService } from './provider-invocations'
 import { ProviderRegistry } from './provider-registry'
 import { JobEngine } from '../jobs/engine'
 import { PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob } from '../jobs/prompt-reverse'
+import { PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob } from '../jobs/prompt-suggestion'
 import type { JobDefinition } from '../jobs/types'
 import type { SecretResolver } from './secret-resolver'
 
@@ -52,6 +54,7 @@ export interface Services {
   drafts: PromptDraftService
   inputs: PromptInputService
   promptReverse: PromptReverseService
+  promptSuggestions: PromptSuggestionService
   withEvents: typeof withEvents
 }
 
@@ -118,8 +121,23 @@ export function createServices(deps: ServiceDeps): Services {
     audit,
     events: deps.events
   })
+  const promptSuggestions = new PromptSuggestionService({
+    db: deps.db,
+    clock: deps.clock,
+    projects,
+    versions,
+    drafts,
+    submissions,
+    briefs: characterBriefs,
+    connections: providerConnections,
+    registry: providerRegistry,
+    invocations: providerInvocations,
+    audit,
+    events: deps.events
+  })
   const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
   handlers.set(PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob(promptReverse))
+  handlers.set(PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob(promptSuggestions))
   const jobs = new JobEngine({
     db: deps.db,
     events: deps.events,
@@ -146,6 +164,7 @@ export function createServices(deps: ServiceDeps): Services {
     drafts,
     inputs,
     promptReverse,
+    promptSuggestions,
     withEvents
   }
 }

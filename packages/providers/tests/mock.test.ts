@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { promptReverseOutputSchema } from '@agent2live/contracts'
+import { promptReverseOutputSchema, promptSuggestionOutputSchema } from '@agent2live/contracts'
 import { createMockChatProvider, createMockImageProvider } from '../src/mock'
 import { ProviderError } from '../src/errors'
 
@@ -82,6 +82,32 @@ describe('mock providers', () => {
       { requestId: 'r2' }
     )
     expect(JSON.parse(result.text)).toHaveProperty('blocks')
+  })
+
+  it('returns schema-valid suggestion operations for the mock marker', async () => {
+    const provider = createMockChatProvider()
+    const envelope = {
+      purpose: 'prompt.suggestion',
+      intent: '增加柔和逆光',
+      blocks: [{ id: 'subject.identity', weight: 1.2, locked: true }]
+    }
+    const marker = `AGENT2LIVE_MOCK_INPUT=${Buffer.from(JSON.stringify(envelope)).toString('base64url')}`
+    const result = await provider.generate(
+      {
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'suggest' },
+              { type: 'text', text: marker }
+            ]
+          }
+        ]
+      },
+      { requestId: 'r2' }
+    )
+    const parsed = promptSuggestionOutputSchema.parse(JSON.parse(result.text))
+    expect(parsed.operations[0]).toMatchObject({ op: 'add', block: { source: 'ai-suggestion' } })
   })
 
   it('supports cancellation and failure injection', async () => {

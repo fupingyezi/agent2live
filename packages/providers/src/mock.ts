@@ -46,18 +46,60 @@ interface MockReverseEnvelope {
   materials: Array<{ assetId: string; role: string; note: string; locked: boolean }>
 }
 
+interface MockSuggestionEnvelope {
+  purpose: string
+  intent: string
+  blocks: Array<{ id: string; weight: number; locked: boolean }>
+}
+
+function mockSuggestion(envelope: MockSuggestionEnvelope): string {
+  const used = new Set(envelope.blocks.map((block) => block.id))
+  let id = 'ai.suggestion.mock'
+  let suffix = 1
+  while (used.has(id)) {
+    id = `ai.suggestion.mock.${suffix}`
+    suffix += 1
+  }
+  return JSON.stringify({
+    operations: [
+      {
+        op: 'add',
+        block: {
+          id,
+          category: 'style',
+          label: 'AI 建议',
+          text: envelope.intent.slice(0, 4000),
+          weight: 1,
+          locked: false,
+          confidence: 0.5,
+          evidence: [],
+          source: 'ai-suggestion',
+          priority: 10,
+          requirementRefs: [],
+          materialRefs: []
+        }
+      }
+    ],
+    warnings: []
+  })
+}
+
 export function structuredMockResponse(text: string): string | null {
   const marker = text.split('\n').find((line) => line.startsWith('AGENT2LIVE_MOCK_INPUT='))
   if (!marker) return null
-  let envelope: MockReverseEnvelope
+  let parsed: { purpose?: unknown }
   try {
-    envelope = JSON.parse(
+    parsed = JSON.parse(
       Buffer.from(marker.slice('AGENT2LIVE_MOCK_INPUT='.length), 'base64url').toString('utf8')
-    ) as MockReverseEnvelope
+    ) as { purpose?: unknown }
   } catch {
     return null
   }
-  if (envelope.purpose !== 'prompt.reverse') return null
+  if (parsed.purpose === 'prompt.suggestion') {
+    return mockSuggestion(parsed as unknown as MockSuggestionEnvelope)
+  }
+  if (parsed.purpose !== 'prompt.reverse') return null
+  const envelope = parsed as unknown as MockReverseEnvelope
   const must = envelope.requirements.filter((item) => item.strength === 'must')
   const prefer = envelope.requirements.filter((item) => item.strength === 'prefer')
   const avoid = envelope.requirements.filter((item) => item.strength === 'avoid')
