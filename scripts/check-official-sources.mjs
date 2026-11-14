@@ -24,7 +24,7 @@ for (const source of manifest.sources ?? []) {
     const response = await fetch(source.url, {
       redirect: 'follow',
       signal: AbortSignal.timeout(20_000),
-      headers: { 'user-agent': 'agent2live-phase0-docs-audit' }
+      headers: { 'user-agent': 'agent2live-phase0-docs-audit', ...(source.headers ?? {}) }
     })
     status = response.status
     if (response.ok) {

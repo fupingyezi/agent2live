@@ -3,7 +3,8 @@
   "sources": [
     {
       "id": "codex-app-server",
-      "url": "https://github.com/openai/codex/blob/rust-v0.153.2/codex-rs/app-server/README.md",
+      "url": "https://api.github.com/repos/openai/codex/contents/codex-rs/app-server/README.md?ref=rust-v0.153.2",
+      "headers": { "Accept": "application/vnd.github.raw" },
       "version": "0.153.2",
       "methods": ["thread/start", "thread/resume", "turn/start", "turn/interrupt"],
       "license": null,
@@ -58,7 +59,8 @@
     },
     {
       "id": "psd2live-mcp",
-      "url": "https://github.com/tsunehimatoi/psd2live/blob/master/docs/zh/agent/MCP_AUTHORING.md",
+      "url": "https://api.github.com/repos/tsunehimatoi/psd2live/contents/docs/zh/agent/MCP_AUTHORING.md?ref=master",
+      "headers": { "Accept": "application/vnd.github.raw" },
       "version": "v3.4.0",
       "methods": ["project_import_psd", "project_export_target", "job_wait", "job_get"],
       "license": "GPL-3.0",
