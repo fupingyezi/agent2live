@@ -88,9 +88,9 @@ try {
 }
 const status = Object.values(checks).every(Boolean) ? 'pass' : 'blocked'
 
-// The embedded phase 0 / phase 0.5 gate snapshots are provenance only; their
-// historical blockers can carry absolute paths, so redact any string that
-// could leak a local path or credential before the evidence reaches disk.
+// Embedded gate snapshots are provenance only; historical blockers can carry
+// absolute paths, so redact any string that could leak a local path or
+// credential before the evidence reaches disk.
 const LEAK_PATTERN =
   /\/Users\/|\/home\/|\/private\/|file:\/\/|\/tmp\/agent2live-|sk-[a-z0-9_-]{12,}|ark-[a-z0-9_-]{12,}|bearer [a-z0-9._-]{12,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 function scrub(value) {
