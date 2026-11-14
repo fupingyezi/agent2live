@@ -87,6 +87,23 @@ try {
   // The evidence remains blocked; never turn a missing prerequisite into pass.
 }
 const status = Object.values(checks).every(Boolean) ? 'pass' : 'blocked'
+
+// The embedded phase 0 / phase 0.5 gate snapshots are provenance only; their
+// historical blockers can carry absolute paths, so redact any string that
+// could leak a local path or credential before the evidence reaches disk.
+const LEAK_PATTERN =
+  /\/Users\/|\/home\/|\/private\/|file:\/\/|\/tmp\/agent2live-|sk-[a-z0-9_-]{12,}|ark-[a-z0-9_-]{12,}|bearer [a-z0-9._-]{12,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+function scrub(value) {
+  if (typeof value === 'string') {
+    return LEAK_PATTERN.test(value) ? '[redacted]' : value
+  }
+  if (Array.isArray(value)) return value.map(scrub)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, scrub(entry)]))
+  }
+  return value
+}
+
 mkdirSync('docs/plans/evidence/phase1', { recursive: true })
 writeFileSync(
   outputPath,
@@ -101,7 +118,7 @@ writeFileSync(
       phase1Head,
       requiredGates: required,
       checks,
-      data: { phase0, phase05 }
+      data: scrub({ phase0, phase05 })
     },
     null,
     2
