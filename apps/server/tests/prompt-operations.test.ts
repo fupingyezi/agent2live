@@ -87,6 +87,35 @@ describe('applyPromptOperations', () => {
     )
   })
 
+  it('maps invalid operation results to PROMPT_OPERATION_INVALID', () => {
+    const spec = specFixture()
+    const operations: PromptOperation[] = [
+      {
+        op: 'add',
+        block: {
+          id: 'style.bad_ref',
+          category: 'style',
+          label: '坏引用',
+          text: '引用不存在的需求',
+          weight: 1,
+          locked: false,
+          confidence: 0.5,
+          evidence: [],
+          source: 'user',
+          priority: 10,
+          requirementRefs: ['req_missing'],
+          materialRefs: []
+        }
+      }
+    ]
+    expect(() => applyPromptOperations(spec, operations, { source: 'ai-suggestion' })).toThrowError(
+      expect.objectContaining({
+        code: 'PROMPT_OPERATION_INVALID',
+        details: { reason: 'operations_produce_invalid_spec' }
+      })
+    )
+  })
+
   it('treats lockAll as a lock on every block', () => {
     const spec = { ...specFixture(), lockAll: true }
     const operation: PromptOperation[] = [

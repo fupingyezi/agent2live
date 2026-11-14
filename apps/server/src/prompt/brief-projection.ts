@@ -157,9 +157,13 @@ export function projectBriefToPromptBlocks(brief: CharacterBriefContent): Prompt
   return specs.flatMap(toBlocks)
 }
 
+function occupiesBriefNamespace(block: PromptBlock): boolean {
+  return block.source !== 'character-brief' && block.id.startsWith(BRIEF_BLOCK_PREFIX)
+}
+
 export function mergeBriefProjection(spec: PromptSpecV2, brief: CharacterBriefContent): PromptSpecV2 {
   const preserved = spec.blocks.filter((block) => block.source !== 'character-brief')
-  if (preserved.some((block) => block.id.startsWith(BRIEF_BLOCK_PREFIX))) {
+  if ([...spec.blocks, ...spec.negativeBlocks].some(occupiesBriefNamespace)) {
     throw new AppError('PROMPT_OPERATION_INVALID', { reason: 'brief_block_id_reserved' })
   }
   return { ...spec, blocks: [...preserved, ...projectBriefToPromptBlocks(brief)] }
@@ -170,6 +174,11 @@ function projectionKey(blocks: PromptBlock[]): string {
 }
 
 export function assertBriefProjection(spec: PromptSpecV2, brief: CharacterBriefContent): void {
+  const projectedNegative = spec.negativeBlocks.some((block) => block.source === 'character-brief')
+  const reserved = [...spec.blocks, ...spec.negativeBlocks].some(occupiesBriefNamespace)
+  if (projectedNegative || reserved) {
+    throw new AppError('PROMPT_BRIEF_PROJECTION_STALE', {})
+  }
   const actual = spec.blocks.filter((block) => block.source === 'character-brief')
   if (projectionKey(actual) !== projectionKey(projectBriefToPromptBlocks(brief))) {
     throw new AppError('PROMPT_BRIEF_PROJECTION_STALE', {})

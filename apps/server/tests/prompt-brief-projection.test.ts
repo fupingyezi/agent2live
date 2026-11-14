@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { characterBriefContentSchema, type CharacterBriefContent } from '@agent2live/contracts'
+import {
+  characterBriefContentSchema,
+  type CharacterBriefContent,
+  type PromptSpecV2
+} from '@agent2live/contracts'
 import {
   assertBriefProjection,
   briefToContextText,
@@ -81,6 +85,30 @@ describe('brief projection', () => {
     spec.blocks.push({ ...spec.blocks[1]!, id: 'brief.identity', source: 'user' })
     expect(() => mergeBriefProjection(spec, briefFixture())).toThrowError(
       expect.objectContaining({ code: 'PROMPT_OPERATION_INVALID' })
+    )
+  })
+
+  it('reserves the brief.* namespace across negative blocks', () => {
+    const spec = specFixture()
+    spec.negativeBlocks.push({ ...spec.negativeBlocks[0]!, id: 'brief.identity', source: 'user' })
+    expect(() => mergeBriefProjection(spec, briefFixture())).toThrowError(
+      expect.objectContaining({ code: 'PROMPT_OPERATION_INVALID' })
+    )
+  })
+
+  it('rejects brief-projected blocks in negative blocks', () => {
+    const brief = briefFixture()
+    const merged = mergeBriefProjection(specFixture(), brief)
+    expect(() => assertBriefProjection(merged, brief)).not.toThrow()
+    const tampered: PromptSpecV2 = {
+      ...merged,
+      negativeBlocks: [
+        ...merged.negativeBlocks,
+        { ...merged.negativeBlocks[0]!, id: 'negative.projected', source: 'character-brief' }
+      ]
+    }
+    expect(() => assertBriefProjection(tampered, brief)).toThrowError(
+      expect.objectContaining({ code: 'PROMPT_BRIEF_PROJECTION_STALE' })
     )
   })
 
