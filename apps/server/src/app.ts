@@ -11,6 +11,7 @@ import { EventStore } from './events/store'
 import { toAppError } from './http/errors'
 import { registerArtVersionRoutes } from './routes/art-versions'
 import { registerAssetRoutes } from './routes/assets'
+import { registerBackupRoutes } from './routes/backups'
 import { registerCharacterRoutes } from './routes/characters'
 import { registerForkRoutes } from './routes/forks'
 import { registerGenerationRoutes } from './routes/generations'
@@ -174,6 +175,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
   const forks = options.services?.forks
   if (forks && idempotency) {
     registerForkRoutes(app, { forks, idempotency })
+  }
+
+  const backups = options.services?.backups
+  if (backups && jobs && idempotency) {
+    registerBackupRoutes(app, { backups, jobs, idempotency })
   }
 
   const characters = options.services?.characters

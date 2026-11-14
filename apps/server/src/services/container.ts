@@ -5,6 +5,7 @@ import { BlobStore } from './blobs'
 import { ArtVersionService } from './art-versions'
 import { AssetService } from './assets'
 import { AuditService } from './audit'
+import { BackupService } from './backups'
 import { CharacterBriefService } from './character-briefs'
 import { CharacterService } from './characters'
 import { GenerationService } from './generations'
@@ -24,6 +25,7 @@ import { ProviderInvocationService } from './provider-invocations'
 import { ProviderRegistry } from './provider-registry'
 import { JobEngine } from '../jobs/engine'
 import { IMAGE_GENERATION_JOB_TYPE, createImageGenerationJob } from '../jobs/image-generation'
+import { BACKUP_JOB_TYPE, createCharacterBackupJob } from '../jobs/character-backup'
 import { PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob } from '../jobs/prompt-reverse'
 import { PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob } from '../jobs/prompt-suggestion'
 import type { JobDefinition } from '../jobs/types'
@@ -37,10 +39,12 @@ export interface ServiceDeps {
   secrets: SecretResolver
   jobHandlers?: ReadonlyMap<string, JobDefinition>
   workerId?: string
+  maxBackupBytes?: number
 }
 
 export interface Services {
   blobs: BlobStore
+  backups: BackupService
   assets: AssetService
   audit: AuditService
   idempotency: IdempotencyService
@@ -68,6 +72,15 @@ export interface Services {
 export function createServices(deps: ServiceDeps): Services {
   const blobs = new BlobStore(deps.dataDir)
   const audit = new AuditService(deps.db, deps.clock)
+  const backups = new BackupService({
+    db: deps.db,
+    dataDir: deps.dataDir,
+    blobs,
+    clock: deps.clock,
+    audit,
+    events: deps.events,
+    ...(deps.maxBackupBytes === undefined ? {} : { maxBytes: deps.maxBackupBytes })
+  })
   const providerConnections = new ProviderConnectionService({
     db: deps.db,
     events: deps.events,
@@ -179,6 +192,7 @@ export function createServices(deps: ServiceDeps): Services {
   handlers.set(PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob(promptReverse))
   handlers.set(PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob(promptSuggestions))
   handlers.set(IMAGE_GENERATION_JOB_TYPE, createImageGenerationJob(generations))
+  handlers.set(BACKUP_JOB_TYPE, createCharacterBackupJob(backups))
   const jobs = new JobEngine({
     db: deps.db,
     events: deps.events,
@@ -188,6 +202,7 @@ export function createServices(deps: ServiceDeps): Services {
   })
   return {
     blobs,
+    backups,
     assets,
     audit,
     idempotency: new IdempotencyService(deps.db, deps.clock),

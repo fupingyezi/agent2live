@@ -94,7 +94,7 @@ it('reports db, migration, wal, and vector metadata when a database is configure
   expect(body.data).toEqual({ db: true, events: true })
   expect(body.db).toEqual({
     schemaVersion: 'sqlite/1',
-    migration: '0003_prompt_art',
+    migration: '0004_backups',
     wal: true,
     vectorDim: 768
   })

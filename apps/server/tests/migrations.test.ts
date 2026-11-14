@@ -31,7 +31,7 @@ describe('Phase 1 migrations', () => {
         version: string
       }>
     ).map((row) => row.version)
-    expect(names).toEqual(expect.arrayContaining(['0001_init', '0002_core_domain', '0003_prompt_art']))
+    expect(names).toEqual(['0001_init', '0002_core_domain', '0003_prompt_art', '0004_backups'])
     expect(database.pragma('foreign_keys', { simple: true })).toBe(1)
     expect(migrate(database, migrations).applied).toEqual([])
   })
@@ -431,6 +431,35 @@ describe('Phase 1 migrations', () => {
           1
         )
     ).toThrow(/CHARACTER/i)
+  })
+})
+
+describe('backups migration', () => {
+  it('creates the backup artifact table', () => {
+    const database = fresh()
+    const columns = database.prepare('pragma table_info(backups)').all() as Array<{
+      name: string
+      notnull: number
+    }>
+    expect(columns.map((column) => column.name)).toEqual([
+      'id',
+      'character_id',
+      'job_id',
+      'format_version',
+      'relative_path',
+      'file_size',
+      'sha256',
+      'created_at',
+      'completed_at'
+    ])
+    expect(() =>
+      database
+        .prepare(
+          `insert into backups (id, character_id, job_id, format_version, relative_path, file_size, sha256, created_at, completed_at)
+       values ('bkp_x', 'chr_x', 'job_x', 1, 'backups/x.zip', 10, '${'a'.repeat(64)}', 1, 2)`
+        )
+        .run()
+    ).toThrow()
   })
 })
 

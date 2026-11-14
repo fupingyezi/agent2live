@@ -958,6 +958,22 @@ export const ERROR_REGISTRY = {
     '请重试导出',
     z.object({}).strict()
   ),
+  BACKUP_NOT_READY: def(
+    'BACKUP_NOT_READY',
+    409,
+    'conflict',
+    false,
+    'info',
+    'errors.backupNotReady',
+    'refresh_resource',
+    '备份尚未就绪',
+    '请等待备份任务完成',
+    z
+      .object({
+        status: z.enum(['queued', 'leased', 'running', 'retrying', 'waiting_user'])
+      })
+      .strict()
+  ),
   BACKUP_TOO_LARGE: def(
     'BACKUP_TOO_LARGE',
     413,

@@ -123,6 +123,7 @@ describe('error registry', () => {
       'PROVIDER_NOT_CONFIGURED',
       'PROVIDER_CAPABILITY_UNSUPPORTED',
       'BACKUP_FAILED',
+      'BACKUP_NOT_READY',
       'BACKUP_TOO_LARGE',
       'ASSET_INVALID',
       'ASSET_TOO_LARGE',

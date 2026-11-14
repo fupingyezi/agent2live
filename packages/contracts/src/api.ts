@@ -319,6 +319,31 @@ export const characterLineageQuerySchema = z
 
 export const createBackupInputSchema = z.object({}).strict()
 
+export const characterBackupIdSchema = z.string().regex(/^bkp_[0-9A-HJKMNP-TV-Z]{26}$/)
+
+export interface CharacterBackupDto {
+  id: string
+  characterId: string
+  jobId: string
+  formatVersion: 1
+  status:
+    | 'queued'
+    | 'leased'
+    | 'running'
+    | 'waiting_user'
+    | 'succeeded'
+    | 'failed'
+    | 'retrying'
+    | 'cancelled'
+    | 'unknown_outcome'
+  createdAt: number
+  completedAt: number | null
+  fileSize: number | null
+  sha256: string | null
+  downloadPath: string | null
+  errorCode: string | null
+}
+
 export const createDraftInputSchema = z
   .object({
     from: z.enum(['active_version', 'empty']).default('active_version')

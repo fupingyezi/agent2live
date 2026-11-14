@@ -16,6 +16,7 @@
     "@agent2live/providers": "workspace:*",
     "@fastify/cors": "^11.4.1",
     "@fastify/multipart": "^9.0.1",
+    "archiver": "^7.0.1",
     "better-sqlite3": "^13.0.3",
     "fastify": "5.12.8",
     "pino": "10.4.0",
@@ -24,6 +25,8 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0"
+    "@types/archiver": "^6.0.4",
+    "@types/better-sqlite3": "^9.6.0",
+    "fflate": "^0.8.3"
   }
 }
