@@ -2,16 +2,28 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: [
-      '{apps,packages}/**/*.test.ts',
-      '{apps,packages}/**/*.test.tsx',
-      '{apps,packages}/**/__tests__/**/*.test.ts',
-      'spikes/**/*.test.ts',
-      'scripts/**/*.test.ts'
-    ],
-    environment: 'node',
     testTimeout: 20_000,
     hookTimeout: 20_000,
-    restoreMocks: true
+    restoreMocks: true,
+    projects: [
+      {
+        test: {
+          name: 'node',
+          include: [
+            '{apps,packages}/**/*.test.ts',
+            '{apps,packages}/**/*.test.tsx',
+            '{apps,packages}/**/__tests__/**/*.test.ts',
+            'spikes/**/*.test.ts',
+            'scripts/**/*.test.ts'
+          ],
+          exclude: ['**/node_modules/**', '**/dist/**', 'packages/design-system/**'],
+          environment: 'node',
+          testTimeout: 20_000,
+          hookTimeout: 20_000,
+          restoreMocks: true
+        }
+      },
+      './packages/design-system/vitest.config.ts'
+    ]
   }
 })

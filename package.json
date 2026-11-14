@@ -42,7 +42,8 @@
     "phase0:evidence": "node scripts/write-gate-evidence.mjs",
     "phase0:docs": "node scripts/check-official-sources.mjs",
     "check": "pnpm format:check && pnpm check:code-style && pnpm typecheck && pnpm test && pnpm test:gate && pnpm check:plans-ignored && pnpm check:no-prohibited",
-    "bench:data": "pnpm --filter @agent2live/server bench:data"
+    "bench:data": "pnpm --filter @agent2live/server bench:data",
+    "token:lint": "node scripts/token-lint.mjs"
   },
   "devDependencies": {
     "@agent2live/live2d-runtime": "workspace:*",

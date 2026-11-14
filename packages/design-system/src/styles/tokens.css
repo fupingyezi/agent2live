@@ -1,0 +1,85 @@
+:root {
+  --a2l-color-app-bg: #f8faf9;
+  --a2l-color-surface: #ffffff;
+  --a2l-color-surface-subtle: #f8faf9;
+  --a2l-color-surface-selected: #effaf7;
+  --a2l-color-accent: #3fb0a0;
+  --a2l-color-accent-strong: #2e9183;
+  --a2l-color-accent-soft: #eaf7f4;
+  --a2l-color-text: #252a32;
+  --a2l-color-text-secondary: #3c434e;
+  --a2l-color-text-muted: #a8aeb8;
+  --a2l-color-border: #e7ecea;
+  --a2l-color-border-strong: #e2e6e5;
+  --a2l-color-warning-bg: #fdf5e9;
+  --a2l-color-warning: #b07c33;
+  --a2l-color-danger: #a85468;
+  --a2l-color-danger-border: #efd8d3;
+  --a2l-color-focus: #3fb0a0;
+  --a2l-color-on-accent: #ffffff;
+  --a2l-color-overlay: rgba(37, 42, 50, 0.45);
+  --a2l-color-pet-gradient: linear-gradient(135deg, #ebf6f2 0%, #f0f5fa 27.5%, #fcf0f5 50%);
+
+  --a2l-font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --a2l-font-mono: 'SFMono-Regular', 'Cascadia Code', monospace;
+
+  --a2l-text-caption-size: 10.5px;
+  --a2l-text-caption-line: 14px;
+  --a2l-text-caption-weight: 400;
+  --a2l-text-meta-size: 11.5px;
+  --a2l-text-meta-line: 16px;
+  --a2l-text-meta-weight: 400;
+  --a2l-text-body-sm-size: 12px;
+  --a2l-text-body-sm-line: 18px;
+  --a2l-text-body-sm-weight: 400;
+  --a2l-text-body-size: 13px;
+  --a2l-text-body-line: 20px;
+  --a2l-text-body-weight: 400;
+  --a2l-text-label-size: 12px;
+  --a2l-text-label-line: 18px;
+  --a2l-text-label-weight: 500;
+  --a2l-text-title-sm-size: 14px;
+  --a2l-text-title-sm-line: 20px;
+  --a2l-text-title-sm-weight: 500;
+  --a2l-text-title-size: 18px;
+  --a2l-text-title-line: 26px;
+  --a2l-text-title-weight: 500;
+  --a2l-text-display-size: 24px;
+  --a2l-text-display-line: 32px;
+  --a2l-text-display-weight: 500;
+
+  --a2l-space-1: 4px;
+  --a2l-space-2: 8px;
+  --a2l-space-3: 12px;
+  --a2l-space-4: 16px;
+  --a2l-space-5: 20px;
+  --a2l-space-6: 24px;
+  --a2l-space-7: 28px;
+  --a2l-space-8: 32px;
+  --a2l-space-10: 40px;
+  --a2l-space-14: 56px;
+
+  --a2l-radius-xs: 6px;
+  --a2l-radius-sm: 8px;
+  --a2l-radius-md: 10px;
+  --a2l-radius-control: 11px;
+  --a2l-radius-lg: 14px;
+  --a2l-radius-xl: 18px;
+
+  --a2l-motion-fast: 120ms;
+  --a2l-motion-base: 180ms;
+  --a2l-motion-emphasis: 240ms;
+  --a2l-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --a2l-layout-nav: 64px;
+  --a2l-layout-topbar: 56px;
+  --a2l-layout-actionbar: 58px;
+  --a2l-layout-context: 240px;
+  --a2l-layout-context-min: 220px;
+  --a2l-layout-inspector: 320px;
+  --a2l-layout-dialog: 480px;
+
+  --a2l-border-width: 1px;
+  --a2l-shadow-overlay: 0 18px 48px rgba(37, 42, 50, 0.16);
+  --a2l-shadow-popover: 0 8px 24px rgba(37, 42, 50, 0.12);
+}

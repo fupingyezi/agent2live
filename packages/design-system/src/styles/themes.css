@@ -1,0 +1,8 @@
+[data-theme='studio'] {
+  color-scheme: light;
+}
+
+[data-theme='pet'] {
+  color-scheme: light;
+  --a2l-pet-gradient: linear-gradient(135deg, #ebf6f2 0%, #f0f5fa 27.5%, #fcf0f5 50%);
+}
