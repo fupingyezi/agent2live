@@ -9,6 +9,7 @@ import { EventStore } from '../../src/events/store'
 import { FakeClock } from '../../src/services/clock'
 import { createServices, type Services } from '../../src/services/container'
 import { StaticSecretResolver, type SecretResolver } from '../../src/services/secret-resolver'
+import { testJobHandlers } from './jobs'
 
 const migrations = fileURLToPath(new URL('../../migrations', import.meta.url))
 
@@ -46,7 +47,15 @@ export async function createTestApp(
   const events = fixture.eventStore
   const secrets = options.secrets ?? options.services?.secrets ?? new StaticSecretResolver(new Map())
   const services = {
-    ...createServices({ db: fixture.db, dataDir: fixture.dataDir, events, clock, secrets }),
+    ...createServices({
+      db: fixture.db,
+      dataDir: fixture.dataDir,
+      events,
+      clock,
+      secrets,
+      jobHandlers: testJobHandlers(),
+      workerId: 'test-worker'
+    }),
     ...options.services
   }
   const app = buildApp({
@@ -59,14 +68,18 @@ export async function createTestApp(
   await app.ready()
   return {
     ...fixture,
+    eventStore: events,
     clock,
     services,
     secrets,
     app,
     auth: { authorization: 'Bearer test-token-0123456789' },
     close: async () => {
+      await services.jobs.stop()
       await app.close()
       fixture.db.close()
     }
   }
 }
+
+export type TestApp = Awaited<ReturnType<typeof createTestApp>>

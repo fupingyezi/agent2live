@@ -33,7 +33,8 @@ async function main(): Promise<void> {
     dataDir: config.dataDir,
     events: eventStore,
     clock: systemClock,
-    secrets
+    secrets,
+    workerId: 'sidecar'
   })
   const app = buildApp({
     token: config.token,
@@ -53,11 +54,15 @@ async function main(): Promise<void> {
     startedAt: config.startedAt
   })
 
+  // Publish the endpoint before consuming the persistent queue so the renderer can connect first.
+  services.jobs.start()
+
   let closing = false
   const shutdown = async (): Promise<void> => {
     if (closing) return
     closing = true
     removeEndpointFile(endpointFile)
+    await services.jobs.stop()
     await app.close()
     db.close()
     process.exit(0)

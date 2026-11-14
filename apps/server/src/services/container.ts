@@ -9,6 +9,8 @@ import { withEvents } from './events-buffer'
 import { ProviderConnectionService } from './provider-connections'
 import { ProviderInvocationService } from './provider-invocations'
 import { ProviderRegistry } from './provider-registry'
+import { JobEngine } from '../jobs/engine'
+import type { JobDefinition } from '../jobs/types'
 import type { SecretResolver } from './secret-resolver'
 
 export interface ServiceDeps {
@@ -17,6 +19,8 @@ export interface ServiceDeps {
   events: EventStore
   clock: Clock
   secrets: SecretResolver
+  jobHandlers?: ReadonlyMap<string, JobDefinition>
+  workerId?: string
 }
 
 export interface Services {
@@ -28,6 +32,7 @@ export interface Services {
   providerConnections: ProviderConnectionService
   providerRegistry: ProviderRegistry
   providerInvocations: ProviderInvocationService
+  jobs: JobEngine
   withEvents: typeof withEvents
 }
 
@@ -39,6 +44,14 @@ export function createServices(deps: ServiceDeps): Services {
     events: deps.events,
     audit,
     clock: deps.clock
+  })
+  const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
+  const jobs = new JobEngine({
+    db: deps.db,
+    events: deps.events,
+    clock: deps.clock,
+    workerId: deps.workerId ?? 'server',
+    handlers
   })
   return {
     blobs,
@@ -55,6 +68,7 @@ export function createServices(deps: ServiceDeps): Services {
     providerConnections,
     providerRegistry: new ProviderRegistry(providerConnections, deps.secrets),
     providerInvocations: new ProviderInvocationService(deps.db, deps.clock),
+    jobs,
     withEvents
   }
 }

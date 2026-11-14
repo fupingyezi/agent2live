@@ -9,6 +9,7 @@ import { AppError, problemFor } from './errors'
 import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
 import { registerAssetRoutes } from './routes/assets'
+import { registerJobRoutes } from './routes/jobs'
 import { registerMultipart } from './routes/multipart'
 import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
@@ -128,6 +129,11 @@ export function buildApp(options: AppOptions): FastifyInstance {
     app.register(async (scope) => {
       registerProviderRoutes(scope, { connections: providerConnections, secrets, idempotency })
     })
+  }
+
+  const jobs = options.services?.jobs
+  if (jobs) {
+    registerJobRoutes(app, jobs)
   }
 
   app.setNotFoundHandler((request, _reply) => {
