@@ -40,7 +40,7 @@ const MaterialItem: React.FC<MaterialItemProps> = ({ assetId, role, note, sortOr
       <figcaption>
         <strong>{label}</strong>
         <span>{note || `素材 ${sortOrder + 1}`}</span>
-        <span>权重 {weight.toFixed(1)}</span>
+        <small>权重 {weight.toFixed(1)}</small>
       </figcaption>
     </figure>
   )
@@ -54,8 +54,8 @@ export const MaterialTray: React.FC<MaterialTrayProps> = ({ submission }) => {
   return (
     <section className="workbench-panel material-tray" data-testid="material-tray">
       <SectionHeader
-        title="参考资产"
-        description="素材"
+        title="参考图"
+        description="逐项核对身份、画风、服装与配色"
         {...(submission ? { actions: <CountBadge value={submission.materials.length} /> } : {})}
       />
       {!submission || submission.materials.length === 0 ? (

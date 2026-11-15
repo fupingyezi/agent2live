@@ -10,8 +10,9 @@ import {
   listProviders,
   queryKeys
 } from '@studio/api'
-import { AsyncButton, InlineNotice, SectionHeader, Tabs } from '@agent2live/design-system'
+import { AsyncButton, InlineNotice, SectionHeader, StatusPill, Tabs } from '@agent2live/design-system'
 import { StudioError, StudioLoading } from '@studio/components'
+import { formatStage, stageTone } from '@studio/format'
 import { useWorkbenchStore } from './store'
 import {
   ArtVersionPanel,
@@ -182,6 +183,34 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project }) => {
       </div>
 
       <div className="workbench-grid">
+        <aside className="workbench-version-rail" data-testid="workbench-version-rail">
+          <div className="workbench-version-heading">
+            <span className="eyebrow">当前项目</span>
+            <strong>{project.title}</strong>
+            <span className="studio-meta">{formatStage(project.stage)}</span>
+          </div>
+          <div className="workbench-version-summary">
+            <span>提示词</span>
+            <strong>
+              {workspace.activePromptVersion ? `v${workspace.activePromptVersion.versionNumber}` : '待提交'}
+            </strong>
+            <span className="studio-meta">{workspace.versions.length} 个历史版本</span>
+          </div>
+          <div className="workbench-version-summary">
+            <span>美术版本</span>
+            <strong>
+              {project.activeVersionId
+                ? `v${artVersions.find((item) => item.id === project.activeVersionId)?.versionNumber ?? '—'}`
+                : '待生成'}
+            </strong>
+            <span className="studio-meta">{artVersions.length} 个历史版本</span>
+          </div>
+          <StatusPill
+            label={project.activeVersionId ? '当前参考已就绪' : '尚未激活美术版本'}
+            tone={stageTone(project.stage)}
+          />
+        </aside>
+
         <div className="workbench-main">
           {submission ? <MaterialTray submission={submission} /> : null}
 

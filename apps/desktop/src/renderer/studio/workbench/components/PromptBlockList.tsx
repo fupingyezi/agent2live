@@ -28,7 +28,7 @@ export const PromptBlockList: React.FC<PromptBlockListProps> = ({
 
   return (
     <section className="workbench-panel prompt-blocks" data-testid="prompt-block-list">
-      <SectionHeader title="提示词块" description="编译输入" actions={<CountBadge value={total} />} />
+      <SectionHeader title="提示词编辑" description="逐块核对描述" actions={<CountBadge value={total} />} />
 
       {uncoveredRequirements.length > 0 ? (
         <InlineNotice tone="warning">

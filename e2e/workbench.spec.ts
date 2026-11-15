@@ -59,12 +59,14 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
 
     const inputPanel = studio.locator('[data-testid="prompt-input-panel"]')
     await expect(inputPanel).toBeVisible()
+    await expect(studio.locator('[data-testid="material-tray"]')).toHaveCount(0)
     await inputPanel.getByLabel('上传素材图片').setInputFiles(imagePath)
     await inputPanel.getByRole('button', { name: '提交素材与要求', exact: true }).click()
 
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
       timeout: 20_000
     })
+    await expect(studio.locator('[data-testid="no-active-draft"]')).toHaveCount(0)
     await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
 
     await studio.getByRole('button', { name: '+ 添加块', exact: true }).click()
@@ -75,8 +77,12 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
 
     const toolbar = studio.locator('[data-testid="draft-toolbar"]')
     await expect(toolbar).toContainText('有未保存修改')
+    await expect(studio.locator('[data-testid="unsaved-notice"]')).toBeVisible()
+    await expect(toolbar.getByRole('button', { name: 'AI 助手', exact: true })).toBeDisabled()
     await toolbar.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect(toolbar).toContainText('草稿已保存', { timeout: 20_000 })
+    await expect(studio.locator('[data-testid="unsaved-notice"]')).toHaveCount(0)
+    await expect(toolbar.getByRole('button', { name: 'AI 助手', exact: true })).toBeEnabled()
 
     await toolbar.getByRole('button', { name: '提交版本', exact: true }).click()
     const commitDialog = studio.getByRole('dialog')

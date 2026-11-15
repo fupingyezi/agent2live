@@ -112,7 +112,7 @@ export const DraftToolbar: React.FC<DraftToolbarProps> = ({
           <strong>{dirty ? '有未保存修改' : draft ? '草稿已保存' : '尚无活动草稿'}</strong>
           <p>
             {draft
-              ? `revision ${store.revision ?? draft.revision} · row ${store.rowVersion ?? draft.rowVersion}`
+              ? `当前草稿 · revision ${store.revision ?? draft.revision}`
               : '先提交素材与要求，或从当前版本创建草稿'}
           </p>
         </div>
