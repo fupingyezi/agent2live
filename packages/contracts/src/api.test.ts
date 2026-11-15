@@ -5,7 +5,9 @@ import {
   createGenerationInputSchema,
   createProviderConnectionInputSchema,
   promptInputMetadataSchema,
-  promptInputMultipartMetadataSchema
+  promptInputMultipartMetadataSchema,
+  providerProbeDtoSchema,
+  providerProbeInputSchema
 } from './api'
 
 describe('API schemas', () => {
@@ -214,5 +216,41 @@ describe('API schemas', () => {
         materials: [material, { ...material, partName: 'body' }]
       })
     ).toThrow()
+  })
+
+  it('defaults provider probes to non-billable and rejects unknown input fields', () => {
+    expect(providerProbeInputSchema.parse({})).toEqual({ allowBillableRequest: false })
+    expect(providerProbeInputSchema.parse({ allowBillableRequest: true })).toEqual({
+      allowBillableRequest: true
+    })
+    expect(() => providerProbeInputSchema.parse({ allowBillableRequest: 'yes' })).toThrow()
+    expect(() => providerProbeInputSchema.parse({ allowBillableRequest: true, apiKey: 'secret' })).toThrow()
+  })
+
+  it('returns a strict provider probe DTO without credentials or upstream body', () => {
+    const probe = {
+      ok: true,
+      kind: 'chat',
+      adapter: 'openai-compatible',
+      model: 'gpt-test',
+      latencyMs: 120,
+      checkedAt: 1_763_000_000_000,
+      billable: false
+    }
+    expect(providerProbeDtoSchema.parse(probe)).toEqual(probe)
+    expect(JSON.stringify(providerProbeDtoSchema.parse(probe))).not.toMatch(/apiKey|secretRef|responseText/)
+    expect(() =>
+      providerProbeDtoSchema.parse({
+        ...probe,
+        apiKey: 'sk-should-not-be-here'
+      })
+    ).toThrow()
+    expect(() =>
+      providerProbeDtoSchema.parse({
+        ...probe,
+        kind: 'image',
+        adapter: 'openai-compatible'
+      })
+    ).toThrow(/adapter/)
   })
 })

@@ -226,6 +226,36 @@ export const updateProviderConnectionInputSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: 'patch is empty' })
 
+export const providerProbeInputSchema = z
+  .object({
+    allowBillableRequest: z.boolean().default(false)
+  })
+  .strict()
+
+export const providerProbeDtoSchema = z
+  .object({
+    ok: z.literal(true),
+    kind: z.enum(['chat', 'image']),
+    adapter: z.enum(['openai-compatible', 'seedream', 'mock']),
+    model: z.string().max(200).nullable(),
+    latencyMs: z.number().int().nonnegative(),
+    checkedAt: z.number().int().nonnegative(),
+    billable: z.boolean()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const compatible =
+      (value.kind === 'chat' && (value.adapter === 'openai-compatible' || value.adapter === 'mock')) ||
+      (value.kind === 'image' && (value.adapter === 'seedream' || value.adapter === 'mock'))
+    if (!compatible) {
+      context.addIssue({
+        code: 'custom',
+        path: ['adapter'],
+        message: 'adapter is incompatible with provider kind'
+      })
+    }
+  })
+
 export const createGenerationInputSchema = z
   .object({
     promptVersionId: z.string().min(1).max(64),
@@ -366,6 +396,8 @@ export type PromptInputMetadata = z.infer<typeof promptInputMetadataSchema>
 export type PromptInputMultipartMetadata = z.infer<typeof promptInputMultipartMetadataSchema>
 export type CreateProviderConnectionInput = z.infer<typeof createProviderConnectionInputSchema>
 export type UpdateProviderConnectionInput = z.infer<typeof updateProviderConnectionInputSchema>
+export type ProviderProbeInput = z.infer<typeof providerProbeInputSchema>
+export type ProviderProbeDto = z.infer<typeof providerProbeDtoSchema>
 export type CreateGenerationInput = z.infer<typeof createGenerationInputSchema>
 export type CreateForkInput = z.infer<typeof createForkInputSchema>
 export type PatchForkInput = z.infer<typeof patchForkInputSchema>

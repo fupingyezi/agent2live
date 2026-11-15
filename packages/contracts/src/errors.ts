@@ -946,6 +946,18 @@ export const ERROR_REGISTRY = {
     '请更换支持参考图的生图模型',
     z.object({ capability: z.string().max(80) }).strict()
   ),
+  PROVIDER_BILLABLE_CONFIRMATION_REQUIRED: def(
+    'PROVIDER_BILLABLE_CONFIRMATION_REQUIRED',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.providerBillableConfirmationRequired',
+    'fix_input',
+    '需要确认生图测试',
+    '该测试会调用生图模型并可能产生费用，请确认后继续',
+    z.object({ connectionId: z.string().max(64) }).strict()
+  ),
   BACKUP_FAILED: def(
     'BACKUP_FAILED',
     500,

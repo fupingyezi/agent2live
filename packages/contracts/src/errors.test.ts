@@ -174,6 +174,16 @@ describe('error registry', () => {
     })
   })
 
+  it('requires explicit confirmation before a billable provider probe', () => {
+    expect(getErrorDefinition('PROVIDER_BILLABLE_CONFIRMATION_REQUIRED')).toMatchObject({
+      httpStatus: 422,
+      category: 'validation',
+      retryable: false,
+      severity: 'warning',
+      userAction: 'fix_input'
+    })
+  })
+
   it('parses candidate acceptance and art version list query inputs', () => {
     expect(acceptGenerationCandidateInputSchema.parse({ expectedActiveArtVersionId: null })).toEqual({
       expectedActiveArtVersionId: null
