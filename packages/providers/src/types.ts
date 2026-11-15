@@ -14,6 +14,7 @@ export interface ChatRequest {
   model?: string
   temperature?: number
   maxTokens?: number
+  responseFormat?: 'json'
 }
 
 export interface ChatUsage {

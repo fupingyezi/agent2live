@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { createMockChatProvider } from '@agent2live/providers'
+import { createPromptReverseJob } from '../src/jobs/prompt-reverse'
 import { createTestApp } from './helpers/app'
 import { multipartPayload, postMetadataOnlyInput, seedProject, specWithAsset } from './helpers/seed-prompt'
 import { png } from './helpers/files'
@@ -107,6 +109,35 @@ async function readyResult(ctx: Awaited<ReturnType<typeof createTestApp>>, key: 
 }
 
 describe('prompt reverse', () => {
+  it('allows slow reasoning models enough time to return a prompt spec', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await prepareDraft(ctx)
+      const connection = await createMockChat(ctx)
+      let timeoutMs: number | undefined
+      let maxTokens: number | undefined
+      const mock = createMockChatProvider()
+      expect(createPromptReverseJob(ctx.services.reverse).timeoutMs).toBeGreaterThanOrEqual(240_000)
+      vi.spyOn(ctx.services.providerRegistry, 'chat').mockResolvedValue({
+        kind: 'chat',
+        generate: (request, context) => {
+          timeoutMs = context.timeoutMs
+          maxTokens = request.maxTokens
+          return mock.generate(request, context)
+        }
+      })
+
+      const created = await enqueueReverse(ctx, project.id, connection.id, 'reverse-timeout-0001')
+      await ctx.services.jobs.tick()
+
+      expect(timeoutMs).toBeGreaterThanOrEqual(180_000)
+      expect(maxTokens).toBeGreaterThanOrEqual(12_000)
+      expect(created.statusCode).toBe(202)
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('runs a mock reverse job, stores a ready candidate, and applies it with If-Match', async () => {
     const ctx = await createTestApp()
     try {

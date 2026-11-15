@@ -123,7 +123,10 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
   const materials = [...(submission?.materials ?? [])].sort((left, right) => left.sortOrder - right.sortOrder)
   const primaryAssetId = materials[0]?.assetId ?? null
   const draftText = promptText(workspace.activeDraft?.state, submission?.globalNotes ?? '')
-  const workbenchPath = `/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(project.id)}`
+  const workbenchQuery = new URLSearchParams({ project: project.id })
+  const aiWarning = searchParams.get('aiWarning')
+  if (aiWarning) workbenchQuery.set('aiWarning', aiWarning)
+  const workbenchPath = `/characters/${encodeURIComponent(id)}/art?${workbenchQuery.toString()}`
 
   return (
     <div className="studio-page-frame" data-testid="character-created">

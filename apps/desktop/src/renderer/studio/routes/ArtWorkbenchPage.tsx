@@ -15,6 +15,7 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const projectId = searchParams.get('project')
+  const aiWarning = searchParams.get('aiWarning')
   const id = characterId ?? ''
 
   const projectQuery = useQuery({
@@ -126,7 +127,7 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
         description={project.description || '这个项目还没有描述。'}
         actions={<StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />}
       />
-      <Workbench key={project.id} project={project} />
+      <Workbench key={project.id} project={project} aiWarning={aiWarning} />
     </div>
   )
 }

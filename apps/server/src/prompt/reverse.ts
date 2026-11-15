@@ -112,13 +112,19 @@ export function buildReverseMessages(input: {
   const materials = input.submission.materials
     .map(
       (item, index) =>
-        `- image ${index + 1}: role=${item.role} locked=${item.locked} note=${normalizeText(item.note)}`
+        `- image ${index + 1}: assetId=${item.assetId} role=${item.role} locked=${item.locked} note=${normalizeText(item.note)}`
     )
     .join('\n')
   const text = [
     'Generate a PromptSpec for a character illustration from the supplied reference images and requirements.',
     'Return ONLY a JSON object: {"blocks":[...],"negativeBlocks":[...],"warnings":[...]}.',
-    'Every block must have source "vision-model", locked false, a unique id, category from the allowed set, label, text, weight, confidence, evidence, priority, requirementRefs and materialRefs.',
+    'Allowed positive block categories: subject, face, hair, outfit, pose, composition, style, lighting, background, safety, other.',
+    'Every block must use exactly these keys: id, source, locked, category, label, text, weight, confidence, evidence, priority, requirementRefs, materialRefs.',
+    'A block must use this JSON shape: {"id":"hair.silver","source":"vision-model","locked":false,"category":"hair","label":"银白长发","text":"...","weight":1.2,"confidence":0.8,"evidence":[{"assetId":"ast_..."}],"priority":0,"requirementRefs":["req_identity"],"materialRefs":["ast_..."]}.',
+    'Every block id MUST match ^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$ using lowercase ASCII only; never use camelCase or uppercase letters.',
+    'evidence MUST be an array of objects like [{"assetId":"ast_..."}], never an array of strings. priority MUST be an integer number, never a string.',
+    'materialRefs MUST contain only exact assetId values from the Materials list; never use image numbers, roles, URLs, or notes there.',
+    'Set every generated block locked=false, even when a material is marked locked=true. The server derives material locks after parsing; copying true invalidates the entire response.',
     'Positive blocks must cite every must requirement. Negative blocks must use category "negative" and cite every avoid requirement. Prefer requirements are optional.',
     'The character brief and its projected locked blocks are authoritative. Do not contradict them, do not emit brief.* block ids, and never invent visual facts that are absent from both the brief and the reference images.',
     `Global notes: ${normalizeText(input.submission.globalNotes) || '(none)'}`,

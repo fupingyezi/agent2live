@@ -18,12 +18,20 @@ import {
   characterBriefContentSchema,
   type CharacterBriefContent
 } from '@agent2live/contracts/character-brief'
-import { ApiError, createArtProject, createCharacter, submitPromptInput } from '@studio/api'
+import {
+  ApiError,
+  createArtProject,
+  createCharacter,
+  listProviders,
+  requestPromptReverse,
+  submitPromptInput
+} from '@studio/api'
 import { queryKeys } from '@studio/api'
 import type { ArtProjectDto, CharacterDto, CreateCharacterInput, MaterialRole } from '@studio/api'
 import deleteIcon from '@studio/assets/reference-actions/delete.png'
 import editIcon from '@studio/assets/reference-actions/edit.png'
 import previewIcon from '@studio/assets/reference-actions/preview.png'
+import { findDefaultVisionProvider } from '@studio/providers'
 import { CharacterReferenceEditor } from './new-character/CharacterReferenceEditor'
 import {
   normalizeCharacterReferences,
@@ -51,6 +59,15 @@ interface CharacterBootstrapResult {
   project: ArtProjectDto
   inputSubmissionId: string
   draftId: string
+  aiWarning: 'no-vision-provider' | 'vision-start-failed' | null
+  initialReverseJobId: string | null
+}
+
+interface PromptProvisionResult {
+  inputSubmissionId: string
+  draftId: string
+  aiWarning: CharacterBootstrapResult['aiWarning']
+  initialReverseJobId: string | null
 }
 
 const EMPTY_DRAFT: CharacterDraft = { title: '', summary: '', supplement: '' }
@@ -279,7 +296,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
     }
   }
 
-  const submitCharacterInput = async (projectId: string) => {
+  const submitCharacterInput = async (projectId: string): Promise<PromptProvisionResult> => {
     const brief = buildCharacterBrief(draft)
     const files = new Map<string, File>()
     const materials = references.map((reference, index) => {
@@ -295,7 +312,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         sortOrder: index
       }
     })
-    return submitPromptInput(
+    const submitted = await submitPromptInput(
       projectId,
       {
         characterBrief: brief,
@@ -306,6 +323,26 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       files,
       null
     )
+    let aiWarning: PromptProvisionResult['aiWarning'] = null
+    let initialReverseJobId: string | null = null
+    try {
+      const providers = await listProviders()
+      const provider = findDefaultVisionProvider(providers)
+      if (!provider) {
+        aiWarning = 'no-vision-provider'
+      } else {
+        const reverse = await requestPromptReverse(projectId, provider.id)
+        initialReverseJobId = reverse.jobId
+      }
+    } catch {
+      aiWarning = 'vision-start-failed'
+    }
+    return {
+      inputSubmissionId: submitted.submission.id,
+      draftId: submitted.draft.id,
+      aiWarning,
+      initialReverseJobId
+    }
   }
 
   const mutation = useMutation({
@@ -321,42 +358,41 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         return {
           character,
           project,
-          inputSubmissionId: submitted.submission.id,
-          draftId: submitted.draft.id
+          ...submitted
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         throw new CharacterProvisioningError(message, character.id, project?.id ?? null, error)
       }
     },
-    onSuccess: ({ character, project }) => {
+    onSuccess: ({ character, project, aiWarning }) => {
       clearDraft()
       void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(character.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
-      navigate(
-        `/characters/${encodeURIComponent(character.id)}/created?project=${encodeURIComponent(project.id)}`
-      )
+      const query = new URLSearchParams({ project: project.id })
+      if (aiWarning) query.set('aiWarning', aiWarning)
+      navigate(`/characters/${encodeURIComponent(character.id)}/created?${query.toString()}`)
     }
   })
 
   const retryMutation = useMutation({
     mutationFn: async (provisioning: CharacterProvisioningError) => {
       if (!provisioning.projectId) throw new Error('默认造型尚未创建。')
-      await submitCharacterInput(provisioning.projectId)
-      return provisioning
+      const submitted = await submitCharacterInput(provisioning.projectId)
+      return { provisioning, submitted }
     },
-    onSuccess: (provisioning) => {
+    onSuccess: ({ provisioning, submitted }) => {
       clearDraft()
       void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(provisioning.characterId) })
       if (!provisioning.projectId) return
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(provisioning.projectId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(provisioning.projectId) })
-      navigate(
-        `/characters/${encodeURIComponent(provisioning.characterId)}/created?project=${encodeURIComponent(provisioning.projectId)}`
-      )
+      const query = new URLSearchParams({ project: provisioning.projectId })
+      if (submitted.aiWarning) query.set('aiWarning', submitted.aiWarning)
+      navigate(`/characters/${encodeURIComponent(provisioning.characterId)}/created?${query.toString()}`)
     }
   })
 

@@ -73,6 +73,22 @@ describe('OpenAIChatProvider', () => {
     })
   })
 
+  it('requests JSON object mode when the caller requires structured output', async () => {
+    server = await startTestServer((_request, response) => {
+      sendJson(response, 200, { choices: [{ message: { content: '{}' } }] })
+    })
+    await provider(`${server.url}/v1`).generate(
+      {
+        messages: [{ role: 'user', content: 'return json' }],
+        responseFormat: 'json'
+      },
+      { requestId: 'req-json' }
+    )
+
+    const body = JSON.parse(server.requests[0]!.body.toString('utf8'))
+    expect(body.response_format).toEqual({ type: 'json_object' })
+  })
+
   it('maps 429 with retry-after without leaking key or prompt', async () => {
     server = await startTestServer((_request, response) => {
       response.setHeader('retry-after', '2')

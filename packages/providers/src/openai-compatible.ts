@@ -59,7 +59,8 @@ export class OpenAIChatProvider implements ChatProvider {
         model: request.model ?? this.config.model,
         messages: request.messages.map(toOpenAIMessage),
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-        ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens })
+        ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
+        ...(request.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {})
       },
       context
     )

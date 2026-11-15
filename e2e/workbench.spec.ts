@@ -3,7 +3,16 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
+import { ApiClient, uniqueKey } from './helpers/api'
+import { launchStudio } from './helpers/app'
+import { makePng } from './helpers/seed'
 import { studioPage } from './support/windows'
+
+function hashSearch(url: string): URLSearchParams {
+  const hash = new URL(url).hash
+  const queryIndex = hash.indexOf('?')
+  return new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : '')
+}
 
 async function createMockProvider(page: Page, kind: 'chat' | 'image'): Promise<void> {
   await page.evaluate(
@@ -218,5 +227,109 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     ).toHaveCount(2)
   } finally {
     await app.close()
+  }
+})
+
+test('queues a Zhipu vision reverse after creation without applying its result', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-creation-vision-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const provider = await api.json<{ id: string }>('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': uniqueKey('provider-zhipu-vision') },
+      body: {
+        label: 'Creation Zhipu Vision',
+        kind: 'chat',
+        adapter: 'mock',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        model: 'glm-5.3-flash',
+        enabled: true,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
+        }
+      }
+    })
+
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('潮')
+    await studio.page.getByLabel('角色简介').fill('在海雾里巡灯的白发少女。')
+    await studio.page.getByLabel('上传参考图').setInputFiles({
+      name: 'identity.png',
+      mimeType: 'image/png',
+      buffer: await makePng(240, 320, '#9ec9bb')
+    })
+
+    const reverseResponsePromise = studio.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
+    )
+    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    const reverseResponse = await reverseResponsePromise
+    expect(reverseResponse.status()).toBe(202)
+    const reverseRequest = await reverseResponse.json()
+    expect(reverseRequest).toMatchObject({
+      baseDraftRevision: expect.any(Number),
+      baseDraftRowVersion: expect.any(Number),
+      jobId: expect.stringMatching(/^job_/)
+    })
+
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    const projectId = hashSearch(studio.page.url()).get('project')
+    expect(projectId).toMatch(/^artp_/)
+
+    const workspace = await api.json<{
+      activeDraft: { state: { blocks: Array<{ source: string }> }; rowVersion: number }
+      latestSubmission: { materials: Array<{ assetId: string }> }
+    }>('GET', `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`)
+    expect(workspace.body.activeDraft.rowVersion).toBe(reverseRequest.baseDraftRowVersion)
+    const referenceAssetId = workspace.body.latestSubmission.materials[0]?.assetId
+    expect(referenceAssetId).toMatch(/^ast_/)
+
+    const job = await api.waitForJob(reverseRequest.jobId)
+    const resultId = (job.result as { reverseResultId?: unknown } | null)?.reverseResultId
+    expect(resultId).toMatch(/^prv_/)
+    const reverseResult = await api.json<{
+      status: string
+      state: { materialRefs: Array<{ assetId: string }> }
+    }>('GET', `/api/v1/prompt-reverse-results/${encodeURIComponent(String(resultId))}`)
+    expect(reverseResult.body.status).toBe('ready')
+    expect(reverseResult.body.state.materialRefs.map((material) => material.assetId)).toContain(
+      referenceAssetId
+    )
+    expect(workspace.body.activeDraft.state.blocks.some((block) => block.source === 'vision-model')).toBe(
+      false
+    )
+    expect(provider.status).toBe(201)
+  } finally {
+    await studio.close()
+  }
+})
+
+test('keeps creation successful and explains when no vision provider is available', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-creation-no-vision-')
+
+  try {
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('雾')
+    await studio.page.getByLabel('角色简介').fill('值守旧灯塔的沉静记录员。')
+    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
+
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    expect(hashSearch(studio.page.url()).get('aiWarning')).toBe('no-vision-provider')
+    await studio.page.getByTestId('open-art-workbench').click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+    expect(hashSearch(studio.page.url()).get('aiWarning')).toBe('no-vision-provider')
+    await expect(studio.page.getByTestId('ai-warning')).toContainText('参考图反推未启动')
+  } finally {
+    await studio.close()
   }
 })

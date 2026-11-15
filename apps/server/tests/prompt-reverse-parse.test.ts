@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildReverseState, parseReverseOutput } from '../src/prompt/reverse'
+import { buildReverseMessages, buildReverseState, parseReverseOutput } from '../src/prompt/reverse'
 import { specFixture } from './fixtures/spec'
 import type { PromptInputSubmissionDto } from '../src/services/prompt-submissions'
 
@@ -99,6 +99,35 @@ function output(overrides: Record<string, unknown> = {}) {
 }
 
 describe('prompt reverse parsing', () => {
+  it('gives the model exact schema values and material asset ids', () => {
+    const { messages } = buildReverseMessages({
+      base: specFixture(),
+      submission,
+      brief: null,
+      images: [{ mimeType: 'image/png', data: Buffer.from('image') }],
+      mockProtocol: false,
+      maxPromptChars: 20_000
+    })
+    const user = messages[1]
+    const text =
+      typeof user?.content === 'string'
+        ? user.content
+        : (user?.content ?? [])
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n')
+
+    expect(text).toContain(`assetId=${lockedAssetId}`)
+    expect(text).toContain('"evidence":[{"assetId":"ast_..."}]')
+    expect(text).toContain('"priority":0')
+    expect(text).toContain('even when a material is marked locked=true')
+    expect(text).toContain('^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$')
+    expect(text).toContain(
+      'subject, face, hair, outfit, pose, composition, style, lighting, background, safety, other'
+    )
+    expect(text).not.toContain('category from the allowed set')
+  })
+
   it('accepts plain JSON and fenced JSON', () => {
     expect(parseReverseOutput(JSON.stringify(output())).blocks).toHaveLength(3)
     expect(parseReverseOutput('```json\n' + JSON.stringify(output()) + '\n```').blocks).toHaveLength(3)

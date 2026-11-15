@@ -5,6 +5,7 @@ import {
   SEEDREAM_CAPABILITIES
 } from '@agent2live/contracts/capabilities'
 import type { ProviderCapabilities } from '@agent2live/contracts'
+import type { ProviderConnectionDto } from '@studio/api'
 
 const DEEPSEEK_CHAT_CAPABILITIES: ProviderCapabilities = {
   schemaVersion: 'provider-capabilities/1',
@@ -15,7 +16,22 @@ const DEEPSEEK_CHAT_CAPABILITIES: ProviderCapabilities = {
   }
 }
 
-export type ProviderPresetId = 'openai-chat' | 'deepseek-chat' | 'seedream-image' | 'mock-chat' | 'mock-image'
+const ZHIPU_VISION_CAPABILITIES: ProviderCapabilities = {
+  schemaVersion: 'provider-capabilities/1',
+  chat: {
+    maxImages: 6,
+    maxPromptChars: 20_000,
+    supportsVision: true
+  }
+}
+
+export type ProviderPresetId =
+  | 'openai-chat'
+  | 'deepseek-chat'
+  | 'zhipu-vision'
+  | 'seedream-image'
+  | 'mock-chat'
+  | 'mock-image'
 
 export interface ProviderPreset {
   id: ProviderPresetId
@@ -60,6 +76,17 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     model: 'deepseek-flash',
     requiresSecret: true,
     capabilities: DEEPSEEK_CHAT_CAPABILITIES
+  },
+  {
+    id: 'zhipu-vision',
+    name: '智谱多模态',
+    description: '智谱 GLM 视觉模型，用于参考图分析与提示词反推。',
+    kind: 'chat',
+    adapter: 'openai-compatible',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-5.3-flash',
+    requiresSecret: true,
+    capabilities: ZHIPU_VISION_CAPABILITIES
   },
   {
     id: 'seedream-image',
@@ -121,8 +148,26 @@ export function presetIdForConnection(connection: {
 }): ProviderPresetId {
   if (connection.adapter === 'mock') return connection.kind === 'chat' ? 'mock-chat' : 'mock-image'
   if (connection.adapter === 'seedream') return 'seedream-image'
+  if (connection.baseUrl?.includes('open.bigmodel.cn') || connection.model?.startsWith('glm-')) {
+    return 'zhipu-vision'
+  }
   if (connection.baseUrl?.includes('api.deepseek.com') || connection.model?.startsWith('deepseek-')) {
     return 'deepseek-chat'
   }
   return 'openai-chat'
+}
+
+export function findDefaultVisionProvider(providers: ProviderConnectionDto[]): ProviderConnectionDto | null {
+  return (
+    providers.find((provider) => {
+      const capabilities = provider.capabilities as ProviderCapabilities | null
+      return (
+        provider.enabled &&
+        provider.kind === 'chat' &&
+        capabilities?.chat?.supportsVision === true &&
+        provider.baseUrl?.includes('open.bigmodel.cn') === true &&
+        provider.model?.startsWith('glm-') === true
+      )
+    }) ?? null
+  )
 }

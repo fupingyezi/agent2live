@@ -185,8 +185,8 @@ export class PromptReverseService {
     let outputText: string
     try {
       const result = await provider.generate(
-        { messages, maxTokens: 6000 },
-        { requestId: context.jobId, signal: context.signal, timeoutMs: 60_000 }
+        { messages, maxTokens: 12_000, responseFormat: 'json' },
+        { requestId: context.jobId, signal: context.signal, timeoutMs: 180_000 }
       )
       outputText = result.text
       this.deps.invocations.succeed(invocationId, {

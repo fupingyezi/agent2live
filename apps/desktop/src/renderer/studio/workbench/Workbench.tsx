@@ -52,9 +52,10 @@ function errorMessage(error: unknown): string | null {
 
 export interface WorkbenchProps {
   project: ArtProjectDto
+  aiWarning?: string | null
 }
 
-export const Workbench: React.FC<WorkbenchProps> = ({ project }) => {
+export const Workbench: React.FC<WorkbenchProps> = ({ project, aiWarning = null }) => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const hydrate = useWorkbenchStore((state) => state.hydrate)
@@ -193,6 +194,15 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project }) => {
 
   return (
     <section className="workbench" data-testid="workbench">
+      {aiWarning ? (
+        <div data-testid="ai-warning">
+          <InlineNotice tone="warning">
+            {aiWarning === 'no-vision-provider'
+              ? '没有可用的智谱多模态连接，参考图反推未启动；创建和提示词草稿已完成。'
+              : '参考图反推未能启动；创建和提示词草稿已完成，可以稍后在 AI 助手中重试。'}
+          </InlineNotice>
+        </div>
+      ) : null}
       <div className="workbench-context">
         <ReferenceChainBar
           project={project}

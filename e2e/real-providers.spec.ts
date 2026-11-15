@@ -1,8 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { promptReverseOutputSchema } from '../packages/contracts/src/prompt'
+import { ApiClient, uniqueKey } from './helpers/api'
 import { launchStudio } from './helpers/app'
 import { writeEvidenceJson } from './helpers/evidence'
+import { makePng } from './helpers/seed'
 
 interface ProviderCheck {
   ok: boolean
@@ -15,11 +18,26 @@ interface ProviderCheck {
 
 interface RealProviderSettings {
   kind: 'chat' | 'image'
-  preset: 'deepseek-chat' | 'seedream-image'
+  preset: 'deepseek-chat' | 'zhipu-vision' | 'seedream-image'
   label: string
   baseUrl: string
   model: string
   apiKey: string
+}
+
+function requiredVisionSettings(): RealProviderSettings | null {
+  if (existsSync('.env')) process.loadEnvFile('.env')
+  if (process.env.AGENT2LIVE_REAL_PROVIDERS !== 'vision') return null
+  const apiKey = process.env.ZHIPU_API_KEY
+  if (!apiKey?.trim()) throw new Error('real vision smoke is missing ZHIPU_API_KEY')
+  return {
+    kind: 'chat',
+    preset: 'zhipu-vision',
+    label: 'Real Zhipu Vision Smoke',
+    baseUrl: process.env.ZHIPU_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4',
+    model: process.env.AGENT2LIVE_REAL_VISION_MODEL ?? 'glm-5.3-flash',
+    apiKey
+  }
 }
 
 function requiredSettings(): {
@@ -174,5 +192,87 @@ test('runs opt-in real Chat and Image provider probes', async () => {
       gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       checks: settings.chat ? checks : { image: checks.image }
     })
+  }
+})
+
+test('runs the opt-in real Zhipu vision reverse pipeline', async () => {
+  test.setTimeout(600_000)
+  const settings = requiredVisionSettings()
+  test.skip(settings === null, 'set AGENT2LIVE_REAL_PROVIDERS=vision and ZHIPU_API_KEY to run')
+  if (!settings) return
+
+  const evidence = {
+    schemaVersion: 'real-vision/1',
+    status: 'fail' as 'pass' | 'fail',
+    generatedAt: new Date().toISOString(),
+    gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    model: settings.model,
+    latencyMs: 0,
+    schemaPass: false,
+    warningCount: 0
+  }
+  const studio = await launchStudio('agent2live-real-vision-')
+  try {
+    await studio.page.getByRole('button', { name: '设置', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="providers-page"]')).toBeVisible()
+    await addProvider(studio.page, settings)
+    const providerCard = studio.page
+      .locator('[data-testid="provider-card"]')
+      .filter({ hasText: settings.label })
+    await expect(providerCard).toBeVisible()
+    const providerId = await providerCard.getAttribute('data-provider-id')
+    expect(providerId).toMatch(/^conn_/)
+
+    const api = new ApiClient(studio.endpoint)
+    const character = await api.createCharacter('智谱视觉冒烟', '用于验证参考图反推真实模型链路。')
+    const project = await api.createProject(character.id, '默认造型', '视觉反推 smoke')
+    const input = await api.uploadPromptInput(project.id, await makePng(512, 768, '#9ec9bb'), {
+      filename: 'vision-smoke.png'
+    })
+    expect(input.submission.materials).toHaveLength(1)
+
+    const startedAt = Date.now()
+    const created = await api.json<{ jobId: string }>(
+      'POST',
+      `/api/v1/art-projects/${encodeURIComponent(project.id)}/prompt-reverse`,
+      {
+        headers: { 'idempotency-key': uniqueKey('real-vision-reverse') },
+        body: { providerConnectionId: providerId }
+      }
+    )
+    const job = await api.waitForJob(created.body.jobId, 300_000)
+    evidence.latencyMs = Date.now() - startedAt
+    const resultId = (job.result as { reverseResultId?: unknown } | null)?.reverseResultId
+    expect(resultId).toMatch(/^prv_/)
+
+    const detail = await api.json<{
+      status: string
+      state: {
+        blocks: unknown[]
+        negativeBlocks: unknown[]
+      }
+    }>('GET', `/api/v1/prompt-reverse-results/${encodeURIComponent(String(resultId))}`)
+    expect(detail.body.status).toBe('ready')
+    const visionBlocks = detail.body.state.blocks.filter(
+      (block) => (block as { source?: unknown }).source === 'vision-model'
+    )
+    const visionNegativeBlocks = detail.body.state.negativeBlocks.filter(
+      (block) => (block as { source?: unknown }).source === 'vision-model'
+    )
+    expect(() =>
+      promptReverseOutputSchema.parse({
+        blocks: visionBlocks.map((block) => ({ ...(block as object), locked: false })),
+        negativeBlocks: visionNegativeBlocks.map((block) => ({
+          ...(block as object),
+          locked: false
+        })),
+        warnings: []
+      })
+    ).not.toThrow()
+    evidence.schemaPass = true
+    evidence.status = 'pass'
+  } finally {
+    await studio.close()
+    writeEvidenceJson('real-vision.json', evidence)
   }
 })

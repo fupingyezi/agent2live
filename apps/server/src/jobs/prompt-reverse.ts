@@ -29,7 +29,7 @@ export function createPromptReverseJob(service: PromptReverseService): JobDefini
     payloadSchema: promptReversePayloadSchema,
     sideEffect: 'idempotent',
     maxAttempts: 2,
-    timeoutMs: 90_000,
+    timeoutMs: 240_000,
     run: (context) => service.run(context)
   }
 }
