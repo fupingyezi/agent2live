@@ -156,48 +156,53 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
         ]}
       />
 
-      <Field label="聊天模型">
-        <Select value={providerId} onValueChange={setProviderId}>
-          {chatProviders.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-
-      {kind === 'suggest' ? (
-        <>
-          <Field label="改进方向">
-            <Textarea rows={3} maxLength={2000} value={intent} onValueChange={setIntent} />
+      <details className="ai-request-settings">
+        <summary>模型与改进方向</summary>
+        <div className="ai-request-settings-body" data-testid="ai-request-settings">
+          <Field label="聊天模型">
+            <Select value={providerId} onValueChange={setProviderId}>
+              {chatProviders.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.label}
+                </option>
+              ))}
+            </Select>
           </Field>
-          <fieldset className="choice-group">
-            <legend>建议基准</legend>
-            <div className="choice-group-actions">
-              <Button
-                type="button"
-                variant={base === 'draft' ? 'secondary' : 'quiet'}
-                size="sm"
-                aria-pressed={base === 'draft'}
-                disabled={!workspace.activeDraft}
-                onClick={() => setBase('draft')}
-              >
-                当前草稿
-              </Button>
-              <Button
-                type="button"
-                variant={base === 'version' ? 'secondary' : 'quiet'}
-                size="sm"
-                aria-pressed={base === 'version'}
-                disabled={!workspace.activePromptVersion}
-                onClick={() => setBase('version')}
-              >
-                当前提示词版本
-              </Button>
-            </div>
-          </fieldset>
-        </>
-      ) : null}
+
+          {kind === 'suggest' ? (
+            <>
+              <Field label="改进方向">
+                <Textarea rows={3} maxLength={2000} value={intent} onValueChange={setIntent} />
+              </Field>
+              <fieldset className="choice-group">
+                <legend>建议基准</legend>
+                <div className="choice-group-actions">
+                  <Button
+                    type="button"
+                    variant={base === 'draft' ? 'secondary' : 'quiet'}
+                    size="sm"
+                    aria-pressed={base === 'draft'}
+                    disabled={!workspace.activeDraft}
+                    onClick={() => setBase('draft')}
+                  >
+                    当前草稿
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={base === 'version' ? 'secondary' : 'quiet'}
+                    size="sm"
+                    aria-pressed={base === 'version'}
+                    disabled={!workspace.activePromptVersion}
+                    onClick={() => setBase('version')}
+                  >
+                    当前提示词版本
+                  </Button>
+                </div>
+              </fieldset>
+            </>
+          ) : null}
+        </div>
+      </details>
 
       {dirty ? <InlineNotice tone="info">先保存或撤销未保存的提示词修改，再请求 AI。</InlineNotice> : null}
       {localError ? (

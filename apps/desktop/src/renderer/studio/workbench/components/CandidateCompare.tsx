@@ -24,23 +24,28 @@ function validationLines(value: unknown): string[] {
   return lines.slice(0, 8)
 }
 
-interface CandidateCardProps {
+interface CandidateImageProps {
+  assetId: string
+  alt: string
+}
+
+const CandidateImage: React.FC<CandidateImageProps> = ({ assetId, alt }) => {
+  const { url, isLoading, error } = useAssetUrl(assetId)
+  return url ? <img src={url} alt={alt} /> : <span>{isLoading ? '加载中…' : error ? '无法加载' : '—'}</span>
+}
+
+interface CandidateStageProps {
   candidate: GenerationCandidateDto
   busy: boolean
   onAccept: (candidate: GenerationCandidateDto) => void
 }
 
-const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, busy, onAccept }) => {
-  const { url, isLoading, error } = useAssetUrl(candidate.assetId)
+const CandidateStage: React.FC<CandidateStageProps> = ({ candidate, busy, onAccept }) => {
   const issues = validationLines(candidate.validation)
   return (
-    <figure className={`candidate-card candidate-${candidate.status}`} data-testid="candidate-card">
-      <div className="candidate-image">
-        {url ? (
-          <img src={url} alt="生成候选" />
-        ) : (
-          <span>{isLoading ? '加载中…' : error ? '无法加载' : '—'}</span>
-        )}
+    <article className="candidate-stage" data-testid="candidate-card">
+      <div className="candidate-stage-image">
+        <CandidateImage assetId={candidate.assetId} alt="生成候选" />
         <StatusPill
           label={
             candidate.status === 'ready'
@@ -56,20 +61,25 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, busy, onAccept
           }
         />
       </div>
-      <figcaption>
-        <code title={candidate.id}>{candidate.id}</code>
-        {issues.length > 0 ? (
-          <ul className="validation-list">
-            {issues.map((issue) => (
-              <li key={issue}>{issue}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">未报告验证问题</p>
-        )}
-        {candidate.acceptedArtVersionId ? (
-          <p className="muted">已接受为 {candidate.acceptedArtVersionId}</p>
-        ) : null}
+      <div className="candidate-stage-footer">
+        <div>
+          <strong>候选</strong>
+          <p className="studio-meta">
+            {candidate.asset
+              ? `${candidate.asset.width ?? '—'} × ${candidate.asset.height ?? '—'}`
+              : '图片信息不可用'}{' '}
+            · 原图未裁切
+          </p>
+          {issues.length > 0 ? (
+            <ul className="validation-list">
+              {issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">未报告验证问题</p>
+          )}
+        </div>
         <AsyncButton
           type="button"
           busy={busy}
@@ -79,10 +89,41 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, busy, onAccept
         >
           接受候选
         </AsyncButton>
-      </figcaption>
-    </figure>
+      </div>
+    </article>
   )
 }
+
+interface CandidateStripProps {
+  candidates: GenerationCandidateDto[]
+  selectedId: string
+  onSelect: (candidateId: string) => void
+}
+
+const CandidateStrip: React.FC<CandidateStripProps> = ({ candidates, selectedId, onSelect }) => (
+  <aside className="candidate-strip" data-testid="candidate-strip">
+    <div className="candidate-strip-heading">
+      <strong>候选清单</strong>
+      <span className="studio-meta">{candidates.length} 张</span>
+    </div>
+    <div className="candidate-thumbnails">
+      {candidates.map((candidate, index) => (
+        <button
+          key={candidate.id}
+          type="button"
+          className="candidate-thumbnail"
+          aria-label={`查看候选 ${index + 1}`}
+          aria-pressed={selectedId === candidate.id}
+          data-state={selectedId === candidate.id ? 'active' : 'default'}
+          onClick={() => onSelect(candidate.id)}
+        >
+          <CandidateImage assetId={candidate.assetId} alt={`候选 ${index + 1} 缩略图`} />
+          <span>{String.fromCharCode(65 + index)}</span>
+        </button>
+      ))}
+    </div>
+  </aside>
+)
 
 export interface CandidateCompareProps {
   candidates: GenerationCandidateDto[]
@@ -91,23 +132,25 @@ export interface CandidateCompareProps {
 }
 
 export const CandidateCompare: React.FC<CandidateCompareProps> = ({ candidates, acceptingId, onAccept }) => {
+  const [selectedId, setSelectedId] = useState(
+    () => candidates.find((candidate) => candidate.status === 'ready')?.id ?? candidates[0]?.id ?? ''
+  )
   const [confirming, setConfirming] = useState<GenerationCandidateDto | null>(null)
 
   if (candidates.length === 0) {
     return <EmptyState compact title="这次生成没有产生候选" description="调整提示词或模型参数后再试。" />
   }
+  const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0]!
 
   return (
     <section className="candidate-compare" data-testid="candidate-compare">
-      <div className="candidate-grid">
-        {candidates.map((candidate) => (
-          <CandidateCard
-            key={candidate.id}
-            candidate={candidate}
-            busy={acceptingId === candidate.id}
-            onAccept={(selected) => setConfirming(selected)}
-          />
-        ))}
+      <div className="candidate-workbench" data-testid="candidate-stage">
+        <CandidateStage
+          candidate={selected}
+          busy={acceptingId === selected.id}
+          onAccept={(candidate) => setConfirming(candidate)}
+        />
+        <CandidateStrip candidates={candidates} selectedId={selected.id} onSelect={setSelectedId} />
       </div>
 
       <ConfirmDialog

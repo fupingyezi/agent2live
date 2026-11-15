@@ -209,68 +209,71 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
         }
       />
 
-      <div className="generation-form">
-        <Field label="图像模型">
-          <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
-            {imageProviders.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="generation-row">
-          <Field label="数量">
-            <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}>
-              {Array.from({ length: maxCount }, (_, index) => index + 1).map((value) => (
-                <option key={value} value={value}>
-                  {value}
+      <details className="generation-settings-details">
+        <summary>生成设置</summary>
+        <div className="generation-form" data-testid="generation-settings">
+          <Field label="图像模型">
+            <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
+              {imageProviders.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.label}
                 </option>
               ))}
             </Select>
           </Field>
-          {sizes.length > 0 ? (
-            <Field label="尺寸">
-              <Select value={size} onValueChange={setSize}>
-                {sizes.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+          <div className="generation-row">
+            <Field label="数量">
+              <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}>
+                {Array.from({ length: maxCount }, (_, index) => index + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
                   </option>
                 ))}
               </Select>
             </Field>
-          ) : null}
-          {caps?.supportsSeed ? (
-            <Field label="Seed" description="可选">
-              <TextField
-                inputMode="numeric"
-                value={seed}
-                placeholder="随机"
-                onValueChange={(value) => setSeed(value.replace(/[^0-9]/g, ''))}
-              />
-            </Field>
-          ) : null}
-        </div>
-        {localError ? (
-          <div role="alert">
-            <InlineNotice tone="danger">{localError}</InlineNotice>
+            {sizes.length > 0 ? (
+              <Field label="尺寸">
+                <Select value={size} onValueChange={setSize}>
+                  {sizes.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+            {caps?.supportsSeed ? (
+              <Field label="Seed" description="可选">
+                <TextField
+                  inputMode="numeric"
+                  value={seed}
+                  placeholder="随机"
+                  onValueChange={(value) => setSeed(value.replace(/[^0-9]/g, ''))}
+                />
+              </Field>
+            ) : null}
           </div>
-        ) : null}
-        <AsyncButton
-          type="button"
-          busy={createMutation.isPending}
-          busyLabel="提交生成…"
-          disabled={!selectedProvider}
-          onClick={() => createMutation.mutate()}
-        >
-          开始生成
-        </AsyncButton>
-        {generation?.baseArtVersionId ? (
-          <p className="muted">会使用当前 active ArtVersion 作为主参考。</p>
-        ) : (
-          <p className="muted">还没有 active ArtVersion；本次只使用提示词与素材。</p>
-        )}
-      </div>
+        </div>
+      </details>
+      {localError ? (
+        <div role="alert">
+          <InlineNotice tone="danger">{localError}</InlineNotice>
+        </div>
+      ) : null}
+      <AsyncButton
+        type="button"
+        busy={createMutation.isPending}
+        busyLabel="提交生成…"
+        disabled={!selectedProvider}
+        onClick={() => createMutation.mutate()}
+      >
+        开始生成
+      </AsyncButton>
+      {generation?.baseArtVersionId ? (
+        <p className="muted">会使用当前 active ArtVersion 作为主参考。</p>
+      ) : (
+        <p className="muted">还没有 active ArtVersion；本次只使用提示词与素材。</p>
+      )}
 
       {queryError ? (
         <StudioError

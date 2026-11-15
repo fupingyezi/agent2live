@@ -144,6 +144,26 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project }) => {
   const artVersions = versionsQuery.data ?? []
   const draftRowVersion = spec ? storeRowVersion : (draft?.rowVersion ?? null)
   const createError = errorMessage(createDraftMutation.error)
+  const generationWorkspace = providersQuery.isError ? (
+    <StudioError
+      error={providersQuery.error}
+      onRetry={() => {
+        void providersQuery.refetch()
+      }}
+    />
+  ) : providersQuery.isPending ? (
+    <StudioLoading label="正在加载模型连接…" />
+  ) : (
+    <GenerationPanel
+      project={project}
+      workspace={workspace}
+      providers={providers}
+      onAccepted={(mutation) => {
+        queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
+        setPanel('versions')
+      }}
+    />
+  )
 
   const invalidateProjectWorkspace = (): void => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
@@ -212,82 +232,90 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project }) => {
         </aside>
 
         <div className="workbench-main">
-          {submission ? <MaterialTray submission={submission} /> : null}
-
-          <PromptInputPanel
-            projectId={project.id}
-            draftRowVersion={draftRowVersion}
-            submission={submission}
-            disabled={dirty || (draft !== null && spec === null)}
-            onSubmitted={handleSubmitted}
-          />
-
-          {dirty ? (
-            <div data-testid="unsaved-notice">
-              <InlineNotice tone="warning">
-                提示词有未保存修改。保存或撤销后，才能更新素材与要求、调用 AI 或提交版本。
-              </InlineNotice>
-            </div>
-          ) : null}
-
-          {draft ? (
-            spec ? (
-              <PromptBlockList
-                spec={spec}
-                requirements={spec.sourceRequirements}
-                materials={submission?.materials ?? []}
-                disabled={false}
-              />
-            ) : (
-              <StudioLoading label="正在载入草稿…" />
-            )
+          {panel === 'generate' ? (
+            generationWorkspace
           ) : (
-            <section className="workbench-panel no-draft-panel" data-testid="no-active-draft">
-              <SectionHeader
-                title="没有活动草稿"
-                description={
-                  workspace.activePromptVersion
-                    ? `以提示词 v${workspace.activePromptVersion.versionNumber} 为起点创建可编辑草稿；在提交新版本前，现有版本不会被改变。`
-                    : '提交素材与要求会自动创建草稿；也可以先创建一个空白草稿。'
-                }
+            <>
+              {submission ? <MaterialTray submission={submission} /> : null}
+
+              <PromptInputPanel
+                projectId={project.id}
+                draftRowVersion={draftRowVersion}
+                submission={submission}
+                disabled={dirty || (draft !== null && spec === null)}
+                onSubmitted={handleSubmitted}
               />
-              <p className="muted">也可以展开上方“素材与要求”，直接提交素材和文本要求来创建草稿。</p>
-              <AsyncButton
-                type="button"
-                busy={createDraftMutation.isPending}
-                busyLabel="创建中…"
-                data-testid="create-draft"
-                onClick={() =>
-                  createDraftMutation.mutate(workspace.activePromptVersion ? 'active_version' : 'empty')
-                }
-              >
-                {workspace.activePromptVersion
-                  ? `从提示词 v${workspace.activePromptVersion.versionNumber} 继续编辑`
-                  : '创建空白草稿'}
-              </AsyncButton>
-              {createError ? (
-                <div role="alert">
-                  <InlineNotice tone="danger">{createError}</InlineNotice>
+
+              {dirty ? (
+                <div data-testid="unsaved-notice">
+                  <InlineNotice tone="warning">
+                    提示词有未保存修改。保存或撤销后，才能更新素材与要求、调用 AI 或提交版本。
+                  </InlineNotice>
                 </div>
               ) : null}
-            </section>
-          )}
 
-          {draft && spec ? (
-            <DraftToolbar
-              project={project}
-              draft={draft}
-              spec={spec}
-              dirty={dirty}
-              busy={false}
-              onOpenAi={() => setPanel('ai')}
-              onOpenGeneration={() => setPanel('generate')}
-              onCommitted={() => {
-                setDraftHint(null)
-                setPanel('versions')
-              }}
-            />
-          ) : null}
+              {draft ? (
+                spec ? (
+                  <PromptBlockList
+                    spec={spec}
+                    requirements={spec.sourceRequirements}
+                    materials={submission?.materials ?? []}
+                    disabled={false}
+                  />
+                ) : (
+                  <StudioLoading label="正在载入草稿…" />
+                )
+              ) : null}
+
+              {!draft ? (
+                <section className="workbench-panel no-draft-panel" data-testid="no-active-draft">
+                  <SectionHeader
+                    title="没有活动草稿"
+                    description={
+                      workspace.activePromptVersion
+                        ? `以提示词 v${workspace.activePromptVersion.versionNumber} 为起点创建可编辑草稿；在提交新版本前，现有版本不会被改变。`
+                        : '提交素材与要求会自动创建草稿；也可以先创建一个空白草稿。'
+                    }
+                  />
+                  <p className="muted">也可以展开上方“素材与要求”，直接提交素材和文本要求来创建草稿。</p>
+                  <AsyncButton
+                    type="button"
+                    busy={createDraftMutation.isPending}
+                    busyLabel="创建中…"
+                    data-testid="create-draft"
+                    onClick={() =>
+                      createDraftMutation.mutate(workspace.activePromptVersion ? 'active_version' : 'empty')
+                    }
+                  >
+                    {workspace.activePromptVersion
+                      ? `从提示词 v${workspace.activePromptVersion.versionNumber} 继续编辑`
+                      : '创建空白草稿'}
+                  </AsyncButton>
+                  {createError ? (
+                    <div role="alert">
+                      <InlineNotice tone="danger">{createError}</InlineNotice>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {draft && spec ? (
+                <DraftToolbar
+                  project={project}
+                  draft={draft}
+                  spec={spec}
+                  dirty={dirty}
+                  busy={false}
+                  onOpenAi={() => setPanel('ai')}
+                  onOpenGeneration={() => setPanel('generate')}
+                  onCommitted={() => {
+                    setDraftHint(null)
+                    setPanel('versions')
+                  }}
+                />
+              ) : null}
+            </>
+          )}
         </div>
 
         <aside className="workbench-side">
@@ -356,25 +384,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project }) => {
               {
                 id: 'generate',
                 label: '生成',
-                content: providersQuery.isError ? (
-                  <StudioError
-                    error={providersQuery.error}
-                    onRetry={() => {
-                      void providersQuery.refetch()
-                    }}
-                  />
-                ) : providersQuery.isPending ? (
-                  <StudioLoading label="正在加载模型连接…" />
-                ) : (
-                  <GenerationPanel
-                    project={project}
-                    workspace={workspace}
-                    providers={providers}
-                    onAccepted={(mutation) => {
-                      queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
-                      setPanel('versions')
-                    }}
-                  />
+                content: (
+                  <InlineNotice tone="info">
+                    生成设置和候选比较已展开到主画布；选择“版本”可返回提示词编辑。
+                  </InlineNotice>
                 )
               }
             ]}
