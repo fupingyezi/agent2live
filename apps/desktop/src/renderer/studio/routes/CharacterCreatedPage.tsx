@@ -126,6 +126,12 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
   const workbenchQuery = new URLSearchParams({ project: project.id })
   const aiWarning = searchParams.get('aiWarning')
   if (aiWarning) workbenchQuery.set('aiWarning', aiWarning)
+  const aiKind = searchParams.get('aiKind')
+  const aiJob = searchParams.get('aiJob')
+  if (aiKind === 'reverse' && aiJob) {
+    workbenchQuery.set('aiKind', aiKind)
+    workbenchQuery.set('aiJob', aiJob)
+  }
   const workbenchPath = `/characters/${encodeURIComponent(id)}/art?${workbenchQuery.toString()}`
 
   return (

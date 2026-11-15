@@ -29,6 +29,11 @@ import { StudioError } from '@studio/components'
 
 type AiKind = 'reverse' | 'suggest'
 
+export interface InitialPromptJob {
+  kind: 'reverse'
+  jobId: string
+}
+
 interface ActiveAiJob {
   kind: AiKind
   jobId: string
@@ -45,6 +50,7 @@ export interface PromptAiPanelProps {
   workspace: PromptWorkspaceDto
   providers: ProviderConnectionDto[]
   dirty: boolean
+  initialJob: InitialPromptJob | null
   onDraftUpdated: (draft: PromptDraftDto) => void
 }
 
@@ -53,6 +59,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   workspace,
   providers,
   dirty,
+  initialJob,
   onDraftUpdated
 }) => {
   const queryClient = useQueryClient()
@@ -64,7 +71,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   const [providerId, setProviderId] = useState(chatProviders[0]?.id ?? '')
   const [intent, setIntent] = useState('让角色更贴合当前世界观，同时保持面部一致')
   const [base, setBase] = useState<'draft' | 'version'>(workspace.activeDraft ? 'draft' : 'version')
-  const [activeJob, setActiveJob] = useState<ActiveAiJob | null>(null)
+  const [activeJob, setActiveJob] = useState<ActiveAiJob | null>(initialJob)
   const [localError, setLocalError] = useState<string | null>(null)
   const availableChatProviders = useMemo(
     () =>
@@ -83,6 +90,10 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
       setProviderId(availableChatProviders[0]?.id ?? '')
     }
   }, [providerId, availableChatProviders])
+
+  useEffect(() => {
+    setActiveJob(initialJob)
+  }, [initialJob?.jobId])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
   const job = jobQuery.data ?? null
@@ -146,7 +157,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
     if (draft) onDraftUpdated(draft)
   }
 
-  if (chatProviders.length === 0) {
+  if (chatProviders.length === 0 && !activeJob) {
     return (
       <div className="sidebar-panel">
         <EmptyState

@@ -386,16 +386,22 @@ export const PromptInputPanel: React.FC<PromptInputPanelProps> = ({
 
           <div className="material-editor">
             <SectionHeader title="素材" actions={<CountBadge value={materials.length} max={MAX_FILES} />} />
-            <FileDropZone
-              label="上传素材图片"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              disabled={disabled}
-              onFiles={addFiles}
-            >
-              <strong>上传参考图</strong>
-              <span>拖放或点击选择 PNG/JPEG/WEBP，单张最大 20MB，最多 14 张。</span>
-            </FileDropZone>
+            {submission ? (
+              <InlineNotice tone="info">
+                参考图通过独立参考图编辑入口维护；这里仅调整已提交素材的用途、权重和备注。
+              </InlineNotice>
+            ) : (
+              <FileDropZone
+                label="上传素材图片"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                disabled={disabled}
+                onFiles={addFiles}
+              >
+                <strong>上传参考图</strong>
+                <span>拖放或点击选择 PNG/JPEG/WEBP，单张最大 20MB，最多 14 张。</span>
+              </FileDropZone>
+            )}
             <div className="material-editor-list">
               {materials.map((material) => (
                 <div className="material-editor-row" key={material.key}>

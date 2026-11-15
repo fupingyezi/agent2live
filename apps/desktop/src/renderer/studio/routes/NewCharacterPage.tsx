@@ -365,7 +365,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         throw new CharacterProvisioningError(message, character.id, project?.id ?? null, error)
       }
     },
-    onSuccess: ({ character, project, aiWarning }) => {
+    onSuccess: ({ character, project, aiWarning, initialReverseJobId }) => {
       clearDraft()
       void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(character.id) })
@@ -373,6 +373,10 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
       const query = new URLSearchParams({ project: project.id })
       if (aiWarning) query.set('aiWarning', aiWarning)
+      if (initialReverseJobId) {
+        query.set('aiKind', 'reverse')
+        query.set('aiJob', initialReverseJobId)
+      }
       navigate(`/characters/${encodeURIComponent(character.id)}/created?${query.toString()}`)
     }
   })
@@ -392,6 +396,10 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(provisioning.projectId) })
       const query = new URLSearchParams({ project: provisioning.projectId })
       if (submitted.aiWarning) query.set('aiWarning', submitted.aiWarning)
+      if (submitted.initialReverseJobId) {
+        query.set('aiKind', 'reverse')
+        query.set('aiJob', submitted.initialReverseJobId)
+      }
       navigate(`/characters/${encodeURIComponent(provisioning.characterId)}/created?${query.toString()}`)
     }
   })

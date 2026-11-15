@@ -100,6 +100,7 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await studio.getByLabel('角色名称').fill('凛')
     await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
+    await studio.getByLabel('上传参考图').setInputFiles(imagePath)
     await studio.getByRole('button', { name: '创建并生成' }).click()
 
     await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
@@ -115,7 +116,6 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     const inputPanel = studio.locator('[data-testid="prompt-input-panel"]')
     await expect(inputPanel).toBeVisible()
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
-    await inputPanel.getByLabel('上传素材图片').setInputFiles(imagePath)
     await inputPanel.getByRole('button', { name: /(提交|更新)素材与要求/ }).click()
 
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
@@ -265,6 +265,12 @@ test('queues a Zhipu vision reverse after creation without applying its result',
       (response) =>
         response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
     )
+    let reverseRequestCount = 0
+    studio.page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/prompt-reverse')) {
+        reverseRequestCount += 1
+      }
+    })
     await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
     const reverseResponse = await reverseResponsePromise
     expect(reverseResponse.status()).toBe(202)
@@ -278,6 +284,30 @@ test('queues a Zhipu vision reverse after creation without applying its result',
     await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
       timeout: 30_000
     })
+    expect(reverseRequestCount).toBe(1)
+    await studio.page.getByTestId('open-art-workbench').click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+    const workbenchParams = hashSearch(studio.page.url())
+    expect(workbenchParams.get('aiKind')).toBe('reverse')
+    expect(workbenchParams.get('aiJob')).toBe(reverseRequest.jobId)
+    const aiPanel = studio.page.getByTestId('prompt-ai-panel')
+    await expect(aiPanel.getByTestId('ai-job')).toContainText(reverseRequest.jobId)
+    await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+    const inputPanel = studio.page.getByTestId('prompt-input-panel')
+    await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
+    await expect(inputPanel.getByLabel('上传素材图片')).toHaveCount(0)
+    await expect(inputPanel).toContainText('参考图通过独立参考图编辑入口维护')
+    await studio.page.reload()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(studio.page.getByTestId('prompt-ai-panel').getByTestId('ai-job')).toContainText(
+      reverseRequest.jobId
+    )
+    await expect(studio.page.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+    expect(reverseRequestCount).toBe(1)
     const projectId = hashSearch(studio.page.url()).get('project')
     expect(projectId).toMatch(/^artp_/)
 

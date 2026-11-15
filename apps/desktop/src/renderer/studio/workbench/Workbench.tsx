@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ArtProjectDto, PromptDraftDto } from '@studio/api'
 import {
@@ -26,7 +26,8 @@ import {
   PromptInputPanel,
   ReferenceChainBar,
   VersionGraph,
-  type ForkSource
+  type ForkSource,
+  type InitialPromptJob
 } from './components'
 
 type DraftSeed = 'active_version' | 'empty'
@@ -58,6 +59,7 @@ export interface WorkbenchProps {
 export const Workbench: React.FC<WorkbenchProps> = ({ project, aiWarning = null }) => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const hydrate = useWorkbenchStore((state) => state.hydrate)
   const setPanel = useWorkbenchStore((state) => state.setPanel)
   const applyServerDraft = useWorkbenchStore((state) => state.applyServerDraft)
@@ -70,6 +72,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, aiWarning = null 
 
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
   const [forkSource, setForkSource] = useState<ForkSource | null>(null)
+  const initializedJob = useRef<string | null>(null)
+  const aiKind = searchParams.get('aiKind')
+  const aiJob = searchParams.get('aiJob')
+  const initialJob: InitialPromptJob | null =
+    aiKind === 'reverse' && aiJob?.startsWith('job_') ? { kind: 'reverse', jobId: aiJob } : null
 
   const workspaceQuery = useQuery({
     queryKey: queryKeys.workspace(project.id),
@@ -106,6 +113,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, aiWarning = null 
       draft: active?.state ?? null
     })
   }, [workspace, hydrate])
+
+  useEffect(() => {
+    if (!initialJob || initializedJob.current === initialJob.jobId) return
+    initializedJob.current = initialJob.jobId
+    setPanel('ai')
+  }, [initialJob?.jobId, setPanel])
 
   useEffect(() => {
     if (workspace?.activeDraft) setDraftHint(null)
@@ -387,6 +400,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, aiWarning = null 
                     workspace={workspace}
                     providers={providers}
                     dirty={dirty}
+                    initialJob={initialJob}
                     onDraftUpdated={handleDraftUpdated}
                   />
                 )
