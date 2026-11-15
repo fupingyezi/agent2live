@@ -32,7 +32,7 @@ export class ProviderProbeService {
         const result = await provider.generate(
           {
             messages: [{ role: 'user', content: 'Reply with OK.' }],
-            maxTokens: 8
+            maxTokens: 64
           },
           { requestId }
         )

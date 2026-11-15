@@ -152,15 +152,14 @@ test('runs opt-in real Chat and Image provider probes', async () => {
     await studio.page.getByRole('button', { name: '设置', exact: true }).click()
     await expect(studio.page.locator('[data-testid="providers-page"]')).toBeVisible()
 
-    await addProvider(studio.page, settings.image)
-    checks.image = await probeProvider(studio.page, settings.image)
-
-    expect(checks.image.ok, 'real Image provider probe').toBe(true)
     if (settings.chat) {
       await addProvider(studio.page, settings.chat)
       checks.chat = await probeProvider(studio.page, settings.chat)
       expect(checks.chat.ok, 'real Chat provider probe').toBe(true)
     }
+    await addProvider(studio.page, settings.image)
+    checks.image = await probeProvider(studio.page, settings.image)
+    expect(checks.image.ok, 'real Image provider probe').toBe(true)
   } finally {
     await studio.close()
     writeEvidenceJson('real-providers.json', {

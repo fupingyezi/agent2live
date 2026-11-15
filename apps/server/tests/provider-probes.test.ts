@@ -102,14 +102,14 @@ function imageServiceFixture() {
 }
 
 describe('provider probe service', () => {
-  it('uses a minimal chat probe and returns no secret fields', async () => {
+  it('uses a minimal chat probe with enough output budget for reasoning models', async () => {
     const { service, generate } = chatServiceFixture()
     const result = await service.probe('conn_chat', { allowBillableRequest: false }, 'req_probe')
 
     expect(generate).toHaveBeenCalledWith(
       {
         messages: [{ role: 'user', content: 'Reply with OK.' }],
-        maxTokens: 8
+        maxTokens: 64
       },
       { requestId: 'req_probe' }
     )
