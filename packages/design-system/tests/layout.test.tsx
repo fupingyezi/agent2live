@@ -64,9 +64,21 @@ describe('layout primitives', () => {
         navigation={
           <NavigationRail
             label="主导航"
+            brand={<img data-testid="navigation-brand" alt="" src="data:image/png;base64,AA==" />}
             items={[
-              { id: 'characters', label: '角色', icon: '人', active: true, onSelect },
-              { id: 'settings', label: '设置', icon: '齿', onSelect }
+              {
+                id: 'characters',
+                label: '角色',
+                icon: <img data-testid="character-icon" alt="" src="data:image/png;base64,AA==" />,
+                active: true,
+                onSelect
+              },
+              {
+                id: 'settings',
+                label: '设置',
+                icon: <img data-testid="settings-icon" alt="" src="data:image/png;base64,AA==" />,
+                onSelect
+              }
             ]}
           />
         }
@@ -76,6 +88,9 @@ describe('layout primitives', () => {
     )
     const nav = screen.getByRole('navigation', { name: '主导航' })
     expect(nav).toBeInTheDocument()
+    expect(screen.getByTestId('navigation-brand')).toBeInTheDocument()
+    expect(screen.getByTestId('character-icon')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-icon')).toBeInTheDocument()
     const settings = screen.getByRole('button', { name: /设置/ })
     expect(screen.getByRole('button', { name: /角色/ })).toHaveAttribute('aria-current', 'page')
     await userEvent.click(settings)

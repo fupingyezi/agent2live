@@ -5,6 +5,37 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { studioPage } from './support/windows'
 
+type StudioPage = Awaited<ReturnType<typeof studioPage>>
+
+async function expectSharedNavigation(studio: StudioPage): Promise<void> {
+  const nav = studio.getByRole('navigation', { name: '主导航' })
+  await expect(nav).toHaveCSS('width', '64px')
+
+  const brand = studio.getByTestId('studio-nav-brand')
+  await expect(brand).toHaveCSS('width', '32px')
+  await expect(brand).toHaveCSS('height', '32px')
+  expect(await brand.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+
+  const items = nav.getByRole('button')
+  await expect(items).toHaveCount(5)
+  for (const name of ['角色', '桌宠', 'Agent', '模型库', '设置']) {
+    const item = studio.getByRole('button', { name, exact: true })
+    await expect(item).toHaveCSS('width', '50px')
+    await expect(item).toHaveCSS('height', '50px')
+  }
+  await expect(studio.getByRole('button', { name: '桌宠', exact: true })).toBeDisabled()
+  await expect(studio.getByRole('button', { name: 'Agent', exact: true })).toBeDisabled()
+  await expect(studio.getByRole('button', { name: '模型库', exact: true })).toBeDisabled()
+
+  const icons = studio.getByTestId('studio-nav-icons').locator('img')
+  await expect(icons).toHaveCount(5)
+  for (const icon of await icons.all()) {
+    await expect(icon).toHaveCSS('width', '24px')
+    await expect(icon).toHaveCSS('height', '24px')
+    expect(await icon.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+  }
+}
+
 test('creates a character and art project, streams events, and survives reload', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-studio-shell-'))
   const app = await electron.launch({
@@ -15,13 +46,19 @@ test('creates a character and art project, streams events, and survives reload',
   try {
     const studio = await studioPage(app)
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(studio.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
-    await expect(studio.locator('[data-testid="sse-status"]').locator('[data-state="success"]')).toBeVisible()
+    await expect(
+      studio.locator('[data-testid="studio-global-status"]').locator('[data-state="success"]')
+    ).toHaveCount(1)
     await expect(studio.locator('[data-testid="studio-breadcrumb"]')).toContainText('角色')
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(1)
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCSS('height', '56px')
+    await expectSharedNavigation(studio)
     const characterNav = studio.getByRole('button', { name: '角色', exact: true })
     await expect(characterNav).toHaveAttribute('aria-current', 'page')
+    await expect(characterNav).toHaveCSS('background-color', 'rgb(239, 250, 247)')
 
     const providerNav = studio.getByRole('button', { name: '设置', exact: true })
     await providerNav.focus()
@@ -29,6 +66,8 @@ test('creates a character and art project, streams events, and survives reload',
     await providerNav.press('Enter')
     await expect(studio.getByRole('heading', { name: '模型供应商', level: 1 })).toBeVisible()
     await expect(providerNav).toHaveAttribute('aria-current', 'page')
+    await expect(providerNav).toHaveCSS('background-color', 'rgb(239, 250, 247)')
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(0)
     await studio.getByRole('button', { name: '角色', exact: true }).click()
 
     const accent = await studio.evaluate(() =>
@@ -38,6 +77,7 @@ test('creates a character and art project, streams events, and survives reload',
 
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await expect(studio.getByRole('heading', { name: '新建角色', level: 1 })).toBeVisible()
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(0)
     await studio.getByLabel('角色名称').fill('凛')
     await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
     await studio.getByRole('button', { name: '创建角色' }).click()
@@ -51,12 +91,13 @@ test('creates a character and art project, streams events, and survives reload',
 
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible()
     await expect(studio.getByRole('heading', { name: '默认造型', level: 1 })).toBeVisible()
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(0)
     await expect.poll(() => studio.url()).toContain('project=artp_')
     const projectUrl = studio.url()
 
     await studio.reload()
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(studio.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible()

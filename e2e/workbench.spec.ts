@@ -84,7 +84,7 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
   try {
     const studio = await studioPage(app)
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(studio.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
 

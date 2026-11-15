@@ -59,7 +59,7 @@ test('stores provider secrets in the vault and never exposes them through the AP
   try {
     const studio = await studioPage(app)
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(studio.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
 

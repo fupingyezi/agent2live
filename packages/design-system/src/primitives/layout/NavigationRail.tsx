@@ -14,6 +14,7 @@ export interface NavigationItem {
 export interface NavigationRailProps {
   label: string
   items: NavigationItem[]
+  brand?: React.ReactNode
   collapsed?: boolean
   stacked?: boolean
   className?: string
@@ -22,6 +23,7 @@ export interface NavigationRailProps {
 export const NavigationRail: React.FC<NavigationRailProps> = ({
   label,
   items,
+  brand,
   collapsed = false,
   stacked = false,
   className
@@ -38,9 +40,9 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
       data-state={collapsed ? 'collapsed' : 'default'}
     >
       <span className={styles.railBrand} aria-hidden="true">
-        a2l
+        {brand ?? 'a2l'}
       </span>
-      <div className={styles.railItems}>
+      <div className={styles.railItems} data-testid="studio-nav-icons">
         {items.map((item) => (
           <button
             key={item.id}

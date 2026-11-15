@@ -1,6 +1,10 @@
 /** Studio 应用框架：主导航、实时连接状态和子页面容器。 */
 export { StudioAppShell } from './StudioAppShell'
 
+/** 页面级顶栏，由当前路由拥有面包屑、状态和操作。 */
+export { StudioPageTopbar } from './StudioPageTopbar'
+export type { StudioPageTopbarProps } from './StudioPageTopbar'
+
 /** renderer 子树崩溃时的整页恢复边界。 */
 export { ErrorBoundary } from './ErrorBoundary'
 
