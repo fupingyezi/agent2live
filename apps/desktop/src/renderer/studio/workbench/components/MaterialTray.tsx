@@ -1,6 +1,6 @@
 import React from 'react'
-import type { MaterialRole, PromptInputSubmissionDto } from '../../api/types'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
+import type { MaterialRole, PromptInputSubmissionDto } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
 import { CountBadge, EmptyState, SectionHeader, StatusPill } from '@agent2live/design-system'
 
 const ROLE_LABELS: Record<MaterialRole, string> = {

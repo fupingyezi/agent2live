@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto, PromptDraftDto, PromptSpecV2 } from '../../api/types'
-import { ApiError } from '../../api/client'
-import { commitPromptDraft, savePromptDraft } from '../../api/queries'
-import { queryKeys } from '../../api/keys'
+import type { ArtProjectDto, PromptDraftDto, PromptSpecV2 } from '@studio/api'
+import { ApiError } from '@studio/api'
+import { commitPromptDraft, savePromptDraft } from '@studio/api'
+import { queryKeys } from '@studio/api'
 import { useWorkbenchStore } from '../store'
 import { uncoveredRequirementIds, validatePromptForSave } from '../prompt-helpers'
 import {

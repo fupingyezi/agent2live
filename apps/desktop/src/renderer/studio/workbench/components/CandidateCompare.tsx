@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import type { GenerationCandidateDto } from '../../api/types'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
+import type { GenerationCandidateDto } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
 import { AsyncButton, ConfirmDialog, EmptyState, StatusPill } from '@agent2live/design-system'
 
 function validationLines(value: unknown): string[] {

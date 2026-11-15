@@ -12,10 +12,10 @@ import {
   TextField,
   type EmptyProps
 } from '@agent2live/design-system'
-import { ApiError } from '../api/client'
-import { queryKeys } from '../api/keys'
-import { createCharacter } from '../api/queries'
-import type { CreateCharacterInput } from '../api/types'
+import { ApiError } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { createCharacter } from '@studio/api'
+import type { CreateCharacterInput } from '@studio/api'
 
 export const NewCharacterPage: React.FC<EmptyProps> = () => {
   const navigate = useNavigate()

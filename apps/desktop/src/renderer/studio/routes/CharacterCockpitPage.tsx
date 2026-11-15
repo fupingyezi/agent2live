@@ -17,15 +17,15 @@ import {
   TextField,
   type EmptyProps
 } from '@agent2live/design-system'
-import { ApiError } from '../api/client'
-import { createArtProject, getCharacter, getCharacterLineage } from '../api/queries'
-import { queryKeys } from '../api/keys'
-import type { ArtProjectDto, CreateArtProjectInput, LineageNodeDto } from '../api/types'
-import { CharacterBackupPanel } from '../components/CharacterBackupPanel'
-import { StudioError } from '../components/StudioError'
-import { StudioLoading } from '../components/StudioLoading'
-import { formatDateTime, formatPercent, formatStage, stageTone } from '../format'
-import { computeProjectProgress } from '../project-progress'
+import { ApiError } from '@studio/api'
+import { createArtProject, getCharacter, getCharacterLineage } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import type { ArtProjectDto, CreateArtProjectInput, LineageNodeDto } from '@studio/api'
+import { CharacterBackupPanel } from '@studio/components'
+import { StudioError } from '@studio/components'
+import { StudioLoading } from '@studio/components'
+import { formatDateTime, formatPercent, formatStage, stageTone } from '@studio/format'
+import { computeProjectProgress } from '@studio/project-progress'
 
 interface ProjectRow {
   project: ArtProjectDto

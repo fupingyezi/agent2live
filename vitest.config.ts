@@ -1,6 +1,14 @@
 import { defineConfig } from 'vitest/config'
+import { resolve } from 'node:path'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@desktop/shared': resolve(import.meta.dirname, 'apps/desktop/src/shared'),
+      '@renderer': resolve(import.meta.dirname, 'apps/desktop/src/renderer'),
+      '@studio': resolve(import.meta.dirname, 'apps/desktop/src/renderer/studio')
+    }
+  },
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,

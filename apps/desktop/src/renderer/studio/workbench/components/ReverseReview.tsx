@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import type { PromptDraftDto, PromptReverseResultDto } from '../../api/types'
-import { applyPromptReverseResult, discardPromptReverseResult } from '../../api/queries'
+import type { PromptDraftDto, PromptReverseResultDto } from '@studio/api'
+import { applyPromptReverseResult, discardPromptReverseResult } from '@studio/api'
 import { AsyncButton, ConfirmDialog, EmptyState, SectionHeader, StatusPill } from '@agent2live/design-system'
-import { StudioError } from '../../components/StudioError'
-import { formatDateTime } from '../../format'
+import { StudioError } from '@studio/components'
+import { formatDateTime } from '@studio/format'
 
 const STATUS_LABELS = { ready: '待应用', applied: '已应用', discarded: '已丢弃' } as const
 

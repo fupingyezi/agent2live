@@ -1,7 +1,7 @@
 import React from 'react'
-import type { ArtProjectDto, ArtVersionDto, PromptVersionSummaryDto } from '../../api/types'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
-import { formatDateTime, shortId } from '../../format'
+import type { ArtProjectDto, ArtVersionDto, PromptVersionSummaryDto } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
+import { formatDateTime, shortId } from '@studio/format'
 import { Button, CountBadge, EmptyState, SectionHeader, StatusPill } from '@agent2live/design-system'
 import type { ForkSource } from './ForkDialog'
 

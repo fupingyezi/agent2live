@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { PROMPT_CATEGORIES } from '@agent2live/contracts/prompt'
-import type { PromptBlock, PromptInputMaterialDto, PromptRequirement } from '../../api/types'
+import type { PromptBlock, PromptInputMaterialDto, PromptRequirement } from '@studio/api'
 import { useWorkbenchStore } from '../store'
 import {
   Button,

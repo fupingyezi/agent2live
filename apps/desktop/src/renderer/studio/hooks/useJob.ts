@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { getJob, isTerminalJobStatus } from '../api/queries'
-import { queryKeys } from '../api/keys'
+import { getJob, isTerminalJobStatus } from '@studio/api'
+import { queryKeys } from '@studio/api'
 
 export function useJob(jobId: string | null) {
   return useQuery({

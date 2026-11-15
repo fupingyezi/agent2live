@@ -1,4 +1,4 @@
-import type { Agent2LiveBridge } from '../../shared/ipc-contracts'
+import type { Agent2LiveBridge } from '@desktop/shared'
 import type { Live2DProbe } from '@agent2live/live2d-runtime'
 
 declare global {

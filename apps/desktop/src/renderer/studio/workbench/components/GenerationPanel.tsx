@@ -6,17 +6,12 @@ import type {
   GenerationCandidateDto,
   PromptWorkspaceDto,
   ProviderConnectionDto
-} from '../../api/types'
-import {
-  acceptGenerationCandidate,
-  createGeneration,
-  getGeneration,
-  isTerminalJobStatus
-} from '../../api/queries'
-import { queryKeys } from '../../api/keys'
-import { ApiError } from '../../api/client'
-import { useJob } from '../../hooks/useJob'
-import { formatDateTime, formatPercent } from '../../format'
+} from '@studio/api'
+import { acceptGenerationCandidate, createGeneration, getGeneration, isTerminalJobStatus } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { ApiError } from '@studio/api'
+import { useJob } from '@studio/hooks'
+import { formatDateTime, formatPercent } from '@studio/format'
 import { CandidateCompare } from './CandidateCompare'
 import {
   AsyncButton,
@@ -28,7 +23,7 @@ import {
   StatusPill,
   TextField
 } from '@agent2live/design-system'
-import { StudioError } from '../../components/StudioError'
+import { StudioError } from '@studio/components'
 
 interface ImageCapabilities {
   image?: { sizes?: string[]; maxCount?: number; supportsSeed?: boolean }

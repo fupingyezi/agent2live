@@ -1,13 +1,15 @@
 import React from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import type { EmptyProps } from '@agent2live/design-system'
-import { StudioAppShell } from './components/StudioAppShell'
-import { CharactersPage } from './routes/CharactersPage'
-import { NewCharacterPage } from './routes/NewCharacterPage'
-import { CharacterCockpitPage } from './routes/CharacterCockpitPage'
-import { ArtWorkbenchPage } from './routes/ArtWorkbenchPage'
-import { ProvidersPage } from './routes/ProvidersPage'
-import { Live2DPlaceholderPage } from './routes/Live2DPlaceholderPage'
+import { StudioAppShell } from '@studio/components'
+import {
+  ArtWorkbenchPage,
+  CharacterCockpitPage,
+  CharactersPage,
+  Live2DPlaceholderPage,
+  NewCharacterPage,
+  ProvidersPage
+} from '@studio/routes'
 
 export const App: React.FC<EmptyProps> = () => {
   return (

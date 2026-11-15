@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getAssetContent } from '../api/queries'
-import { queryKeys } from '../api/keys'
+import { getAssetContent } from '@studio/api'
+import { queryKeys } from '@studio/api'
 
 export function useAssetUrl(assetId: string | null) {
   const query = useQuery({

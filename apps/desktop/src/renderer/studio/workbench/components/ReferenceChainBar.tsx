@@ -1,7 +1,7 @@
 import React from 'react'
-import type { ArtProjectDto, ArtVersionDto, PromptVersionSummaryDto } from '../../api/types'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
-import { shortId } from '../../format'
+import type { ArtProjectDto, ArtVersionDto, PromptVersionSummaryDto } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
+import { shortId } from '@studio/format'
 import { StatusPill } from '@agent2live/design-system'
 
 interface ReferenceThumbProps {

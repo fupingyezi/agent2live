@@ -1,4 +1,4 @@
-import { ApiError } from '../api/client'
+import { ApiError } from '@studio/api'
 
 export interface StudioErrorCopy {
   title: string
