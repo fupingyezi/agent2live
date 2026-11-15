@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { ApiClient } from './helpers/api'
 import { launchStudio } from './helpers/app'
+import { resizeToBaseline } from './helpers/axe'
 import { goldenPromptState, makePng } from './helpers/seed'
 import { studioPage } from './support/windows'
 
@@ -124,6 +125,7 @@ test('initializes a character from reference images', async () => {
   const uploadDir = mkdtempSync(join(tmpdir(), 'agent2live-studio-references-upload-'))
   const first = join(uploadDir, 'identity.png')
   const second = join(uploadDir, 'style.png')
+  const third = join(uploadDir, 'outfit.png')
   await sharp({
     create: {
       width: 256,
@@ -144,6 +146,16 @@ test('initializes a character from reference images', async () => {
   })
     .png()
     .toFile(second)
+  await sharp({
+    create: {
+      width: 256,
+      height: 384,
+      channels: 4,
+      background: { r: 136, g: 116, b: 158, alpha: 1 }
+    }
+  })
+    .png()
+    .toFile(third)
 
   const app = await electron.launch({
     args: ['apps/desktop/out/main/index.js'],
@@ -153,12 +165,83 @@ test('initializes a character from reference images', async () => {
   try {
     const studio = await studioPage(app)
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
+    await resizeToBaseline(app, studio)
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await studio.getByLabel('角色名称').fill('霜')
     await studio.getByLabel('角色简介').fill('银白长发、绿色眼睛，安静但会主动替人遮雨的剑士。')
-    await studio.getByLabel('上传参考图').setInputFiles([first, second])
+    await studio.getByLabel('上传参考图').setInputFiles([first, second, third])
 
-    await expect(studio.locator('[data-testid="character-reference-card"]')).toHaveCount(2)
+    const cards = studio.locator('[data-testid="character-reference-card"]')
+    await expect(cards).toHaveCount(3)
+    await expect(cards.nth(0)).toHaveAttribute('data-primary', 'true')
+    await expect(cards.nth(1)).toHaveAttribute('data-primary', 'false')
+
+    const styleCard = studio.locator('[data-testid="character-reference-card"][data-file-name="style.png"]')
+    const hoverActions = styleCard.getByTestId('reference-hover-actions')
+    await expect(hoverActions).toHaveCSS('opacity', '0')
+    await styleCard.getByRole('button', { name: '编辑' }).focus()
+    await expect(hoverActions).toHaveCSS('opacity', '1')
+    await expect(styleCard.getByRole('button', { name: '预览', exact: true })).toBeVisible()
+    await expect(styleCard.getByRole('button', { name: '编辑', exact: true })).toBeVisible()
+    await styleCard.getByRole('button', { name: '编辑', exact: true }).click()
+
+    let editor = studio.getByRole('dialog', { name: '参考图' })
+    await expect(editor).toBeVisible()
+    await expect(editor.locator('[data-testid="studio-page-topbar"]')).toHaveAttribute('data-tone', 'editor')
+    await expect(editor.getByRole('heading', { name: '参考图设置' })).toBeVisible()
+    await expect(editor.getByRole('button', { name: '裁切' })).toBeDisabled()
+    await expect(editor.getByRole('button', { name: '去背景' })).toBeDisabled()
+    const editorImage = editor.getByRole('img', { name: 'style.png' })
+    await expect
+      .poll(() => editorImage.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0)
+    await expect(editor).toContainText('256 × 384')
+
+    await editor.getByRole('button', { name: '服装', exact: true }).click()
+    await editor.getByRole('button', { name: '严格照做', exact: true }).click()
+    await editor.getByLabel('备注').fill('只参考袖口轮廓')
+    await editor.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(editor).toHaveCount(0)
+    await expect(styleCard).toHaveAttribute('data-role', 'other')
+    await expect(styleCard).toHaveAttribute('data-strength', 'balanced')
+
+    await styleCard.getByRole('button', { name: '编辑', exact: true }).click()
+    editor = studio.getByRole('dialog', { name: '参考图' })
+    await expect(editor.getByRole('button', { name: '服装', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    await expect(editor.getByRole('button', { name: '主要参考', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    await expect(editor.getByLabel('备注')).toHaveValue('')
+
+    await editor.getByRole('button', { name: '服装', exact: true }).click()
+    await editor.getByRole('button', { name: '严格照做', exact: true }).click()
+    await editor.getByLabel('备注').fill('只参考袖口轮廓')
+    await editor.getByRole('button', { name: '设为主图', exact: true }).click()
+    await expect(editor.getByRole('button', { name: '已是主图', exact: true })).toBeVisible()
+    await editor.getByRole('button', { name: '完成', exact: true }).click()
+    await expect(editor).toHaveCount(0)
+
+    await expect(cards.nth(0)).toHaveAttribute('data-file-name', 'style.png')
+    await expect(cards.nth(0)).toHaveAttribute('data-primary', 'true')
+    await expect(cards.nth(0)).toHaveAttribute('data-role', 'outfit_reference')
+    await expect(cards.nth(0)).toHaveAttribute('data-strength', 'strict')
+    await expect(cards.nth(0)).toContainText('服装')
+
+    await cards
+      .nth(0)
+      .getByRole('button', { name: /移除参考图/ })
+      .click()
+    await expect(cards).toHaveCount(2)
+    await expect(studio.locator('[data-testid="character-reference-card"][data-primary="true"]')).toHaveCount(
+      1
+    )
+    await expect(cards.nth(0)).toHaveAttribute('data-file-name', 'identity.png')
+    await expect(cards.nth(0)).toHaveAttribute('data-primary', 'true')
+
     await studio.getByRole('button', { name: '创建并生成', exact: true }).click()
 
     await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
@@ -168,7 +251,7 @@ test('initializes a character from reference images', async () => {
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({ timeout: 20_000 })
     await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
-    await expect(studio.locator('[data-testid="material-tray"]')).toContainText('风格参考')
+    await expect(studio.locator('[data-testid="material-tray"]')).toContainText('其他素材')
   } finally {
     await app.close()
   }
@@ -390,7 +473,7 @@ test('hands off from creation confirmation to the just-created character card', 
       '身份参考'
     )
     await expect(studio.page.locator('[data-testid="character-created-references"]')).toContainText(
-      '风格参考'
+      '补充参考'
     )
     await expect(studio.page.locator('[data-testid="character-created-prompt"]')).toContainText(
       '海边灯塔守夜的年轻记录员'

@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   AsyncButton,
   Button,
+  Dialog,
   Field,
   FileDropZone,
   IconButton,
@@ -20,6 +21,16 @@ import {
 import { ApiError, createArtProject, createCharacter, submitPromptInput } from '@studio/api'
 import { queryKeys } from '@studio/api'
 import type { ArtProjectDto, CharacterDto, CreateCharacterInput, MaterialRole } from '@studio/api'
+import deleteIcon from '@studio/assets/reference-actions/delete.png'
+import editIcon from '@studio/assets/reference-actions/edit.png'
+import previewIcon from '@studio/assets/reference-actions/preview.png'
+import { CharacterReferenceEditor } from './new-character/CharacterReferenceEditor'
+import {
+  normalizeCharacterReferences,
+  setPrimaryReference,
+  strengthToWeight,
+  type CharacterReferenceDraft
+} from './new-character/reference-draft'
 
 const DRAFT_KEY = 'agent2live:new-character-draft'
 
@@ -43,6 +54,18 @@ interface CharacterBootstrapResult {
 }
 
 const EMPTY_DRAFT: CharacterDraft = { title: '', summary: '', supplement: '' }
+
+const REFERENCE_ROLE_LABELS: Record<MaterialRole, string> = {
+  identity_reference: '身份',
+  style_reference: '画风',
+  outfit_reference: '服装',
+  color_reference: '配色',
+  background_reference: '背景',
+  pose_reference: '姿势',
+  sketch: '草图',
+  texture: '质感',
+  other: '其他'
+}
 
 export class CharacterProvisioningError extends Error {
   readonly characterId: string
@@ -98,41 +121,99 @@ function clearDraft(): void {
   }
 }
 
-function referenceRole(index: number): MaterialRole {
-  if (index === 0) return 'identity_reference'
-  if (index === 1) return 'style_reference'
-  return 'other'
-}
-
 interface ReferencePreviewProps {
-  file: File
+  reference: CharacterReferenceDraft
   index: number
-  onRemove: (index: number) => void
+  onEdit: (reference: CharacterReferenceDraft) => void
+  onPreview: (reference: CharacterReferenceDraft) => void
+  onRemove: (reference: CharacterReferenceDraft) => void
 }
 
-const ReferencePreview: React.FC<ReferencePreviewProps> = ({ file, index, onRemove }) => {
+const ReferencePreview: React.FC<ReferencePreviewProps> = ({
+  reference,
+  index,
+  onEdit,
+  onPreview,
+  onRemove
+}) => {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
-    const objectUrl = URL.createObjectURL(file)
+    const objectUrl = URL.createObjectURL(reference.file)
     setUrl(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
-  }, [file])
+  }, [reference.file])
 
   return (
-    <figure className="new-character-reference" data-testid="character-reference-card">
+    <figure
+      className="new-character-reference"
+      data-testid="character-reference-card"
+      data-file-name={reference.file.name}
+      data-role={reference.role}
+      data-strength={reference.strength}
+      data-primary={reference.isPrimary}
+    >
       <div className="new-character-reference-image">
-        {url ? <img src={url} alt={file.name} /> : <span>…</span>}
-        <span className="new-character-reference-role">
-          {index === 0 ? '身份' : index === 1 ? '画风' : '参考'}
-        </span>
+        {url ? <img src={url} alt={reference.file.name} /> : <span>…</span>}
+        <span className="new-character-reference-role">{REFERENCE_ROLE_LABELS[reference.role]}</span>
+        {reference.isPrimary ? <span className="new-character-reference-primary">主图</span> : null}
+        <div className="new-character-reference-hover" data-testid="reference-hover-actions">
+          <button type="button" onClick={() => onPreview(reference)}>
+            <img src={previewIcon} alt="" aria-hidden="true" />
+            <span>预览</span>
+          </button>
+          <button type="button" onClick={() => onEdit(reference)}>
+            <img src={editIcon} alt="" aria-hidden="true" />
+            <span>编辑</span>
+          </button>
+        </div>
+        <IconButton
+          type="button"
+          className="new-character-reference-remove"
+          label={`移除参考图 ${reference.file.name}`}
+          onClick={() => onRemove(reference)}
+        >
+          <img src={deleteIcon} alt="" aria-hidden="true" />
+        </IconButton>
       </div>
       <figcaption>
-        <span title={file.name}>{file.name}</span>
-        <IconButton type="button" label={`移除参考图 ${index + 1}`} onClick={() => onRemove(index)}>
-          ×
-        </IconButton>
+        <span title={reference.file.name}>{reference.file.name}</span>
+        <small>
+          参考图 {index + 1} · 权重 {strengthToWeight(reference.strength)}
+        </small>
       </figcaption>
     </figure>
+  )
+}
+
+interface ReferencePreviewDialogProps {
+  reference: CharacterReferenceDraft | null
+  onClose: () => void
+}
+
+const ReferencePreviewDialog: React.FC<ReferencePreviewDialogProps> = ({ reference, onClose }) => {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!reference) {
+      setUrl(null)
+      return
+    }
+    const objectUrl = URL.createObjectURL(reference.file)
+    setUrl(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [reference])
+
+  return (
+    <Dialog
+      open={reference !== null}
+      title="预览参考图"
+      description={reference?.file.name}
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+      className="reference-preview-dialog"
+    >
+      {url ? <img className="reference-preview-dialog-image" src={url} alt={reference?.file.name} /> : null}
+    </Dialog>
   )
 }
 
@@ -140,7 +221,9 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState<CharacterDraft>(readDraft)
-  const [references, setReferences] = useState<File[]>([])
+  const [references, setReferences] = useState<CharacterReferenceDraft[]>([])
+  const [editingReferenceId, setEditingReferenceId] = useState<string | null>(null)
+  const [previewReferenceId, setPreviewReferenceId] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const updateDraft = (patch: Partial<CharacterDraft>): void => {
@@ -175,22 +258,39 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       setLocalError(`最多 ${MAX_REFERENCES} 张参考图，已忽略超出部分。`)
     }
     if (accepted.length > 0) {
-      setReferences((current) => [...current, ...accepted].slice(0, MAX_REFERENCES))
+      setReferences((current) =>
+        normalizeCharacterReferences([
+          ...current,
+          ...accepted.map(
+            (file, index): CharacterReferenceDraft => ({
+              id:
+                typeof crypto.randomUUID === 'function'
+                  ? crypto.randomUUID()
+                  : `${Date.now()}-${index}-${file.lastModified}`,
+              file,
+              role: current.length === 0 && index === 0 ? 'identity_reference' : 'other',
+              strength: 'balanced',
+              note: '',
+              isPrimary: current.length === 0 && index === 0
+            })
+          )
+        ]).slice(0, MAX_REFERENCES)
+      )
     }
   }
 
   const submitCharacterInput = async (projectId: string) => {
     const brief = buildCharacterBrief(draft)
     const files = new Map<string, File>()
-    const materials = references.map((file, index) => {
+    const materials = references.map((reference, index) => {
       const fileField = `file_reference_${index}`
-      files.set(fileField, file)
+      files.set(fileField, reference.file)
       return {
-        partName: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || `参考图 ${index + 1}`,
+        partName: reference.file.name.replace(/\.[^.]+$/, '').slice(0, 80) || `参考图 ${index + 1}`,
         fileField,
-        role: referenceRole(index),
-        note: index === 0 ? '角色身份参考' : index === 1 ? '画风参考' : '补充参考',
-        weight: 1,
+        role: reference.role,
+        note: reference.note.trim(),
+        weight: strengthToWeight(reference.strength),
         locked: false,
         sortOrder: index
       }
@@ -290,6 +390,26 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       ? mutation.error.message
       : null
   const errorCode = mutation.error instanceof ApiError ? mutation.error.code : null
+  const editingReference = references.find((reference) => reference.id === editingReferenceId) ?? null
+  const previewReference = references.find((reference) => reference.id === previewReferenceId) ?? null
+
+  const removeReference = (reference: CharacterReferenceDraft): void => {
+    setReferences((current) =>
+      normalizeCharacterReferences(current.filter((item) => item.id !== reference.id))
+    )
+    if (editingReferenceId === reference.id) setEditingReferenceId(null)
+    if (previewReferenceId === reference.id) setPreviewReferenceId(null)
+  }
+
+  const completeReferenceEdit = (reference: CharacterReferenceDraft): void => {
+    setReferences((current) => {
+      const updated = current.map((item) => (item.id === reference.id ? reference : item))
+      return reference.isPrimary
+        ? setPrimaryReference(updated, reference.id)
+        : normalizeCharacterReferences(updated)
+    })
+    setEditingReferenceId(null)
+  }
 
   return (
     <div className="studio-page new-character-page">
@@ -351,14 +471,14 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
             }
           >
             <div className="new-character-reference-grid">
-              {references.map((file, index) => (
+              {references.map((reference, index) => (
                 <ReferencePreview
-                  key={`${file.name}-${file.lastModified}-${index}`}
-                  file={file}
+                  key={reference.id}
+                  reference={reference}
                   index={index}
-                  onRemove={(removeIndex) =>
-                    setReferences((current) => current.filter((_, item) => item !== removeIndex))
-                  }
+                  onEdit={(selected) => setEditingReferenceId(selected.id)}
+                  onPreview={(selected) => setPreviewReferenceId(selected.id)}
+                  onRemove={removeReference}
                 />
               ))}
               {references.length < MAX_REFERENCES ? (
@@ -442,6 +562,14 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
           </div>
         </div>
       </form>
+      {editingReference ? (
+        <CharacterReferenceEditor
+          reference={editingReference}
+          onCancel={() => setEditingReferenceId(null)}
+          onComplete={completeReferenceEdit}
+        />
+      ) : null}
+      <ReferencePreviewDialog reference={previewReference} onClose={() => setPreviewReferenceId(null)} />
     </div>
   )
 }
