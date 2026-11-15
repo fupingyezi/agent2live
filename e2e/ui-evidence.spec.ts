@@ -71,6 +71,13 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     })
     await resizeToBaseline(studio.app, page)
 
+    for (const title of ['昀', '砚', '灯']) {
+      const character = await api.createCharacter(title, `${title} 的视觉基线角色简介。`)
+      await api.createProject(character.id, `${title} 的默认造型`, '视觉基线项目')
+    }
+    await page.reload()
+    await page.locator('[data-testid="studio-ready"]').waitFor({ state: 'visible', timeout: 30_000 })
+
     const axePages: AxePageResult[] = []
     const visualPaths: string[] = []
     const capture = async (name: (typeof UI_PAGES)[number]): Promise<void> => {
@@ -101,9 +108,16 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     const segments = new URL(page.url()).hash.slice(2).split('/').filter(Boolean)
     const characterId = decodeURIComponent(segments[1] ?? '')
     expect(characterId).toMatch(/^chr_/)
-    await capture('character-card')
 
     const seeded = await seedWorkbench(api, characterId)
+    await page.evaluate((id) => {
+      window.location.hash = `#/characters/${encodeURIComponent(id)}`
+    }, characterId)
+    await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
+    await expect(
+      page.locator('[data-testid="project-card"]').filter({ hasText: '视觉基线项目' })
+    ).toBeVisible({ timeout: 20_000 })
+    await capture('character-card')
     await page.evaluate(
       ({ projectId, generationId }) => {
         window.localStorage.setItem(`agent2live:last-generation:${projectId}`, generationId)
@@ -133,7 +147,7 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     })
     await capture('workbench-candidates')
 
-    await page.getByRole('button', { name: '模型连接', exact: true }).click()
+    await page.getByRole('button', { name: '设置', exact: true }).click()
     await expect(page.locator('[data-testid="providers-page"]')).toBeVisible()
     await expect(page.locator('[data-testid="provider-card"]')).toHaveCount(1)
     await capture('providers')

@@ -47,7 +47,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
             type="button"
             className={styles.railItem}
             aria-current={item.active ? 'page' : undefined}
-            aria-label={item.label}
+            aria-label={collapsed ? item.label : undefined}
             disabled={item.disabled}
             data-state={item.active ? 'active' : 'default'}
             onClick={() => item.onSelect(item.id)}
