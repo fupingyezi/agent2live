@@ -1,7 +1,7 @@
 # agent2live 技术方案
 
-> 状态：架构基线 v1.4（单用户本地工作区）  
-> 日期：2026-11-12  
+> 状态：架构基线 v1.6（单用户本地工作区）
+> 日期：2026-11-15
 > 前提：完全从 0 开始设计，产品以开源方式发布。已有项目只作为可行性证据与风险清单参考，不构成目录、技术栈或产品边界的依赖。
 > 阶段流程图：[2026-11-08-stage-workflows.md](./2026-11-08-stage-workflows.md)
 > 数据模型：[2026-11-08-data-model.md](./2026-11-08-data-model.md)  
@@ -203,6 +203,98 @@ Workers        image / PSD / rig / eval / memory curation
 ```
 
 依赖方向只允许外层指向内层。`ArtVersionService` 不直接依赖某个生图厂商；`MemoryPolicy` 不依赖具体 Agent SDK。
+
+### 3.3 工程契约与代码组织
+
+跨进程边界先定义类型，再写实现。共享类型按职责放在唯一位置，不在页面、store、测试夹具和主进程中重复声明：
+
+| 类型边界                             | 唯一归属                                       | 规则                                                                                   |
+| ------------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
+| HTTP、SSE、Job、领域 DTO             | `packages/contracts`                           | Zod Schema 是运行时事实源，TypeScript 类型从 Schema 推导；未知字段策略在 Schema 中明确 |
+| Electron Main ↔ preload ↔ renderer | `apps/desktop/src/shared/ipc-contracts.ts`     | 频道名、请求和返回值只声明一次；renderer 不直接复制 Main 的接口                        |
+| renderer 全局探针与窗口扩展          | `apps/desktop/src/renderer/shared/global.d.ts` | 通过 `declare global` 声明，业务组件不得使用 `window as unknown as ...` 或 `any` 绕过  |
+| renderer 专用视图模型                | 对应功能目录的 `types.ts`                      | 只放 UI 组合状态，不重复领域 DTO；能由 contracts 推导的类型不得手写第二份              |
+| Provider 上游响应                    | `packages/providers/src/types.ts`              | Provider 原始响应先经过适配器校验，不泄漏到 renderer 或业务服务                        |
+
+请求管线按安全边界各有一个稳定入口，而不是每个调用点自行拼接 `fetch`：
+
+- Studio 与 Pet 访问 sidecar 时复用 `apps/desktop/src/renderer/shared/http/client.ts`。它统一处理 bearer token、JSON/FormData、取消信号、超时、`ProblemDetails` 解析、错误归一化和 blob 响应。
+- Provider 访问外部 HTTP 服务时复用 `packages/providers/src/http.ts`。它统一处理 Provider 鉴权、超时、取消、响应大小和错误码，不复用 renderer 的本地 token 逻辑。
+- Cubism 模型资源通过自有协议加载，资源读取和路径约束留在 `packages/live2d-runtime`。不得为了“统一”把文件系统协议塞进通用 HTTP 客户端。
+- 业务 API 模块只声明端点、输入类型和响应类型，并调用统一客户端；禁止在组件、hook 或 Zustand store 中直接调用 `fetch`。
+
+React 组件统一使用模块级 props 类型和 `React.FC<Props>`：
+
+```tsx
+export interface ProbePanelProps {
+  probe: Live2DProbe
+}
+
+export const ProbePanel: React.FC<ProbePanelProps> = ({ probe }) => {
+  return <pre>{JSON.stringify(probe, null, 2)}</pre>
+}
+```
+
+- Props 类型命名为 `<ComponentName>Props`，声明在组件外；不要在函数参数中内联对象类型。
+- 无业务 props 的组件使用共享的 `EmptyProps`，不写 `{}`、`object` 或可选的隐式参数。
+- `forwardRef` 使用 `forwardRef<HTMLElement, ComponentProps>`，泛型组件保留显式泛型；这是 `React.FC` 无法表达引用和泛型时的有限例外。
+- 类组件、render helper 和非组件函数不强行使用 `React.FC`。
+
+TSX 文件按语义分组，组与组之间保留一个空行：
+
+```text
+外部依赖 imports
+
+内部依赖 imports
+
+类型、常量
+
+组件与模块级函数
+
+runtime mount / bootstrap
+```
+
+连续 imports 可以紧邻；imports 与声明、声明与声明、声明与 mount 调用之间必须留空行。Prettier 只负责机械排版，语义空行由代码风格检查保证。
+
+代码注释只解释当前实现的设计原因、不变量、安全边界或易错点。注释不得引用计划章节、ADR 路径、任务编号、“按用户要求”或其他执行上下文；这些信息属于提交说明、计划或架构文档，不进入源码。能由类型和函数名表达的内容不写注释。
+
+TypeScript 配置采用分层入口：`tsconfig.base.json` 只放共享编译规则；每个 workspace 的 `tsconfig.json` 负责自身源码边界；根 `tsconfig.json` 供 IDE 和一次全工作区检查使用；`tsconfig.e2e.json` 与 `tsconfig.spikes.json` 覆盖不属于 workspace 包的代码。`pnpm typecheck` 必须覆盖这些入口，不能依赖递归脚本偶然跳过目录。
+
+#### 3.3.1 路径别名与模块公共出口
+
+桌面应用内部使用受约束的路径别名，避免跨目录导入依赖 `../` 深度和文件位置：
+
+| 别名                | 目标                               | 使用范围                                     |
+| ------------------- | ---------------------------------- | -------------------------------------------- |
+| `@desktop/shared/*` | `apps/desktop/src/shared`          | Main、preload、renderer 共用 IPC 契约        |
+| `@renderer/*`       | `apps/desktop/src/renderer`        | renderer 内部共享模块                        |
+| `@studio/*`         | `apps/desktop/src/renderer/studio` | Studio 功能模块、页面、API、hooks 和视图工具 |
+
+别名通过 `tsconfig.paths.json` 提供 TypeScript 解析，并在 `electron.vite.config.ts` 与根 `vitest.config.ts` 中配置相同映射。Main/preload 只获得 `@desktop/shared`，renderer 获得 `@renderer` 与 `@studio`；不能只修改 TypeScript 配置而遗漏运行时构建或测试解析。
+
+每个可被其他模块消费的目录通过 `index.ts` 提供稳定公共入口：
+
+- `@studio/api`、`@studio/components`、`@studio/hooks`、`@studio/providers`、`@studio/routes`、`@studio/workbench` 和 `@studio/workbench/components` 是 Studio 公共入口。
+- `@renderer/shared`、`@desktop/shared` 是跨应用或跨 Electron 进程的共享入口。
+- `@studio/format`、`@studio/project-progress`、`@studio/live2d-view` 等单文件模块通过限定别名导入，不额外包装无意义目录。
+- Electron `main/index.ts` 是启动入口，不作为业务 barrel；测试和内部 helper 默认不进入公共 API。
+
+模块导入遵循以下边界：
+
+```ts
+import { queryKeys, getArtProject } from '@studio/api'
+import { StudioError, StudioLoading } from '@studio/components'
+import { Workbench } from '@studio/workbench'
+```
+
+- 模块外部只从公共入口导入，不导入 `@studio/components/StudioError` 这类深层路径。
+- 模块内部使用直接相对导入，例如 `./StudioError`；任何模块不得引用自己的 `index.ts` 形成循环。
+- 公共入口只做重导出，不执行注册、请求、样式注入或其他运行时副作用。
+- 组件 barrel 使用显式命名导出并避免 `export *`。每个组件上方用一句 JSDoc 说明职责，Props 紧跟组件使用 `export type`。
+- API、hooks 和工具模块可以按逻辑组使用 `export *`，但公共入口仍只暴露稳定能力，不泄漏内部 store、测试夹具和实现 helper。
+- `packages/design-system` 遵循同一规则：子模块 barrel 为每个公开组件注明职责，包根入口继续作为唯一稳定导入路径。
+
+`scripts/check-module-boundaries.mjs` 自动拒绝公共组件 barrel 的通配导出、缺少职责注释、公共入口深层导入、Studio 跨模块相对导入，以及 Main/preload 引用 renderer。Vitest 配置必须显式排除 `**/.packaged-server/**`、`dist`、`out` 等生成目录，避免打包副本被误识别为源码测试。
 
 ## 4. 数据模型
 
@@ -3432,6 +3524,17 @@ Phase 0 只有两种结果：
 - **通过**：在 macOS arm64 从平图或用户 PSD 开始，经过 See-through/PSD2Live，可在 Studio 与 Pet 加载并播放 idle；所有阻塞 QC 通过。
 - **不通过**：明确记录阻塞点，并把平图自动分层或自动绑定从 MVP 承诺中移除，转为外部工具/人工导入。Phase 1 只能在 ADR 0004 允许的 render/data/contracts/mock-provider 范围内启动，不能消费未验证的外部能力。
 
+### Phase 0.5：工程质量收口
+
+- 修正 base、workspace、根目录、E2E 与 spike 的 TypeScript 配置和真实类型错误，所有入口进入 `pnpm typecheck`。
+- 抽离 Electron IPC、sidecar endpoint、renderer 全局探针和模型阶段结果的共享类型，消除重复声明与 `window as unknown as ...`。
+- 建立 Studio/Pet 共用的 sidecar 请求管线，统一鉴权、取消、错误归一化、JSON/FormData 和 blob 处理。
+- 将现有 React 组件迁移为模块级 Props + `React.FC<Props>`，统一 TSX 语义空行。
+- 建立组件签名、注释内容和 TSX 模块间距的自动检查。
+- 重跑格式、类型、单测、构建和现有 Electron 回归；Phase 0 代码或证据在收口提交后重新生效。
+
+Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契约和数据设计，但不得开始组件实现，避免把现有结构性问题复制到工作台。
+
 ### Phase 1：立绘版本纵向切片
 
 - 角色、Prompt Draft/Version、锁定、AI 建议、生图候选、采纳、回退。
@@ -3518,12 +3621,17 @@ Phase 0 只有两种结果：
 ## 17. 建议的仓库结构
 
 ```text
+tsconfig.json              IDE 与全工作区 TypeScript 检查入口
+tsconfig.base.json         共享编译规则
+tsconfig.e2e.json          Playwright 与 helper 类型检查
+tsconfig.spikes.json       spike 类型检查
 apps/
   desktop/                 Electron main/preload/studio/pet
   server/                  Fastify sidecar
 packages/
   contracts/               Zod + TS + JSON Schema
     errors.ts              ErrorDefinition、ProblemDetails、SSE/Job 错误 Schema
+    sidecar.ts             sidecar endpoint 与传输信息 Schema
   logging/                 Pino 封装、trace context、redaction、audit
   domain/                  纯领域规则
   agent-runtime/           Agent loop、tools、adapters
@@ -3552,7 +3660,9 @@ docs/
   architecture/
 ```
 
-首版采用 pnpm workspace。CI 至少包含 schema、typecheck、unit、integration、golden-chain E2E 和许可证依赖清单。
+`apps/desktop/src/shared/ipc-contracts.ts` 是 Main/preload 协议的唯一类型来源，`apps/desktop/src/renderer/shared/global.d.ts` 是 renderer 全局扩展的唯一入口。
+
+首版采用 pnpm workspace。CI 至少包含 schema、全入口 typecheck、代码风格与模块边界检查、unit、integration、golden-chain E2E 和许可证依赖清单。
 
 ## 18. 官方能力依据
 
