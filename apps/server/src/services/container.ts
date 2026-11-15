@@ -10,6 +10,7 @@ import { IdempotencyService } from './idempotency'
 import { ProviderConnectionService } from './provider-connections'
 import { ProviderRegistry } from './provider-registry'
 import { ProviderInvocationService } from './provider-invocations'
+import { ProviderProbeService } from './provider-probes'
 import { CharacterService } from './characters'
 import { CharacterBriefService } from './character-briefs'
 import { ProjectService } from './projects'
@@ -51,6 +52,7 @@ export interface Services {
   providerConnections: ProviderConnectionService
   providerRegistry: ProviderRegistry
   providerInvocations: ProviderInvocationService
+  providerProbes: ProviderProbeService
   characters: CharacterService
   briefs: CharacterBriefService
   projects: ProjectService
@@ -78,6 +80,11 @@ export function createServices(deps: ServiceDeps): Services {
   const providerConnections = new ProviderConnectionService({ db, events, audit, clock })
   const providerRegistry = new ProviderRegistry(providerConnections, secrets)
   const providerInvocations = new ProviderInvocationService(db, clock)
+  const providerProbes = new ProviderProbeService({
+    connections: providerConnections,
+    registry: providerRegistry,
+    clock
+  })
   const characters = new CharacterService({ db, clock, events, audit })
   const briefs = new CharacterBriefService({ db, clock, events, audit })
   const projects = new ProjectService({ db, clock, events, audit })
@@ -197,6 +204,7 @@ export function createServices(deps: ServiceDeps): Services {
     providerConnections,
     providerRegistry,
     providerInvocations,
+    providerProbes,
     characters,
     briefs,
     projects,

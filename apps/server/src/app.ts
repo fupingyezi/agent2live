@@ -152,6 +152,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
       })
       registerProviderRoutes(scope, {
         connections: services.providerConnections,
+        probes: services.providerProbes,
         secrets: services.secrets,
         idempotency: services.idempotency
       })

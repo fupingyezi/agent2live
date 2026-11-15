@@ -2,12 +2,14 @@ import type { FastifyInstance } from 'fastify'
 import {
   hashCanonical,
   createProviderConnectionInputSchema,
+  providerProbeInputSchema,
   updateProviderConnectionInputSchema
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { parseIfMatch } from '../http/conditional'
 import type { IdempotencyService } from '../services/idempotency'
 import type { ProviderConnectionDto, ProviderConnectionService } from '../services/provider-connections'
+import type { ProviderProbeService } from '../services/provider-probes'
 import type { SecretResolver } from '../services/secret-resolver'
 import { idsOf, requireIdempotencyKey } from './helpers'
 
@@ -27,6 +29,7 @@ export function registerProviderRoutes(
   app: FastifyInstance,
   deps: {
     connections: ProviderConnectionService
+    probes: ProviderProbeService
     secrets: SecretResolver
     idempotency: IdempotencyService
   }
@@ -65,5 +68,11 @@ export function registerProviderRoutes(
     const dto = deps.connections.update(id, patch, expected, idsOf(request))
     reply.header('etag', `"${dto.rowVersion}"`)
     return dto
+  })
+
+  app.post('/api/v1/providers/:id/test', async (request) => {
+    const id = (request.params as { id: string }).id
+    const input = providerProbeInputSchema.parse(request.body)
+    return deps.probes.probe(id, input, request.id)
   })
 }

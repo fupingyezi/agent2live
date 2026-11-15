@@ -295,4 +295,84 @@ describe('provider connections', () => {
       await ctx.close()
     }
   })
+
+  it('probes a provider without requiring an idempotency key and returns only safe metadata', async () => {
+    const ctx = await createTestApp()
+    try {
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-probe-chat' },
+        payload: {
+          label: 'Mock Chat',
+          kind: 'chat',
+          adapter: 'mock',
+          enabled: true,
+          capabilities: CHAT_CAPABILITIES
+        }
+      })
+      expect(created.statusCode).toBe(201)
+      const provider = created.json<{ id: string; rowVersion: number; enabled: boolean }>()
+
+      const probe = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/providers/${provider.id}/test`,
+        headers: ctx.auth,
+        payload: {}
+      })
+      expect(probe.statusCode).toBe(200)
+      expect(probe.json()).toMatchObject({
+        ok: true,
+        kind: 'chat',
+        adapter: 'mock',
+        model: 'mock-art',
+        billable: false
+      })
+      expect(probe.payload).not.toMatch(/apiKey|secretRef|responseText/)
+
+      const unknown = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers/conn_01J00000000000000000000000/test',
+        headers: ctx.auth,
+        payload: {}
+      })
+      expect(unknown.statusCode).toBe(404)
+      expect(unknown.json()).toMatchObject({ error: { code: 'RESOURCE_NOT_FOUND' } })
+
+      const extra = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/providers/${provider.id}/test`,
+        headers: ctx.auth,
+        payload: { apiKey: 'sk-should-not-be-accepted' }
+      })
+      expect(extra.statusCode).toBe(400)
+      expect(extra.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+
+      const disabled = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-probe-disabled' },
+        payload: {
+          label: 'Disabled Chat',
+          kind: 'chat',
+          adapter: 'mock',
+          enabled: false,
+          capabilities: CHAT_CAPABILITIES
+        }
+      })
+      expect(disabled.statusCode).toBe(201)
+      const disabledProbe = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/providers/${disabled.json<{ id: string }>().id}/test`,
+        headers: ctx.auth,
+        payload: {}
+      })
+      expect(disabledProbe.statusCode).toBe(422)
+      expect(disabledProbe.json()).toMatchObject({
+        error: { code: 'PROVIDER_NOT_CONFIGURED' }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
 })
