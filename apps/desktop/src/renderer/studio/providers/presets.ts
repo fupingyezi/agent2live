@@ -6,7 +6,7 @@ import {
 } from '@agent2live/contracts/capabilities'
 import type { ProviderCapabilities } from '@agent2live/contracts'
 
-export type ProviderPresetId = 'openai-chat' | 'seedream-image' | 'mock-chat' | 'mock-image'
+export type ProviderPresetId = 'openai-chat' | 'deepseek-chat' | 'seedream-image' | 'mock-chat' | 'mock-image'
 
 export interface ProviderPreset {
   id: ProviderPresetId
@@ -38,6 +38,17 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     adapter: 'openai-compatible',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4.1-mini',
+    requiresSecret: true,
+    capabilities: OPENAI_COMPATIBLE_VISION_CAPABILITIES
+  },
+  {
+    id: 'deepseek-chat',
+    name: 'DeepSeek 对话',
+    description: 'DeepSeek Flash，用于提示词反推、修改建议与后续直接聊天。',
+    kind: 'chat',
+    adapter: 'openai-compatible',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-flash',
     requiresSecret: true,
     capabilities: OPENAI_COMPATIBLE_VISION_CAPABILITIES
   },
@@ -96,7 +107,13 @@ export function initialProviderValues(preset: ProviderPreset): ProviderFormValue
 export function presetIdForConnection(connection: {
   adapter: ProviderPreset['adapter']
   kind: ProviderPreset['kind']
+  baseUrl?: string | null
+  model?: string | null
 }): ProviderPresetId {
   if (connection.adapter === 'mock') return connection.kind === 'chat' ? 'mock-chat' : 'mock-image'
-  return connection.adapter === 'seedream' ? 'seedream-image' : 'openai-chat'
+  if (connection.adapter === 'seedream') return 'seedream-image'
+  if (connection.baseUrl?.includes('api.deepseek.com') || connection.model?.startsWith('deepseek-')) {
+    return 'deepseek-chat'
+  }
+  return 'openai-chat'
 }

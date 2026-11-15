@@ -107,6 +107,15 @@ test('stores provider secrets in the vault and never exposes them through the AP
       beforeProbe.map((provider) => [provider.id, provider.rowVersion])
     )
 
+    await studio.locator('[data-testid="add-provider"]').click()
+    await studio.locator('[data-testid="provider-preset"]').selectOption('deepseek-chat')
+    await expect(studio.locator('[data-testid="provider-label"]')).toHaveValue('DeepSeek 对话')
+    await expect(studio.locator('[data-testid="provider-base-url"]')).toHaveValue(
+      'https://api.deepseek.com/v1'
+    )
+    await expect(studio.locator('[data-testid="provider-model"]')).toHaveValue('deepseek-flash')
+    await studio.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
+
     // 真实连接：先建 disabled 行，再存密钥，再 PATCH 激活。
     await studio.locator('[data-testid="add-provider"]').click()
     await studio.locator('[data-testid="provider-preset"]').selectOption('seedream-image')

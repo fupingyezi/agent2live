@@ -15,7 +15,7 @@ interface ProviderCheck {
 
 interface RealProviderSettings {
   kind: 'chat' | 'image'
-  preset: 'openai-chat' | 'seedream-image'
+  preset: 'deepseek-chat' | 'seedream-image'
   label: string
   baseUrl: string
   model: string
@@ -61,7 +61,7 @@ function requiredSettings(): {
   return {
     chat: {
       kind: 'chat',
-      preset: 'openai-chat',
+      preset: 'deepseek-chat',
       label: 'Real Chat Smoke',
       baseUrl: chatBaseUrl,
       model: chatModel,
