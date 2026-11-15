@@ -91,22 +91,19 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await studio.getByLabel('角色名称').fill('凛')
     await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
-    await studio.getByRole('button', { name: '创建角色' }).click()
+    await studio.getByRole('button', { name: '创建并生成' }).click()
 
-    await expect(studio.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
-    await studio.getByLabel('项目名称').fill('默认造型')
-    await studio.getByLabel('描述').fill('用于首版立绘与 Live2D 绑定。')
-    await studio.getByRole('button', { name: '创建项目' }).click()
-
-    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible()
+    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(studio.locator('[data-testid="no-active-draft"]')).toBeVisible()
+    await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+      timeout: 20_000
+    })
 
     const inputPanel = studio.locator('[data-testid="prompt-input-panel"]')
     await expect(inputPanel).toBeVisible()
-    await expect(studio.locator('[data-testid="material-tray"]')).toHaveCount(0)
+    await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
     await inputPanel.getByLabel('上传素材图片').setInputFiles(imagePath)
-    await inputPanel.getByRole('button', { name: '提交素材与要求', exact: true }).click()
+    await inputPanel.getByRole('button', { name: /(提交|更新)素材与要求/ }).click()
 
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
       timeout: 20_000
@@ -115,7 +112,7 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
 
     await studio.getByRole('button', { name: '+ 添加块', exact: true }).click()
-    const block = studio.locator('[data-testid="prompt-block"]').first()
+    const block = studio.locator('[data-testid="prompt-block"]').last()
     await expect(block).toBeVisible()
     await block.getByLabel('块名称').fill('面部')
     await block.getByLabel('块内容').fill('黑色短发，冷静的灰色眼睛，干净的面部轮廓')

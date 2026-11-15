@@ -8,15 +8,18 @@ import {
   FileDropZone,
   IconButton,
   InlineNotice,
-  PageHeader,
   SurfaceCard,
   Textarea,
   TextField,
   type EmptyProps
 } from '@agent2live/design-system'
+import {
+  characterBriefContentSchema,
+  type CharacterBriefContent
+} from '@agent2live/contracts/character-brief'
 import { ApiError, createArtProject, createCharacter, submitPromptInput } from '@studio/api'
 import { queryKeys } from '@studio/api'
-import type { CreateCharacterInput, MaterialRole } from '@studio/api'
+import type { ArtProjectDto, CharacterDto, CreateCharacterInput, MaterialRole } from '@studio/api'
 
 const DRAFT_KEY = 'agent2live:new-character-draft'
 
@@ -32,7 +35,37 @@ interface CharacterDraft {
   supplement: string
 }
 
+interface CharacterBootstrapResult {
+  character: CharacterDto
+  project: ArtProjectDto
+  inputSubmissionId: string
+  draftId: string
+}
+
 const EMPTY_DRAFT: CharacterDraft = { title: '', summary: '', supplement: '' }
+
+export class CharacterProvisioningError extends Error {
+  readonly characterId: string
+  readonly projectId: string | null
+  readonly originalError: unknown
+
+  constructor(message: string, characterId: string, projectId: string | null, originalError: unknown) {
+    super(message)
+    this.name = 'CharacterProvisioningError'
+    this.characterId = characterId
+    this.projectId = projectId
+    this.originalError = originalError
+  }
+}
+
+export function buildCharacterBrief(draft: CharacterDraft): CharacterBriefContent {
+  return characterBriefContentSchema.parse({
+    schemaVersion: 'character-brief/1',
+    identity: { fullName: draft.title.trim() },
+    background: { summary: draft.summary.trim() },
+    notes: draft.supplement.trim()
+  })
+}
 
 function readDraft(): CharacterDraft {
   try {
@@ -146,50 +179,83 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
     }
   }
 
-  const mutation = useMutation({
-    mutationFn: async (input: CreateCharacterInput) => {
-      const character = await createCharacter(input)
-      if (references.length === 0) {
-        return { character, project: null, hasReferences: false }
+  const submitCharacterInput = async (projectId: string) => {
+    const brief = buildCharacterBrief(draft)
+    const files = new Map<string, File>()
+    const materials = references.map((file, index) => {
+      const fileField = `file_reference_${index}`
+      files.set(fileField, file)
+      return {
+        partName: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || `参考图 ${index + 1}`,
+        fileField,
+        role: referenceRole(index),
+        note: index === 0 ? '角色身份参考' : index === 1 ? '画风参考' : '补充参考',
+        weight: 1,
+        locked: false,
+        sortOrder: index
       }
-      const project = await createArtProject(character.id, {
-        title: '默认造型',
-        ...(draft.supplement.trim() ? { description: draft.supplement.trim() } : {})
-      })
-      const files = new Map<string, File>()
-      const materials = references.map((file, index) => {
-        const fileField = `file_reference_${index}`
-        files.set(fileField, file)
+    })
+    return submitPromptInput(
+      projectId,
+      {
+        characterBrief: brief,
+        globalNotes: [brief.background.summary, brief.notes].filter(Boolean).join('\n\n'),
+        requirements: [],
+        materials
+      },
+      files,
+      null
+    )
+  }
+
+  const mutation = useMutation({
+    mutationFn: async (input: CreateCharacterInput): Promise<CharacterBootstrapResult> => {
+      const character = await createCharacter(input)
+      let project: ArtProjectDto | null = null
+      try {
+        project = await createArtProject(character.id, {
+          title: '默认造型',
+          ...(draft.supplement.trim() ? { description: draft.supplement.trim() } : {})
+        })
+        const submitted = await submitCharacterInput(project.id)
         return {
-          partName: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || `参考图 ${index + 1}`,
-          fileField,
-          role: referenceRole(index),
-          note: index === 0 ? '角色身份参考' : index === 1 ? '画风参考' : '补充参考',
-          weight: 1,
-          locked: false,
-          sortOrder: index
+          character,
+          project,
+          inputSubmissionId: submitted.submission.id,
+          draftId: submitted.draft.id
         }
-      })
-      await submitPromptInput(
-        project.id,
-        {
-          globalNotes: draft.summary.trim(),
-          requirements: [],
-          materials
-        },
-        files,
-        null
-      )
-      return { character, project, hasReferences: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new CharacterProvisioningError(message, character.id, project?.id ?? null, error)
+      }
     },
-    onSuccess: ({ character, project, hasReferences }) => {
+    onSuccess: ({ character, project }) => {
       clearDraft()
       void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(character.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
       navigate(
-        hasReferences && project
-          ? `/characters/${encodeURIComponent(character.id)}/art?project=${encodeURIComponent(project.id)}`
-          : `/characters/${encodeURIComponent(character.id)}`
+        `/characters/${encodeURIComponent(character.id)}/art?project=${encodeURIComponent(project.id)}`
+      )
+    }
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: async (provisioning: CharacterProvisioningError) => {
+      if (!provisioning.projectId) throw new Error('默认造型尚未创建。')
+      await submitCharacterInput(provisioning.projectId)
+      return provisioning
+    },
+    onSuccess: (provisioning) => {
+      clearDraft()
+      void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(provisioning.characterId) })
+      if (!provisioning.projectId) return
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(provisioning.projectId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(provisioning.projectId) })
+      navigate(
+        `/characters/${encodeURIComponent(provisioning.characterId)}/art?project=${encodeURIComponent(provisioning.projectId)}`
       )
     }
   })
@@ -218,107 +284,106 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
     mutation.mutate(summary ? { title: cleanTitle, summary } : { title: cleanTitle })
   }
 
-  const serverError = mutation.error instanceof ApiError ? mutation.error.message : null
+  const provisioningError = mutation.error instanceof CharacterProvisioningError ? mutation.error : null
+  const serverError =
+    mutation.error instanceof ApiError || mutation.error instanceof CharacterProvisioningError
+      ? mutation.error.message
+      : null
   const errorCode = mutation.error instanceof ApiError ? mutation.error.code : null
 
   return (
     <div className="studio-page new-character-page">
-      <PageHeader
-        back={
-          <Link className="studio-back" to="/">
-            ← 返回角色
-          </Link>
-        }
-        eyebrow="角色"
-        title="新建角色"
-        description="写设定，或直接添加参考图；两种入口都会进入同一条提示词与立绘链路。"
-        actions={
-          <div className="new-character-steps" aria-label="创建步骤">
-            <span data-state="active">写设定</span>
-            <span data-state="upcoming">出立绘</span>
-          </div>
-        }
-      />
+      <header className="new-character-header">
+        <div>
+          <span>角色</span>
+          <h1>新建角色</h1>
+        </div>
+        <div className="new-character-steps" aria-label="创建步骤">
+          <span data-state="active">写设定</span>
+          <span data-state="upcoming">出立绘</span>
+        </div>
+      </header>
 
-      <form className="new-character-shell" onSubmit={onSubmit} noValidate>
-        <SurfaceCard className="new-character-copy-card">
-          <div className="new-character-field-stack">
-            <Field id="character-title" label="角色名称" required>
-              <TextField
-                id="character-title"
-                value={draft.title}
-                maxLength={100}
-                autoFocus
-                placeholder="给角色起个名字"
-                onValueChange={(title) => updateDraft({ title })}
-              />
-            </Field>
-            <Field
-              id="character-summary"
-              label="角色简介"
-              description="写下身份、处境与说话气质；外观可在参考图中表达。"
-            >
-              <Textarea
-                id="character-summary"
-                value={draft.summary}
-                maxLength={2000}
-                rows={8}
-                placeholder="例如：住在屋檐上的白发仙人，替人挡雨为生。"
-                onValueChange={(summary) => updateDraft({ summary })}
-              />
-            </Field>
-            <Field id="character-supplement" label="补充说明" description="必须出现或必须避免的元素。">
-              <Textarea
-                id="character-supplement"
-                value={draft.supplement}
-                maxLength={4000}
-                rows={4}
-                placeholder="例如：伞要始终可见，不要发光特效。"
-                onValueChange={(supplement) => updateDraft({ supplement })}
-              />
-            </Field>
-          </div>
-        </SurfaceCard>
+      <form className="new-character-form" onSubmit={onSubmit} noValidate>
+        <div className="new-character-shell">
+          <SurfaceCard className="new-character-copy-card">
+            <div className="new-character-field-stack">
+              <Field id="character-title" label="角色名称" required>
+                <TextField
+                  id="character-title"
+                  value={draft.title}
+                  maxLength={100}
+                  autoFocus
+                  placeholder="给角色起个名字"
+                  onValueChange={(title) => updateDraft({ title })}
+                />
+              </Field>
+              <Field id="character-summary" label="角色简介">
+                <Textarea
+                  id="character-summary"
+                  value={draft.summary}
+                  maxLength={2000}
+                  rows={8}
+                  placeholder="例如：住在屋檐上的白发仙人，替人挡雨为生。"
+                  onValueChange={(summary) => updateDraft({ summary })}
+                />
+              </Field>
+              <Field id="character-supplement" label="补充说明">
+                <Textarea
+                  id="character-supplement"
+                  value={draft.supplement}
+                  maxLength={4000}
+                  rows={4}
+                  placeholder="例如：伞要始终可见，不要发光特效。"
+                  onValueChange={(supplement) => updateDraft({ supplement })}
+                />
+              </Field>
+            </div>
+          </SurfaceCard>
 
-        <SurfaceCard
-          className="new-character-reference-card"
-          title="参考图"
-          description="身份、画风、服装、配色、姿态和草图都可用于生成。"
-          actions={
-            <span className="studio-meta">
-              {references.length} / {MAX_REFERENCES}
-            </span>
-          }
-        >
-          <div className="new-character-reference-grid">
-            {references.map((file, index) => (
-              <ReferencePreview
-                key={`${file.name}-${file.lastModified}-${index}`}
-                file={file}
-                index={index}
-                onRemove={(removeIndex) =>
-                  setReferences((current) => current.filter((_, item) => item !== removeIndex))
-                }
-              />
-            ))}
-            {references.length < MAX_REFERENCES ? (
-              <FileDropZone
-                label="上传参考图"
-                accept="image/png,image/jpeg,image/webp"
-                multiple
-                onFiles={addReferences}
-                className="new-character-drop-zone"
-              >
-                <span className="new-character-add-icon" aria-hidden="true">
-                  +
-                </span>
-                <strong>拖入图片，或点选上传</strong>
-                <span>身份、画风、服装、配色、姿态和草图</span>
-                <small>最多 6 张，单张不超过 20MB</small>
-              </FileDropZone>
-            ) : null}
-          </div>
-        </SurfaceCard>
+          <SurfaceCard
+            className="new-character-reference-card"
+            title="参考图"
+            actions={
+              <span className="studio-meta">
+                {references.length} / {MAX_REFERENCES}
+              </span>
+            }
+          >
+            <div className="new-character-reference-grid">
+              {references.map((file, index) => (
+                <ReferencePreview
+                  key={`${file.name}-${file.lastModified}-${index}`}
+                  file={file}
+                  index={index}
+                  onRemove={(removeIndex) =>
+                    setReferences((current) => current.filter((_, item) => item !== removeIndex))
+                  }
+                />
+              ))}
+              {references.length < MAX_REFERENCES ? (
+                <FileDropZone
+                  label="上传参考图"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  onFiles={addReferences}
+                  className="new-character-drop-zone"
+                >
+                  <span className="new-character-add-icon" aria-hidden="true">
+                    +
+                  </span>
+                  <strong>拖入图片，或点选上传</strong>
+                  <span>身份、画风、服装、配色、姿态和草图</span>
+                  <small>最多 6 张，单张不超过 20MB</small>
+                </FileDropZone>
+              ) : (
+                <p className="new-character-reference-full" role="status">
+                  6 张已满，删除一张后继续上传
+                </p>
+              )}
+            </div>
+          </SurfaceCard>
+        </div>
 
         {localError ? (
           <InlineNotice tone="danger">
@@ -328,6 +393,35 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         {serverError ? (
           <InlineNotice tone="danger">
             <p role="alert">{serverError}</p>
+            {provisioningError ? (
+              <div className="new-character-recovery-actions">
+                <Button asChild variant="secondary">
+                  <Link to={`/characters/${encodeURIComponent(provisioningError.characterId)}`}>
+                    进入角色卡片
+                  </Link>
+                </Button>
+                {provisioningError.projectId ? (
+                  <>
+                    <Button asChild variant="secondary">
+                      <Link
+                        to={`/characters/${encodeURIComponent(provisioningError.characterId)}/art?project=${encodeURIComponent(provisioningError.projectId)}`}
+                      >
+                        打开默认造型
+                      </Link>
+                    </Button>
+                    <AsyncButton
+                      type="button"
+                      variant="secondary"
+                      busy={retryMutation.isPending}
+                      busyLabel="重新提交中…"
+                      onClick={() => retryMutation.mutate(provisioningError)}
+                    >
+                      重新提交输入
+                    </AsyncButton>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
             {errorCode ? (
               <p className="studio-meta">
                 错误码：<code>{errorCode}</code>
@@ -343,7 +437,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
               <Link to="/">取消</Link>
             </Button>
             <AsyncButton type="submit" busy={mutation.isPending} busyLabel="创建中…">
-              创建角色
+              创建并生成
             </AsyncButton>
           </div>
         </div>

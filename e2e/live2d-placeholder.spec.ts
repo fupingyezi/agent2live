@@ -17,12 +17,8 @@ test('offers a Phase 2 Live2D placeholder from character and project entry point
 
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await studio.getByLabel('角色名称').fill('凛')
-    await studio.getByRole('button', { name: '创建角色', exact: true }).click()
-    await expect(studio.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
-
-    await studio.getByLabel('项目名称').fill('默认造型')
-    await studio.getByRole('button', { name: '创建项目', exact: true }).click()
-    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible()
+    await studio.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
 
     await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
     const projectCard = studio.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })

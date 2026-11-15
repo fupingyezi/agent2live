@@ -37,24 +37,20 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
       workbenchVerified: false
     }
 
-    await expect(page.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(page.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
 
     await page.getByRole('link', { name: '新建角色', exact: true }).click()
     await page.getByLabel('角色名称').fill('凛')
     await page.getByLabel('角色简介').fill('黄金链路测试角色')
-    await page.getByRole('button', { name: '创建角色', exact: true }).click()
-    await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
+    await page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
 
     const characterSegments = hashRoute(page).pathname.split('/').filter(Boolean)
     const characterId = decodeURIComponent(characterSegments[1] ?? '')
     expect(characterId).toMatch(/^chr_/)
 
-    await page.getByLabel('项目名称').fill('默认造型')
-    await page.getByLabel('描述').fill('Phase 1 黄金链路')
-    await page.getByRole('button', { name: '创建项目', exact: true }).click()
-    await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible()
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(page.getByRole('heading', { name: '默认造型', level: 1 })).toBeVisible()
 
@@ -64,8 +60,16 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     expect(projectBeforeInput.characterId).toBe(characterId)
     checks.uiCharacterAndProjectCreated = true
 
+    const workspace = (
+      await api.json<{
+        activeDraft: { id: string; rowVersion: number } | null
+      }>('GET', `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`)
+    ).body
+    expect(workspace.activeDraft).not.toBeNull()
+
     const inputPng = await makePng()
     const promptInput = await api.uploadPromptInput(projectId!, inputPng, {
+      ifMatchRowVersion: workspace.activeDraft!.rowVersion,
       filename: 'face-reference.png',
       characterBrief: {
         schemaVersion: 'character-brief/1',
@@ -325,7 +329,7 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
 
     await page.reload()
     await page.locator('[data-testid="studio-ready"]').waitFor({ state: 'visible', timeout: 30_000 })
-    await expect(page.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(page.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
     await page.getByRole('link', { name: /返回角色驾驶舱/ }).click()

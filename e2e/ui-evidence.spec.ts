@@ -19,14 +19,16 @@ async function seedArtwork(
   api: ApiClient,
   project: ArtProjectDto,
   providerId: string,
-  seed: number
+  seed: number,
+  ifMatchRowVersion?: number
 ): Promise<{
   projectId: string
   generationId: string
   activeArtVersionId: string
 }> {
   const input = await api.uploadPromptInput(project.id, await makePng(), {
-    filename: 'ui-reference.png'
+    filename: 'ui-reference.png',
+    ...(ifMatchRowVersion === undefined ? {} : { ifMatchRowVersion })
   })
   const assetId = input.submission.materials[0]!.assetId
   const draft = await api.savePromptDraft(
@@ -54,19 +56,6 @@ async function seedArtwork(
     generationId: created.generationId,
     activeArtVersionId: accepted.artVersion.id
   }
-}
-
-async function seedWorkbench(
-  api: ApiClient,
-  characterId: string,
-  providerId: string
-): Promise<{
-  projectId: string
-  generationId: string
-  activeArtVersionId: string
-}> {
-  const project = await api.createProject(characterId, '视觉基线项目', 'G1-UI 证据数据')
-  return seedArtwork(api, project, providerId, 20261112)
 }
 
 test('captures axe, token lint, and 1440x900 visual baselines', async () => {
@@ -117,22 +106,47 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
 
     await page.getByLabel('角色名称').fill('凛')
     await page.getByLabel('角色简介').fill('UI 基线角色：银白长发、蓝色眼睛，清爽赛璐璐。')
+    const references = await Promise.all(
+      ['#b8d7cc', '#d8ebe2', '#c9d8e8', '#dcc9e8', '#e8d5c9', '#d7dcc9'].map((color, index) =>
+        makePng(240, 320, color).then((buffer) => ({
+          name: `reference-${index + 1}.png`,
+          mimeType: 'image/png',
+          buffer
+        }))
+      )
+    )
+    await page.getByLabel('上传参考图').setInputFiles(references)
+    await expect(page.locator('[data-testid="character-reference-card"]')).toHaveCount(6)
+    await expect(page.getByText('6 张已满，删除一张后继续上传')).toBeVisible()
     await capture('new-character-full')
 
-    await page.getByRole('button', { name: '创建角色', exact: true }).click()
-    await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
+    await page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     const segments = new URL(page.url()).hash.slice(2).split('/').filter(Boolean)
     const characterId = decodeURIComponent(segments[1] ?? '')
     expect(characterId).toMatch(/^chr_/)
+    const projectId = new URL(page.url()).hash.match(/[?&]project=([^&]+)/)?.[1]
+    expect(projectId).toMatch(/^artp_/)
 
-    const seeded = await seedWorkbench(api, characterId, imageProvider.id)
+    const workspace = (
+      await api.json<{
+        activeDraft: { rowVersion: number } | null
+      }>('GET', `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`)
+    ).body
+    const seeded = await seedArtwork(
+      api,
+      await api.getProject(projectId!),
+      imageProvider.id,
+      20261112,
+      workspace.activeDraft?.rowVersion
+    )
     await page.evaluate((id) => {
       window.location.hash = `#/characters/${encodeURIComponent(id)}`
     }, characterId)
     await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
-    await expect(
-      page.locator('[data-testid="project-card"]').filter({ hasText: '视觉基线项目' })
-    ).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })).toBeVisible({
+      timeout: 20_000
+    })
     await capture('character-card')
     await page.evaluate(
       ({ projectId, generationId }) => {

@@ -83,17 +83,13 @@ test('creates a character and art project, streams events, and survives reload',
     await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(0)
     await studio.getByLabel('角色名称').fill('凛')
     await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
-    await studio.getByRole('button', { name: '创建角色' }).click()
+    await studio.getByRole('button', { name: '创建并生成' }).click()
 
-    await expect(studio.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
-    await expect(studio.locator('[data-testid="lineage-empty"]')).toBeVisible()
-
-    await studio.getByLabel('项目名称').fill('默认造型')
-    await studio.getByLabel('描述').fill('用于首版立绘与 Live2D 绑定。')
-    await studio.getByRole('button', { name: '创建项目' }).click()
-
-    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible()
+    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.getByRole('heading', { name: '默认造型', level: 1 })).toBeVisible()
+    await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+      timeout: 20_000
+    })
     await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(0)
     await expect.poll(() => studio.url()).toContain('project=artp_')
     const projectUrl = studio.url()
@@ -159,7 +155,7 @@ test('initializes a character from reference images', async () => {
     await studio.getByLabel('上传参考图').setInputFiles([first, second])
 
     await expect(studio.locator('[data-testid="character-reference-card"]')).toHaveCount(2)
-    await studio.getByRole('button', { name: '创建角色', exact: true }).click()
+    await studio.getByRole('button', { name: '创建并生成', exact: true }).click()
 
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({ timeout: 20_000 })
@@ -250,6 +246,88 @@ test('restores the character overview from projects and active art versions', as
     await expect
       .poll(() => withoutProjectEmptyArt.evaluate((image) => (image as HTMLImageElement).naturalWidth))
       .toBeGreaterThan(0)
+  } finally {
+    await studio.close()
+  }
+})
+
+test('creates a default art project and prompt draft from text-only setup', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-text-bootstrap-')
+
+  try {
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('霁')
+    await studio.page
+      .getByLabel('角色简介')
+      .fill('住在旧城钟楼里的年轻抄写员，说话轻，习惯把重要的事写进页边。')
+    await studio.page.getByLabel('补充说明').fill('围巾始终可见，画面保持低饱和。')
+    await studio.page.reload()
+    await expect(studio.page.getByLabel('角色名称')).toHaveValue('霁')
+    await expect(studio.page.getByLabel('角色简介')).toHaveValue(
+      '住在旧城钟楼里的年轻抄写员，说话轻，习惯把重要的事写进页边。'
+    )
+    await expect(studio.page.getByRole('button', { name: '创建并生成' })).toBeVisible()
+    await studio.page.getByRole('button', { name: '创建并生成' }).click()
+
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await expect.poll(() => studio.page.url()).toContain('/art?project=artp_')
+    await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toContainText('霁')
+    await expect(studio.page.locator('[data-testid="no-active-draft"]')).toHaveCount(0)
+    await expect(studio.page.getByText('新建美术项目', { exact: true })).toHaveCount(0)
+
+    const inputPanel = studio.page.locator('[data-testid="prompt-input-panel"]')
+    await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
+    const overallNotes = inputPanel.getByLabel('整体说明')
+    await expect(overallNotes).toHaveValue(
+      '住在旧城钟楼里的年轻抄写员，说话轻，习惯把重要的事写进页边。\n\n围巾始终可见，画面保持低饱和。'
+    )
+  } finally {
+    await studio.close()
+  }
+})
+
+test('recovers when prompt input submission fails after project creation', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-bootstrap-recovery-')
+
+  try {
+    await studio.page.route('**/api/v1/art-projects/*/prompt-inputs', async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          type: 'about:blank',
+          title: '模拟输入提交失败',
+          status: 503,
+          code: 'TEST_BOOTSTRAP_FAILED'
+        })
+      })
+    })
+
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('岚')
+    await studio.page.getByLabel('角色简介').fill('用于验证创建失败后的恢复入口。')
+    await studio.page.getByRole('button', { name: '创建并生成' }).click()
+
+    await expect(studio.page.getByRole('alert')).toContainText('HTTP 503')
+    await expect(studio.page.getByRole('link', { name: '进入角色卡片' })).toBeVisible()
+    await expect(studio.page.getByRole('link', { name: '打开默认造型' })).toBeVisible()
+    await expect(studio.page.getByRole('button', { name: '重新提交输入' })).toBeVisible()
+
+    await studio.page.unroute('**/api/v1/art-projects/*/prompt-inputs')
+    await studio.page.getByRole('button', { name: '重新提交输入' }).click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+      timeout: 20_000
+    })
   } finally {
     await studio.close()
   }

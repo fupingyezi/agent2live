@@ -1,6 +1,7 @@
 import { ApiClient, newIdempotencyKey } from './client'
 import type {
   CreateProviderConnectionInput,
+  PromptInputMultipartMetadata,
   ProviderProbeInput,
   UpdateProviderConnectionInput
 } from '@agent2live/contracts/api'
@@ -177,19 +178,8 @@ export function commitPromptDraft(
 
 export async function submitPromptInput(
   projectId: string,
-  metadata: {
-    globalNotes: string
-    requirements: PromptRequirement[]
-    materials: Array<{
-      partName: string
-      assetId?: string
-      fileField?: string
-      role: MaterialRole
-      note: string
-      weight: number
-      locked: boolean
-      sortOrder: number
-    }>
+  metadata: Omit<PromptInputMultipartMetadata, 'materials'> & {
+    materials: PromptInputMultipartMetadata['materials']
   },
   files: Map<string, File>,
   ifMatch: number | null
