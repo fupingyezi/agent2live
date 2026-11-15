@@ -113,7 +113,9 @@ test('stores provider secrets in the vault and never exposes them through the AP
     await expect(studio.locator('[data-testid="provider-base-url"]')).toHaveValue(
       'https://ark.cn-beijing.volces.com/api/v3'
     )
-    await expect(studio.locator('[data-testid="provider-model"]')).toHaveValue('doubao-seedream-4-0-250828')
+    await expect(studio.locator('[data-testid="provider-model"]')).toHaveValue(
+      'doubao-seedream-5-0-pro-260628'
+    )
     await expect(studio.locator('[data-testid="provider-api-key"]')).toHaveAttribute('type', 'password')
     await studio.locator('[data-testid="provider-api-key"]').fill(FIRST_KEY)
     await studio.locator('[data-testid="provider-submit"]').click()

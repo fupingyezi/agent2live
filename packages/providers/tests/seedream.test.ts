@@ -98,6 +98,31 @@ describe('SeedreamImageProvider', () => {
     expect(String(error)).not.toContain('secret prompt')
   })
 
+  it('omits sequential generation options for a single image', async () => {
+    server = await startTestServer((request, response) => {
+      if (request.method === 'POST') {
+        sendJson(response, 400, { error: { code: 'invalid', message: 'diagnostic only' } })
+      } else {
+        response.writeHead(404).end()
+      }
+    })
+
+    await expect(
+      provider(`${server.url}/v1`).generate(
+        {
+          prompt: 'single image probe',
+          size: '1024x1024',
+          count: 1
+        },
+        { requestId: 'req-image-single' }
+      )
+    ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_REQUEST' })
+
+    const body = JSON.parse(server.requests[0]!.body.toString('utf8'))
+    expect(body).not.toHaveProperty('sequential_image_generation')
+    expect(body).not.toHaveProperty('sequential_image_generation_options')
+  })
+
   it('rejects invalid size, count, and oversized reference sets', async () => {
     server = await startTestServer((_request, response) => sendJson(response, 500, {}))
     await expect(

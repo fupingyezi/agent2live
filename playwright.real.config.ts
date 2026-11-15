@@ -11,5 +11,5 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   outputDir: 'test-results/real-providers',
-  use: { trace: 'retain-on-failure' }
+  use: { trace: 'off' }
 })

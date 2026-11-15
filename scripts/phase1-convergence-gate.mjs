@@ -158,7 +158,7 @@ function evaluateRealProvider(name, realProviders, requireRealProviders, problem
     issue(category, 'blocked', `Real ${name} provider check is missing`, problems, warnings)
     return category
   }
-  if (check.ok !== true || realProviders.status !== 'pass') {
+  if (check.ok !== true || (realProviders.status !== 'pass' && realProviders.status !== 'partial')) {
     issue(
       category,
       'fail',

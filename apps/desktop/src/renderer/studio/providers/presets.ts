@@ -48,7 +48,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     kind: 'image',
     adapter: 'seedream',
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    model: 'doubao-seedream-4-0-250828',
+    model: 'doubao-seedream-5-0-pro-260628',
     requiresSecret: true,
     capabilities: SEEDREAM_CAPABILITIES
   },

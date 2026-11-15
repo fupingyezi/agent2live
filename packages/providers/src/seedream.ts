@@ -103,8 +103,12 @@ export class SeedreamImageProvider implements ImageProvider {
       size: request.size,
       response_format: 'url',
       watermark: false,
-      sequential_image_generation: count > 1 ? 'auto' : 'disabled',
-      ...(count > 1 ? { sequential_image_generation_options: { max_images: count } } : {}),
+      ...(count > 1
+        ? {
+            sequential_image_generation: 'auto',
+            sequential_image_generation_options: { max_images: count }
+          }
+        : {}),
       ...(request.seed === undefined ? {} : { seed: request.seed }),
       ...(references.length === 0 ? {} : { image: references.map(dataUrl) })
     }

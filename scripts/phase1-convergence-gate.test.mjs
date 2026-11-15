@@ -140,6 +140,27 @@ describe('phase 1 convergence gate', () => {
     assert.equal(result.categories['REAL-IMAGE'].status, 'fail')
   })
 
+  it('keeps a successful image-only smoke separate from the missing chat check', () => {
+    const result = evaluateConvergenceGate({
+      phase1Gate: passingPhase1Gate(),
+      designReview: designReview(),
+      reference: reference(),
+      realProviders: {
+        schemaVersion: 'real-providers/1',
+        status: 'partial',
+        checks: {
+          image: { ok: true }
+        }
+      },
+      requireRealProviders: true
+    })
+
+    assert.equal(result.overallStatus, 'blocked')
+    assert.equal(result.exitCode, 2)
+    assert.equal(result.categories['REAL-CHAT'].status, 'blocked')
+    assert.equal(result.categories['REAL-IMAGE'].status, 'pass')
+  })
+
   it('passes only when Phase 1, design review, and both real probes pass', () => {
     const result = evaluateConvergenceGate({
       phase1Gate: passingPhase1Gate(),

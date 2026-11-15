@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { launchStudio } from './helpers/app'
 import { writeEvidenceJson } from './helpers/evidence'
 
@@ -21,17 +22,39 @@ interface RealProviderSettings {
   apiKey: string
 }
 
-function requiredSettings(): { chat: RealProviderSettings; image: RealProviderSettings } | null {
-  if (process.env.AGENT2LIVE_REAL_PROVIDERS !== '1') return null
-  const names = [
+function requiredSettings(): {
+  chat: RealProviderSettings | null
+  image: RealProviderSettings
+} | null {
+  if (existsSync('.env')) process.loadEnvFile('.env')
+  const mode = process.env.AGENT2LIVE_REAL_PROVIDERS
+  if (mode !== '1' && mode !== 'image') return null
+  const imageApiKey = process.env.AGENT2LIVE_REAL_IMAGE_API_KEY ?? process.env.SEEDREAM_API_KEY
+  if (!imageApiKey?.trim()) {
+    throw new Error('real provider smoke is missing AGENT2LIVE_REAL_IMAGE_API_KEY or SEEDREAM_API_KEY')
+  }
+  const imageBaseUrl =
+    process.env.AGENT2LIVE_REAL_IMAGE_BASE_URL ?? 'https://ark.cn-beijing.volces.com/api/v3'
+  const imageModel = process.env.AGENT2LIVE_REAL_IMAGE_MODEL ?? 'doubao-seedream-5-0-pro-260628'
+  if (mode === 'image') {
+    return {
+      chat: null,
+      image: {
+        kind: 'image',
+        preset: 'seedream-image',
+        label: 'Real Image Smoke',
+        baseUrl: imageBaseUrl,
+        model: imageModel,
+        apiKey: imageApiKey
+      }
+    }
+  }
+  const chatNames = [
     'AGENT2LIVE_REAL_CHAT_BASE_URL',
     'AGENT2LIVE_REAL_CHAT_MODEL',
-    'AGENT2LIVE_REAL_CHAT_API_KEY',
-    'AGENT2LIVE_REAL_IMAGE_BASE_URL',
-    'AGENT2LIVE_REAL_IMAGE_MODEL',
-    'AGENT2LIVE_REAL_IMAGE_API_KEY'
+    'AGENT2LIVE_REAL_CHAT_API_KEY'
   ] as const
-  const missing = names.filter((name) => !process.env[name]?.trim())
+  const missing = chatNames.filter((name) => !process.env[name]?.trim())
   if (missing.length > 0) {
     throw new Error(`real provider smoke is missing environment variables: ${missing.join(', ')}`)
   }
@@ -48,9 +71,9 @@ function requiredSettings(): { chat: RealProviderSettings; image: RealProviderSe
       kind: 'image',
       preset: 'seedream-image',
       label: 'Real Image Smoke',
-      baseUrl: process.env.AGENT2LIVE_REAL_IMAGE_BASE_URL!,
-      model: process.env.AGENT2LIVE_REAL_IMAGE_MODEL!,
-      apiKey: process.env.AGENT2LIVE_REAL_IMAGE_API_KEY!
+      baseUrl: imageBaseUrl,
+      model: imageModel,
+      apiKey: imageApiKey
     }
   }
 }
@@ -110,9 +133,9 @@ test('runs opt-in real Chat and Image provider probes', async () => {
       ok: false,
       kind: 'chat',
       adapter: 'openai-compatible',
-      model: settings.chat.model,
+      model: settings.chat?.model ?? 'not-configured',
       latencyMs: 0,
-      errorCode: 'PROVIDER_PROBE_NOT_RUN'
+      errorCode: 'PROVIDER_PROBE_NOT_CONFIGURED'
     },
     image: {
       ok: false,
@@ -129,18 +152,25 @@ test('runs opt-in real Chat and Image provider probes', async () => {
     await studio.page.getByRole('button', { name: '设置', exact: true }).click()
     await expect(studio.page.locator('[data-testid="providers-page"]')).toBeVisible()
 
-    await addProvider(studio.page, settings.chat)
-    checks.chat = await probeProvider(studio.page, settings.chat)
     await addProvider(studio.page, settings.image)
     checks.image = await probeProvider(studio.page, settings.image)
 
-    expect(checks.chat.ok, 'real Chat provider probe').toBe(true)
     expect(checks.image.ok, 'real Image provider probe').toBe(true)
+    if (settings.chat) {
+      await addProvider(studio.page, settings.chat)
+      checks.chat = await probeProvider(studio.page, settings.chat)
+      expect(checks.chat.ok, 'real Chat provider probe').toBe(true)
+    }
   } finally {
     await studio.close()
     writeEvidenceJson('real-providers.json', {
       schemaVersion: 'real-providers/1',
-      status: checks.chat.ok && checks.image.ok ? 'pass' : 'fail',
+      status:
+        checks.chat.ok && checks.image.ok
+          ? 'pass'
+          : settings.chat === null && checks.image.ok
+            ? 'partial'
+            : 'fail',
       generatedAt: new Date().toISOString(),
       gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       checks
