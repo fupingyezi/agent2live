@@ -15,6 +15,7 @@
     "typecheck": "pnpm typecheck:workspace && pnpm typecheck:root && pnpm typecheck:e2e && pnpm typecheck:spikes",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:real-providers": "playwright test -c playwright.real.config.ts",
     "render:matrix": "tsx scripts/render-matrix.ts",
     "build": "pnpm -r build",
     "build:server": "pnpm --filter @agent2live/server build",
