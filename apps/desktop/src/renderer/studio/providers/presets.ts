@@ -6,6 +6,15 @@ import {
 } from '@agent2live/contracts/capabilities'
 import type { ProviderCapabilities } from '@agent2live/contracts'
 
+const DEEPSEEK_CHAT_CAPABILITIES: ProviderCapabilities = {
+  schemaVersion: 'provider-capabilities/1',
+  chat: {
+    maxImages: 0,
+    maxPromptChars: 20_000,
+    supportsVision: false
+  }
+}
+
 export type ProviderPresetId = 'openai-chat' | 'deepseek-chat' | 'seedream-image' | 'mock-chat' | 'mock-image'
 
 export interface ProviderPreset {
@@ -44,13 +53,13 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
   {
     id: 'deepseek-chat',
     name: 'DeepSeek 对话',
-    description: 'DeepSeek Flash，用于提示词反推、修改建议与后续直接聊天。',
+    description: 'DeepSeek Flash 文本模型，用于提示词修改建议与后续直接聊天。',
     kind: 'chat',
     adapter: 'openai-compatible',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-flash',
     requiresSecret: true,
-    capabilities: OPENAI_COMPATIBLE_VISION_CAPABILITIES
+    capabilities: DEEPSEEK_CHAT_CAPABILITIES
   },
   {
     id: 'seedream-image',

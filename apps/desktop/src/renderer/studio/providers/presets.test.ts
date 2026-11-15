@@ -17,6 +17,10 @@ describe('provider presets', () => {
       model: 'deepseek-flash',
       requiresSecret: true
     })
+    expect(getProviderPreset('deepseek-chat').capabilities.chat).toMatchObject({
+      maxImages: 0,
+      supportsVision: false
+    })
     expect(getProviderPreset('seedream-image')).toMatchObject({
       kind: 'image',
       adapter: 'seedream',

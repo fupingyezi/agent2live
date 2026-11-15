@@ -66,10 +66,23 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   const [base, setBase] = useState<'draft' | 'version'>(workspace.activeDraft ? 'draft' : 'version')
   const [activeJob, setActiveJob] = useState<ActiveAiJob | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const availableChatProviders = useMemo(
+    () =>
+      kind === 'reverse'
+        ? chatProviders.filter((provider) => {
+            if (!provider.capabilities || typeof provider.capabilities !== 'object') return false
+            const chat = (provider.capabilities as { chat?: { supportsVision?: unknown } }).chat
+            return chat?.supportsVision === true
+          })
+        : chatProviders,
+    [chatProviders, kind]
+  )
 
   useEffect(() => {
-    if (!providerId && chatProviders[0]) setProviderId(chatProviders[0].id)
-  }, [providerId, chatProviders])
+    if (!availableChatProviders.some((provider) => provider.id === providerId)) {
+      setProviderId(availableChatProviders[0]?.id ?? '')
+    }
+  }, [providerId, availableChatProviders])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
   const job = jobQuery.data ?? null
@@ -138,7 +151,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
       <div className="sidebar-panel">
         <EmptyState
           title="没有可用的聊天模型"
-          description="在设置中添加 OpenAI-compatible 或 mock 聊天连接，并启用视觉能力后，才能使用反推与建议。"
+          description="在设置中添加 DeepSeek、OpenAI-compatible 或 Mock 聊天连接。"
         />
       </div>
     )
@@ -156,53 +169,59 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
         ]}
       />
 
-      <details className="ai-request-settings">
-        <summary>模型与改进方向</summary>
-        <div className="ai-request-settings-body" data-testid="ai-request-settings">
-          <Field label="聊天模型">
-            <Select value={providerId} onValueChange={setProviderId}>
-              {chatProviders.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
+      {availableChatProviders.length === 0 ? (
+        <InlineNotice tone="warning">
+          素材反推需要启用支持视觉输入的聊天连接；DeepSeek Flash 文本能力可用于“改进建议”。
+        </InlineNotice>
+      ) : (
+        <details className="ai-request-settings">
+          <summary>模型与改进方向</summary>
+          <div className="ai-request-settings-body" data-testid="ai-request-settings">
+            <Field label="聊天模型">
+              <Select value={providerId} onValueChange={setProviderId}>
+                {availableChatProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-          {kind === 'suggest' ? (
-            <>
-              <Field label="改进方向">
-                <Textarea rows={3} maxLength={2000} value={intent} onValueChange={setIntent} />
-              </Field>
-              <fieldset className="choice-group">
-                <legend>建议基准</legend>
-                <div className="choice-group-actions">
-                  <Button
-                    type="button"
-                    variant={base === 'draft' ? 'secondary' : 'quiet'}
-                    size="sm"
-                    aria-pressed={base === 'draft'}
-                    disabled={!workspace.activeDraft}
-                    onClick={() => setBase('draft')}
-                  >
-                    当前草稿
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={base === 'version' ? 'secondary' : 'quiet'}
-                    size="sm"
-                    aria-pressed={base === 'version'}
-                    disabled={!workspace.activePromptVersion}
-                    onClick={() => setBase('version')}
-                  >
-                    当前提示词版本
-                  </Button>
-                </div>
-              </fieldset>
-            </>
-          ) : null}
-        </div>
-      </details>
+            {kind === 'suggest' ? (
+              <>
+                <Field label="改进方向">
+                  <Textarea rows={3} maxLength={2000} value={intent} onValueChange={setIntent} />
+                </Field>
+                <fieldset className="choice-group">
+                  <legend>建议基准</legend>
+                  <div className="choice-group-actions">
+                    <Button
+                      type="button"
+                      variant={base === 'draft' ? 'secondary' : 'quiet'}
+                      size="sm"
+                      aria-pressed={base === 'draft'}
+                      disabled={!workspace.activeDraft}
+                      onClick={() => setBase('draft')}
+                    >
+                      当前草稿
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={base === 'version' ? 'secondary' : 'quiet'}
+                      size="sm"
+                      aria-pressed={base === 'version'}
+                      disabled={!workspace.activePromptVersion}
+                      onClick={() => setBase('version')}
+                    >
+                      当前提示词版本
+                    </Button>
+                  </div>
+                </fieldset>
+              </>
+            ) : null}
+          </div>
+        </details>
+      )}
 
       {dirty ? <InlineNotice tone="info">先保存或撤销未保存的提示词修改，再请求 AI。</InlineNotice> : null}
       {localError ? (
@@ -215,7 +234,9 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
         type="button"
         busy={startMutation.isPending}
         busyLabel="提交任务…"
-        disabled={dirty || (kind === 'reverse' && !workspace.activeDraft)}
+        disabled={
+          dirty || availableChatProviders.length === 0 || (kind === 'reverse' && !workspace.activeDraft)
+        }
         onClick={() => startMutation.mutate()}
       >
         {kind === 'reverse' ? '开始反推' : '生成建议'}
