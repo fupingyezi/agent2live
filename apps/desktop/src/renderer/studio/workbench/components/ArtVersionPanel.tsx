@@ -5,11 +5,11 @@ import type {
   ArtVersionDto,
   ArtVersionMutationDto,
   PromptVersionSummaryDto
-} from '../../api/types'
-import { activateArtVersion, createManualArtVersion, uploadAsset } from '../../api/queries'
-import { queryKeys } from '../../api/keys'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
-import { formatDateTime, shortId } from '../../format'
+} from '@studio/api'
+import { activateArtVersion, createManualArtVersion, uploadAsset } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
+import { formatDateTime, shortId } from '@studio/format'
 import {
   AsyncButton,
   Button,

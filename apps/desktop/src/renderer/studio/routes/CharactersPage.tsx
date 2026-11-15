@@ -2,11 +2,11 @@ import React from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button, EmptyState, PageHeader, SurfaceCard, type EmptyProps } from '@agent2live/design-system'
-import { listCharacters } from '../api/queries'
-import { queryKeys } from '../api/keys'
-import { StudioError } from '../components/StudioError'
-import { StudioLoading } from '../components/StudioLoading'
-import { formatDateTime } from '../format'
+import { listCharacters } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { StudioError } from '@studio/components'
+import { StudioLoading } from '@studio/components'
+import { formatDateTime } from '@studio/format'
 
 export const CharactersPage: React.FC<EmptyProps> = () => {
   const query = useQuery({

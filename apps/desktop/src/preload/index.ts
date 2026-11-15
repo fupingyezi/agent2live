@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, type Agent2LiveBridge } from '../shared/ipc-contracts'
+import { IPC_CHANNELS, type Agent2LiveBridge } from '@desktop/shared'
 
 const bridge: Agent2LiveBridge = {
   getWindowState: () => ipcRenderer.invoke(IPC_CHANNELS.getWindowState),

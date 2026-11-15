@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { invalidateForEvent } from '../api/invalidation'
-import { ServerEventStream, type SseStatus } from '../api/sse'
+import { invalidateForEvent } from '@studio/api'
+import { ServerEventStream, type SseStatus } from '@studio/api'
 
 export interface ServerEventsState {
   status: SseStatus

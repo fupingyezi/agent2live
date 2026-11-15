@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { PromptDraftDto, PromptWorkspaceDto, ProviderConnectionDto } from '../../api/types'
+import type { PromptDraftDto, PromptWorkspaceDto, ProviderConnectionDto } from '@studio/api'
 import {
   getPromptReverseResult,
   getPromptSuggestion,
@@ -8,10 +8,10 @@ import {
   requestPromptReverse,
   requestPromptSuggestionFromDraft,
   requestPromptSuggestionFromVersion
-} from '../../api/queries'
-import { queryKeys } from '../../api/keys'
-import { useJob } from '../../hooks/useJob'
-import { formatPercent } from '../../format'
+} from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { useJob } from '@studio/hooks'
+import { formatPercent } from '@studio/format'
 import {
   AsyncButton,
   Button,
@@ -25,7 +25,7 @@ import {
 } from '@agent2live/design-system'
 import { ReverseReview } from './ReverseReview'
 import { SuggestionDiff } from './SuggestionDiff'
-import { StudioError } from '../../components/StudioError'
+import { StudioError } from '@studio/components'
 
 type AiKind = 'reverse' | 'suggest'
 

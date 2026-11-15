@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import type { PromptDraftDto, PromptOperation, PromptSuggestionDto } from '../../api/types'
-import { acceptPromptSuggestion, rejectPromptSuggestion } from '../../api/queries'
+import type { PromptDraftDto, PromptOperation, PromptSuggestionDto } from '@studio/api'
+import { acceptPromptSuggestion, rejectPromptSuggestion } from '@studio/api'
 import { AsyncButton, EmptyState, InlineNotice, SectionHeader, StatusPill } from '@agent2live/design-system'
-import { StudioError } from '../../components/StudioError'
-import { formatDateTime } from '../../format'
+import { StudioError } from '@studio/components'
+import { formatDateTime } from '@studio/format'
 
 interface OperationRowProps {
   operation: PromptOperation

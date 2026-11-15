@@ -1,5 +1,5 @@
 import type { StatusTone } from '@agent2live/design-system'
-import type { ArtProjectStage } from './api/types'
+import type { ArtProjectStage } from '@studio/api'
 
 const STAGE_LABELS: Record<ArtProjectStage, string> = {
   idea_draft: '构思草稿',

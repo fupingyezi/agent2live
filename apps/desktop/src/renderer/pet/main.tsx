@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { EmptyProps } from '../shared/model-types'
-import { mountModel } from '../shared/live2d-stage'
+import type { EmptyProps } from '@renderer/shared'
+import { mountModel } from '@renderer/shared'
 import '../shared/harness.css'
 
 export const Pet: React.FC<EmptyProps> = () => {

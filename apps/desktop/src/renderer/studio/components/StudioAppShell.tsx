@@ -8,8 +8,8 @@ import {
   type EmptyProps,
   type StatusTone
 } from '@agent2live/design-system'
-import type { SseStatus } from '../api/sse'
-import { useServerEvents } from '../hooks/useServerEvents'
+import type { SseStatus } from '@studio/api'
+import { useServerEvents } from '@studio/hooks'
 
 const SSE_LABELS: Record<SseStatus, string> = {
   connecting: '正在连接实时事件',

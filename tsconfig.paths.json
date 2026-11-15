@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@desktop/shared": ["apps/desktop/src/shared/index.ts"],
+      "@desktop/shared/*": ["apps/desktop/src/shared/*"],
+      "@renderer/shared": ["apps/desktop/src/renderer/shared/index.ts"],
+      "@renderer/*": ["apps/desktop/src/renderer/*"],
+      "@studio/api": ["apps/desktop/src/renderer/studio/api/index.ts"],
+      "@studio/components": ["apps/desktop/src/renderer/studio/components/index.ts"],
+      "@studio/hooks": ["apps/desktop/src/renderer/studio/hooks/index.ts"],
+      "@studio/providers": ["apps/desktop/src/renderer/studio/providers/index.ts"],
+      "@studio/routes": ["apps/desktop/src/renderer/studio/routes/index.ts"],
+      "@studio/workbench": ["apps/desktop/src/renderer/studio/workbench/index.ts"],
+      "@studio/workbench/components": ["apps/desktop/src/renderer/studio/workbench/components/index.ts"],
+      "@studio/*": ["apps/desktop/src/renderer/studio/*"]
+    }
+  }
+}

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto } from '../../api/types'
-import { createForkFromArtVersion, createForkFromPromptVersion } from '../../api/queries'
-import { queryKeys } from '../../api/keys'
-import { ApiError } from '../../api/client'
+import type { ArtProjectDto } from '@studio/api'
+import { createForkFromArtVersion, createForkFromPromptVersion } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { ApiError } from '@studio/api'
 import {
   AsyncButton,
   ConfirmDialog,

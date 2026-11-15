@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import type { PetWindowState } from '../shared/ipc-contracts'
+import type { PetWindowState } from '@desktop/shared'
 
 const preload = join(__dirname, '../preload/index.js')
 const PET_TRANSPARENT = true

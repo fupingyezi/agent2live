@@ -4,10 +4,10 @@ import {
   ART_VERSION_REFERENCE_ROLES,
   type ArtVersionReferenceRole
 } from '@agent2live/contracts/art-reference'
-import type { ArtProjectDto, ArtVersionDto, ArtVersionMutationDto } from '../../api/types'
-import { reviseArtVersionReferences, uploadAsset, type ArtVersionReferenceInput } from '../../api/queries'
-import { ApiError } from '../../api/client'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
+import type { ArtProjectDto, ArtVersionDto, ArtVersionMutationDto } from '@studio/api'
+import { reviseArtVersionReferences, uploadAsset, type ArtVersionReferenceInput } from '@studio/api'
+import { ApiError } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
 import {
   AsyncButton,
   Button,

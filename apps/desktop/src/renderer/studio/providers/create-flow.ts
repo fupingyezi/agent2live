@@ -1,26 +1,12 @@
-import type { ProviderCapabilities } from '@agent2live/contracts'
-import type { ProviderConnectionDto } from '../api/types'
+import type { CreateProviderConnectionInput, UpdateProviderConnectionInput } from '@agent2live/contracts/api'
+import type { ProviderConnectionDto } from '@studio/api'
 import { getProviderPreset, type ProviderFormValues } from './presets'
 
 export type ProviderConnectionRecord = ProviderConnectionDto
 
-export interface CreateProviderInput {
-  label: string
-  kind: 'chat' | 'image'
-  adapter: 'openai-compatible' | 'seedream' | 'mock'
-  baseUrl?: string
-  model?: string
-  enabled: boolean
-  capabilities: ProviderCapabilities
-}
+export type CreateProviderInput = CreateProviderConnectionInput
 
-export interface UpdateProviderInput {
-  label?: string
-  baseUrl?: string | null
-  model?: string | null
-  secretRef?: string
-  enabled?: boolean
-}
+export type UpdateProviderInput = UpdateProviderConnectionInput
 
 export interface ProviderFlowPort {
   create(input: CreateProviderInput): Promise<ProviderConnectionRecord>

@@ -1,5 +1,5 @@
 import React from 'react'
-import type { PromptInputMaterialDto, PromptRequirement, PromptSpecV2 } from '../../api/types'
+import type { PromptInputMaterialDto, PromptRequirement, PromptSpecV2 } from '@studio/api'
 import { useWorkbenchStore } from '../store'
 import { uncoveredRequirementIds } from '../prompt-helpers'
 import { PromptBlockCard } from './PromptBlockCard'

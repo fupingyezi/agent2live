@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { MATERIAL_ROLES, type MaterialRole } from '@agent2live/contracts/prompt'
-import type { PromptDraftDto, PromptRequirement, PromptInputSubmissionDto } from '../../api/types'
-import { submitPromptInput } from '../../api/queries'
-import { queryKeys } from '../../api/keys'
-import { ApiError } from '../../api/client'
-import { useAssetUrl } from '../../hooks/useAssetUrl'
+import type { PromptDraftDto, PromptRequirement, PromptInputSubmissionDto } from '@studio/api'
+import { submitPromptInput } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { ApiError } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
 import {
   AsyncButton,
   Button,

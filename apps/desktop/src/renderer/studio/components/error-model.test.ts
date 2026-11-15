@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ProblemDetails } from '../api/types'
-import { ApiError } from '../api/client'
+import type { ProblemDetails } from '@studio/api'
+import { ApiError } from '@studio/api'
 import { describeStudioError } from './error-model'
 
 function apiProblem(

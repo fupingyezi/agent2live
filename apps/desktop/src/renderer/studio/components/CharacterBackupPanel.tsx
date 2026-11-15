@@ -10,11 +10,11 @@ import {
   SurfaceCard,
   type StatusTone
 } from '@agent2live/design-system'
-import { ApiError } from '../api/client'
-import { queryKeys } from '../api/keys'
-import { createBackup, downloadBackup, listBackups } from '../api/queries'
-import type { CharacterBackupDto } from '../api/types'
-import { formatBytes, formatDateTime } from '../format'
+import { ApiError } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { createBackup, downloadBackup, listBackups } from '@studio/api'
+import type { CharacterBackupDto } from '@studio/api'
+import { formatBytes, formatDateTime } from '@studio/format'
 import { StudioError } from './StudioError'
 import { StudioLoading } from './StudioLoading'
 

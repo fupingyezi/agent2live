@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { modelUrlFromSearch } from '../shared/live2d-stage'
+import { modelUrlFromSearch } from '@renderer/shared'
 
 describe('modelUrlFromSearch', () => {
   it('returns the decoded model query parameter', () => {

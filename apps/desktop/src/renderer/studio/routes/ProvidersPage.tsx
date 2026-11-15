@@ -16,27 +16,27 @@ import {
   TextField,
   type EmptyProps
 } from '@agent2live/design-system'
-import { ApiError } from '../api/client'
-import { queryKeys } from '../api/keys'
-import { createProvider, getProvider, listProviders, updateProvider } from '../api/queries'
-import type { ProviderConnectionDto } from '../api/types'
-import { StudioError } from '../components/StudioError'
-import { StudioLoading } from '../components/StudioLoading'
+import { ApiError } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { createProvider, getProvider, listProviders, updateProvider } from '@studio/api'
+import type { ProviderConnectionDto } from '@studio/api'
+import { StudioError } from '@studio/components'
+import { StudioLoading } from '@studio/components'
 import {
   ProviderActivationError,
   ProviderFormError,
   createProviderFlow,
   updateProviderFlow,
   type ProviderFlowPort
-} from '../providers/create-flow'
+} from '@studio/providers'
 import {
   PROVIDER_PRESETS,
   getProviderPreset,
   initialProviderValues,
   presetIdForConnection,
   type ProviderFormValues
-} from '../providers/presets'
-import { formatDateTime } from '../format'
+} from '@studio/providers'
+import { formatDateTime } from '@studio/format'
 
 const ADAPTER_LABELS: Record<ProviderConnectionDto['adapter'], string> = {
   'openai-compatible': 'OpenAI 兼容',

@@ -1,5 +1,5 @@
 import { ApiClient, newIdempotencyKey } from './client'
-import type { CreateProviderInput, UpdateProviderInput } from '../providers/create-flow'
+import type { CreateProviderConnectionInput, UpdateProviderConnectionInput } from '@agent2live/contracts/api'
 import type {
   ArtProjectDto,
   ArtVersionDto,
@@ -489,7 +489,7 @@ export function getProvider(providerId: string, signal?: AbortSignal): Promise<P
 }
 
 export function createProvider(
-  input: CreateProviderInput,
+  input: CreateProviderConnectionInput,
   idempotencyKey = newIdempotencyKey()
 ): Promise<ProviderConnectionDto> {
   return api.request<ProviderConnectionDto>('/api/v1/providers', {
@@ -501,7 +501,7 @@ export function createProvider(
 
 export function updateProvider(
   providerId: string,
-  input: UpdateProviderInput,
+  input: UpdateProviderConnectionInput,
   rowVersion: number
 ): Promise<ProviderConnectionDto> {
   return api.request<ProviderConnectionDto>(`/api/v1/providers/${encodeURIComponent(providerId)}`, {

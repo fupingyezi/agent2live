@@ -2,10 +2,10 @@ import React from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button, EmptyState, PageHeader, type EmptyProps } from '@agent2live/design-system'
-import { getArtProject, getCharacter } from '../api/queries'
-import { queryKeys } from '../api/keys'
-import { StudioError } from '../components/StudioError'
-import { StudioLoading } from '../components/StudioLoading'
+import { getArtProject, getCharacter } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { StudioError } from '@studio/components'
+import { StudioLoading } from '@studio/components'
 
 export const Live2DPlaceholderPage: React.FC<EmptyProps> = () => {
   const { characterId } = useParams<{ characterId: string }>()

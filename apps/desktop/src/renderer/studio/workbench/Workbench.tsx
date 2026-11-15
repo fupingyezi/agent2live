@@ -1,25 +1,32 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto, PromptDraftDto } from '../api/types'
-import { createPromptDraft, getPromptWorkspace, listArtVersions, listProviders } from '../api/queries'
-import { queryKeys } from '../api/keys'
-import { ApiError } from '../api/client'
+import type { ArtProjectDto, PromptDraftDto } from '@studio/api'
+import {
+  ApiError,
+  createPromptDraft,
+  getPromptWorkspace,
+  listArtVersions,
+  listProviders,
+  queryKeys
+} from '@studio/api'
 import { AsyncButton, InlineNotice, SectionHeader, Tabs } from '@agent2live/design-system'
-import { StudioError } from '../components/StudioError'
-import { StudioLoading } from '../components/StudioLoading'
+import { StudioError, StudioLoading } from '@studio/components'
 import { useWorkbenchStore } from './store'
-import { ReferenceChainBar } from './components/ReferenceChainBar'
-import { ForkOriginBar } from './components/ForkOriginBar'
-import { MaterialTray } from './components/MaterialTray'
-import { PromptInputPanel } from './components/PromptInputPanel'
-import { PromptBlockList } from './components/PromptBlockList'
-import { DraftToolbar } from './components/DraftToolbar'
-import { VersionGraph } from './components/VersionGraph'
-import { ArtVersionPanel } from './components/ArtVersionPanel'
-import { GenerationPanel } from './components/GenerationPanel'
-import { PromptAiPanel } from './components/PromptAiPanel'
-import { ForkDialog, type ForkSource } from './components/ForkDialog'
+import {
+  ArtVersionPanel,
+  DraftToolbar,
+  ForkDialog,
+  ForkOriginBar,
+  GenerationPanel,
+  MaterialTray,
+  PromptAiPanel,
+  PromptBlockList,
+  PromptInputPanel,
+  ReferenceChainBar,
+  VersionGraph,
+  type ForkSource
+} from './components'
 
 type DraftSeed = 'active_version' | 'empty'
 

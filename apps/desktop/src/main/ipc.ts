@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '../shared/ipc-contracts'
+import { IPC_CHANNELS } from '@desktop/shared'
 import { getPetWindow, getPetWindowState, getStudioWindow, setPetClickThrough } from './windows'
 import { getSidecarInfo } from './sidecar'
 import { secretRefSchema, secretStoreSchema } from './schema'

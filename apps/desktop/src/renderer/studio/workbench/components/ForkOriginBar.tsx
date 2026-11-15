@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto } from '../../api/types'
-import { updateForkLink } from '../../api/queries'
-import { queryKeys } from '../../api/keys'
-import { ApiError } from '../../api/client'
-import { shortId } from '../../format'
+import type { ArtProjectDto } from '@studio/api'
+import { updateForkLink } from '@studio/api'
+import { queryKeys } from '@studio/api'
+import { ApiError } from '@studio/api'
+import { shortId } from '@studio/format'
 import {
   AsyncButton,
   Button,
