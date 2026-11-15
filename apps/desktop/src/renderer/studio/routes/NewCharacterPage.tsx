@@ -236,7 +236,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
       navigate(
-        `/characters/${encodeURIComponent(character.id)}/art?project=${encodeURIComponent(project.id)}`
+        `/characters/${encodeURIComponent(character.id)}/created?project=${encodeURIComponent(project.id)}`
       )
     }
   })
@@ -255,7 +255,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(provisioning.projectId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(provisioning.projectId) })
       navigate(
-        `/characters/${encodeURIComponent(provisioning.characterId)}/art?project=${encodeURIComponent(provisioning.projectId)}`
+        `/characters/${encodeURIComponent(provisioning.characterId)}/created?project=${encodeURIComponent(provisioning.projectId)}`
       )
     }
   })

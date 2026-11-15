@@ -45,6 +45,10 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     await page.getByLabel('角色名称').fill('凛')
     await page.getByLabel('角色简介').fill('黄金链路测试角色')
     await page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await page.getByTestId('open-art-workbench').click()
     await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
 
     const characterSegments = hashRoute(page).pathname.split('/').filter(Boolean)

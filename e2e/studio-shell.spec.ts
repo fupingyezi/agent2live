@@ -85,6 +85,10 @@ test('creates a character and art project, streams events, and survives reload',
     await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
     await studio.getByRole('button', { name: '创建并生成' }).click()
 
+    await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.getByRole('heading', { name: '默认造型', level: 1 })).toBeVisible()
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
@@ -109,7 +113,7 @@ test('creates a character and art project, streams events, and survives reload',
     await expect(projectCard.getByRole('link', { name: 'Live2D', exact: true })).toBeVisible()
     await expect(studio.locator('[data-testid="backup-panel"]')).toBeVisible()
     await expect(studio.locator('[data-testid="backup-empty"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="open-live2d"]')).toBeVisible()
+    await expect(studio.getByTestId('open-art-workbench')).toBeVisible()
   } finally {
     await app.close()
   }
@@ -157,6 +161,10 @@ test('initializes a character from reference images', async () => {
     await expect(studio.locator('[data-testid="character-reference-card"]')).toHaveCount(2)
     await studio.getByRole('button', { name: '创建并生成', exact: true }).click()
 
+    await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({ timeout: 20_000 })
     await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
@@ -270,6 +278,10 @@ test('creates a default art project and prompt draft from text-only setup', asyn
     await expect(studio.page.getByRole('button', { name: '创建并生成' })).toBeVisible()
     await studio.page.getByRole('button', { name: '创建并生成' }).click()
 
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.page.getByTestId('open-art-workbench').click()
     await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
       timeout: 30_000
     })
@@ -322,12 +334,87 @@ test('recovers when prompt input submission fails after project creation', async
 
     await studio.page.unroute('**/api/v1/art-projects/*/prompt-inputs')
     await studio.page.getByRole('button', { name: '重新提交输入' }).click()
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.page.getByTestId('open-art-workbench').click()
     await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
       timeout: 30_000
     })
     await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toBeVisible({
       timeout: 20_000
     })
+  } finally {
+    await studio.close()
+  }
+})
+
+test('hands off from creation confirmation to the just-created character card', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-created-handoff-')
+
+  try {
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('澜')
+    await studio.page.getByLabel('角色简介').fill('在海边灯塔守夜的年轻记录员。')
+    await studio.page.getByLabel('补充说明').fill('外套口袋里的蓝色笔记本始终可见。')
+    await studio.page.getByLabel('上传参考图').setInputFiles([
+      {
+        name: 'identity.png',
+        mimeType: 'image/png',
+        buffer: await makePng(240, 320, '#9ec9bb')
+      },
+      {
+        name: 'style.png',
+        mimeType: 'image/png',
+        buffer: await makePng(240, 320, '#a9bfda')
+      }
+    ])
+    await studio.page.getByRole('button', { name: '创建并生成' }).click()
+
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await expect.poll(() => studio.page.url()).toContain('/created?project=artp_')
+    await expect(studio.page.locator('[data-testid="studio-page-topbar"]')).toHaveAttribute(
+      'data-tone',
+      'completion'
+    )
+    await expect(studio.page.locator('[data-testid="studio-page-topbar"]')).toContainText('角色新建完成')
+    await expect(studio.page.locator('[data-testid="studio-page-topbar"]')).toContainText('草稿已自动保存')
+    await expect(studio.page.locator('[data-testid="character-created-summary"]')).toContainText('澜')
+    await expect(
+      studio.page.locator('[data-testid="character-created-references"] [data-testid="created-reference"]')
+    ).toHaveCount(2)
+    await expect(studio.page.locator('[data-testid="character-created-references"]')).toContainText(
+      '身份参考'
+    )
+    await expect(studio.page.locator('[data-testid="character-created-references"]')).toContainText(
+      '风格参考'
+    )
+    await expect(studio.page.locator('[data-testid="character-created-prompt"]')).toContainText(
+      '海边灯塔守夜的年轻记录员'
+    )
+
+    await studio.page.reload()
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(studio.page.locator('[data-testid="character-created-prompt"]')).toContainText(
+      '外套口袋里的蓝色笔记本始终可见'
+    )
+
+    await studio.page.getByTestId('open-character-card').click()
+    await expect.poll(() => studio.page.url()).toMatch(/\/characters\/chr_[^/]+$/)
+    await expect(studio.page.locator('[data-testid="character-just-created"]')).toContainText('刚创建')
+    await expect(studio.page.locator('[data-testid="character-artwork-empty"]')).toContainText('还没出图')
+    await expect(studio.page.locator('[data-testid="character-draft-status"]')).toContainText('2 张参考图')
+
+    await studio.page.getByTestId('open-art-workbench').click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect.poll(() => studio.page.url()).toContain('project=artp_')
   } finally {
     await studio.close()
   }

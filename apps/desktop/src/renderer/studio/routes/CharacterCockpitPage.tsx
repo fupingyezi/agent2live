@@ -18,7 +18,7 @@ import {
   type EmptyProps
 } from '@agent2live/design-system'
 import { ApiError } from '@studio/api'
-import { createArtProject, getCharacter, getCharacterLineage } from '@studio/api'
+import { createArtProject, getCharacter, getCharacterLineage, getPromptWorkspace } from '@studio/api'
 import { queryKeys } from '@studio/api'
 import type { ArtProjectDto, CreateArtProjectInput, LineageNodeDto } from '@studio/api'
 import { CharacterBackupPanel } from '@studio/components'
@@ -71,6 +71,12 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
   })
 
   const rows = useMemo(() => flattenRows(lineageQuery.data?.roots ?? []), [lineageQuery.data])
+  const primaryProject = rows[0]?.project ?? null
+  const workspaceQuery = useQuery({
+    queryKey: queryKeys.workspace(primaryProject?.id ?? 'none'),
+    queryFn: ({ signal }) => getPromptWorkspace(primaryProject!.id, signal),
+    enabled: Boolean(primaryProject)
+  })
   // The lineage endpoint reports a character with no projects as 404; the character
   // query already proves existence, so that response means an empty project list.
   const lineageMissing = lineageQuery.error instanceof ApiError && lineageQuery.error.status === 404
@@ -150,8 +156,16 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
 
   const serverError = mutation.error instanceof ApiError ? mutation.error.message : null
   const errorCode = mutation.error instanceof ApiError ? mutation.error.code : null
-  const primaryProject = rows[0]?.project ?? null
   const primaryProgress = primaryProject ? computeProjectProgress(primaryProject) : null
+  const primaryWorkspace = primaryProject ? workspaceQuery.data : null
+  const justCreated =
+    primaryProject?.activeVersionId === null &&
+    primaryWorkspace?.latestSubmission !== null &&
+    primaryWorkspace?.activeDraft !== null
+  const primaryReferenceCount = primaryWorkspace?.latestSubmission?.materials.length ?? 0
+  const primaryArtworkPath = primaryProject
+    ? `/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(primaryProject.id)}`
+    : null
 
   return (
     <div className="studio-page studio-cockpit">
@@ -165,32 +179,49 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
         title={characterQuery.data.title}
         description={characterQuery.data.summary || '这个角色还没有简介。'}
         actions={
-          <Button asChild variant="secondary">
-            <Link to={`/characters/${encodeURIComponent(id)}/live2d`} data-testid="open-live2d">
-              Live2D 绑定
-            </Link>
-          </Button>
+          justCreated && primaryArtworkPath ? (
+            <>
+              <Button asChild variant="secondary">
+                <Link to={primaryArtworkPath}>编辑设定</Link>
+              </Button>
+              <Button asChild>
+                <Link to={primaryArtworkPath} data-testid="open-art-workbench">
+                  出一张立绘
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <Button asChild variant="secondary">
+              <Link to={`/characters/${encodeURIComponent(id)}/live2d`} data-testid="open-live2d">
+                Live2D 绑定
+              </Link>
+            </Button>
+          )
         }
       />
 
       <section className="studio-cockpit-stages" data-testid="character-stage-overview">
-        <article className="studio-cockpit-stage" data-state={primaryProject ? 'active' : 'upcoming'}>
+        <article
+          className="studio-cockpit-stage"
+          data-state={primaryProject ? 'active' : 'upcoming'}
+          {...(justCreated ? { 'data-testid': 'character-just-created' } : {})}
+        >
           <div>
-            <span className="studio-meta">立绘</span>
-            <h2>{primaryProject ? `已有 ${primaryProject.title}` : '尚未开始'}</h2>
-            <p>
-              {primaryProgress
-                ? `${formatPercent(primaryProgress.percent)} · ${primaryProgress.nextLabel}`
-                : '创建项目后开始提示词与候选版本。'}
+            <span className="studio-meta">{justCreated ? '立绘 · 刚创建' : '立绘'}</span>
+            <h2 {...(justCreated ? { 'data-testid': 'character-artwork-empty' } : {})}>
+              {justCreated ? '还没出图' : primaryProject ? `已有 ${primaryProject.title}` : '尚未开始'}
+            </h2>
+            <p {...(justCreated ? { 'data-testid': 'character-draft-status' } : {})}>
+              {justCreated
+                ? `${primaryReferenceCount} 张参考图 · 草稿已自动保存`
+                : primaryProgress
+                  ? `${formatPercent(primaryProgress.percent)} · ${primaryProgress.nextLabel}`
+                  : '创建项目后开始提示词与候选版本。'}
             </p>
           </div>
           {primaryProject ? (
             <Button asChild variant="secondary" size="sm">
-              <Link
-                to={`/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(primaryProject.id)}`}
-              >
-                打开立绘工作台
-              </Link>
+              <Link to={primaryArtworkPath!}>{justCreated ? '继续编辑提示词' : '打开立绘工作台'}</Link>
             </Button>
           ) : null}
         </article>

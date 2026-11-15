@@ -93,6 +93,10 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
     await studio.getByRole('button', { name: '创建并生成' }).click()
 
+    await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({

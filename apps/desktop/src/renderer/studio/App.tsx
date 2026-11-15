@@ -4,6 +4,7 @@ import type { EmptyProps } from '@agent2live/design-system'
 import { StudioAppShell } from '@studio/components'
 import {
   ArtWorkbenchPage,
+  CharacterCreatedPage,
   CharacterCockpitPage,
   CharactersPage,
   Live2DPlaceholderPage,
@@ -17,6 +18,7 @@ export const App: React.FC<EmptyProps> = () => {
       <Route element={<StudioAppShell />}>
         <Route index element={<CharactersPage />} />
         <Route path="characters/new" element={<NewCharacterPage />} />
+        <Route path="characters/:characterId/created" element={<CharacterCreatedPage />} />
         <Route path="characters/:characterId" element={<CharacterCockpitPage />} />
         <Route path="characters/:characterId/art" element={<ArtWorkbenchPage />} />
         <Route path="settings/providers" element={<ProvidersPage />} />

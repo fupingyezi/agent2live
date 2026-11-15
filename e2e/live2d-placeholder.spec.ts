@@ -18,6 +18,10 @@ test('offers a Phase 2 Live2D placeholder from character and project entry point
     await studio.getByRole('link', { name: '新建角色', exact: true }).click()
     await studio.getByLabel('角色名称').fill('凛')
     await studio.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
 
     await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
@@ -32,8 +36,10 @@ test('offers a Phase 2 Live2D placeholder from character and project entry point
     await expect(studio.locator('[data-testid="live2d-empty"]')).toContainText('Phase 2')
 
     await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
-    await expect(studio.locator('[data-testid="open-live2d"]')).toBeVisible()
-    await studio.locator('[data-testid="open-live2d"]').click()
+    const characterId = decodeURIComponent(new URL(studio.url()).hash.split('/')[2] ?? '')
+    await studio.evaluate((id) => {
+      window.location.hash = `#/characters/${encodeURIComponent(id)}/live2d`
+    }, characterId)
     await expect(studio.locator('[data-testid="live2d-placeholder"]')).toHaveAttribute('data-project-id', '')
     await expect(studio.getByText('尚未选择美术项目；可以先在驾驶舱里打开一个项目。')).toBeVisible()
   } finally {

@@ -121,6 +121,10 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await capture('new-character-full')
 
     await page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await page.getByTestId('open-art-workbench').click()
     await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     const segments = new URL(page.url()).hash.slice(2).split('/').filter(Boolean)
     const characterId = decodeURIComponent(segments[1] ?? '')
