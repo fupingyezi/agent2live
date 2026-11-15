@@ -231,12 +231,25 @@ test('restores the character overview from projects and active art versions', as
     const awaitingCard = studio.page.locator(
       `[data-testid="character-card"][data-character-id="${awaitingArt.id}"]`
     )
-    await expect(awaitingCard).toContainText('待出图')
+    await expect(awaitingCard).toContainText('还没有立绘')
+    await expect(awaitingCard).toContainText('「这里还空着呀。」写一句话试试。')
+    const awaitingEmptyArt = awaitingCard.getByRole('img', { name: '等待立绘的看板娘' })
+    await expect(awaitingEmptyArt).toBeVisible()
+    await expect
+      .poll(() => awaitingEmptyArt.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0)
     const withoutProjectCard = studio.page.locator(
       `[data-testid="character-card"][data-character-id="${withoutProject.id}"]`
     )
     await expect(withoutProjectCard).toContainText('尚未开始')
-    await expect(withoutProjectCard.locator('img')).toHaveCount(0)
+    await expect(withoutProjectCard).toContainText('从一句话开始，不用先准备素材')
+    const withoutProjectEmptyArt = withoutProjectCard.getByRole('img', {
+      name: '等待立绘的看板娘'
+    })
+    await expect(withoutProjectEmptyArt).toBeVisible()
+    await expect
+      .poll(() => withoutProjectEmptyArt.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0)
   } finally {
     await studio.close()
   }

@@ -279,6 +279,7 @@ body,
 .studio-character-card {
   overflow: hidden;
   padding: 0;
+  border-radius: var(--a2l-radius-xl);
 }
 
 .studio-character-thumb {
@@ -295,6 +296,34 @@ body,
   flex-direction: column;
   gap: var(--a2l-space-3);
   padding: var(--a2l-space-3) var(--a2l-space-4) var(--a2l-space-4);
+}
+
+.studio-character-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+}
+
+.studio-character-empty-copy h2 {
+  margin: 0;
+  color: var(--a2l-color-text);
+  font-size: var(--a2l-text-title-sm-size);
+  font-weight: var(--a2l-text-title-sm-weight);
+  line-height: var(--a2l-text-title-sm-line);
+}
+
+.studio-character-empty-copy p {
+  margin: 0;
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-line);
+}
+
+.studio-character-empty-copy span {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
 }
 
 .studio-overview-progress {

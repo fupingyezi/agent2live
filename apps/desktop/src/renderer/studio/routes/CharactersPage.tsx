@@ -23,6 +23,7 @@ import { StudioLoading } from '@studio/components'
 import { formatDateTime, formatPercent } from '@studio/format'
 import { useAssetUrl } from '@studio/hooks'
 import { computeProjectProgress } from '@studio/project-progress'
+import characterEmptyArt from '@studio/assets/empty-states/character-empty.png'
 
 interface CharacterOverviewItem {
   character: CharacterDto
@@ -49,7 +50,7 @@ const CharacterOverviewArt: React.FC<CharacterOverviewArtProps> = ({ title, asse
       {url && assetId ? (
         <img src={url} alt={`${title} 主参考图`} data-asset-id={assetId} />
       ) : (
-        <span aria-hidden="true">{title.slice(0, 1)}</span>
+        <img src={characterEmptyArt} alt="等待立绘的看板娘" data-empty-state="mascot" />
       )}
     </div>
   )
@@ -257,32 +258,44 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
                         variant="card"
                       />
                       <div className="studio-character-card-body">
-                        <div className="studio-card-row">
-                          <h2 className="studio-card-title">{item.character.title}</h2>
-                          <StatusPill label={status.label} tone={status.tone} />
-                        </div>
-                        {progress ? (
-                          <div className="studio-overview-progress">
-                            <div className="studio-progress-caption">
-                              <span>Phase 1</span>
-                              <span>{formatPercent(progress.percent)}</span>
+                        {item.activeArtVersion ? (
+                          <>
+                            <div className="studio-card-row">
+                              <h2 className="studio-card-title">{item.character.title}</h2>
+                              <StatusPill label={status.label} tone={status.tone} />
                             </div>
-                            <div
-                              className="studio-progress-track"
-                              role="progressbar"
-                              aria-label={`${item.character.title} 完成度`}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={progress.percent}
-                            >
-                              <span
-                                className="studio-progress-fill"
-                                style={{ width: `${progress.percent}%` }}
-                              />
-                            </div>
+                            {progress ? (
+                              <div className="studio-overview-progress">
+                                <div className="studio-progress-caption">
+                                  <span>Phase 1</span>
+                                  <span>{formatPercent(progress.percent)}</span>
+                                </div>
+                                <div
+                                  className="studio-progress-track"
+                                  role="progressbar"
+                                  aria-label={`${item.character.title} 完成度`}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={progress.percent}
+                                >
+                                  <span
+                                    className="studio-progress-fill"
+                                    style={{ width: `${progress.percent}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+                            <p className="studio-meta">更新于 {formatDateTime(item.character.updatedAt)}</p>
+                          </>
+                        ) : (
+                          <div className="studio-character-empty-copy">
+                            <h2>
+                              {item.character.title} · {item.project ? '还没有立绘' : '尚未开始'}
+                            </h2>
+                            <p>「这里还空着呀。」写一句话试试。</p>
+                            <span>从一句话开始，不用先准备素材</span>
                           </div>
-                        ) : null}
-                        <p className="studio-meta">更新于 {formatDateTime(item.character.updatedAt)}</p>
+                        )}
                       </div>
                     </Link>
                   </SurfaceCard>
