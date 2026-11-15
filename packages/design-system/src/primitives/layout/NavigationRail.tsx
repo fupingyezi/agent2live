@@ -15,6 +15,7 @@ export interface NavigationRailProps {
   label: string
   items: NavigationItem[]
   collapsed?: boolean
+  stacked?: boolean
   className?: string
 }
 
@@ -22,11 +23,17 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
   label,
   items,
   collapsed = false,
+  stacked = false,
   className
 }) => {
   return (
     <nav
-      className={cx(styles.navigationRail, collapsed && styles.navigationRailCollapsed, className)}
+      className={cx(
+        styles.navigationRail,
+        collapsed && styles.navigationRailCollapsed,
+        stacked && styles.navigationRailStacked,
+        className
+      )}
       aria-label={label}
       data-state={collapsed ? 'collapsed' : 'default'}
     >

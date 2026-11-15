@@ -150,6 +150,8 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
 
   const serverError = mutation.error instanceof ApiError ? mutation.error.message : null
   const errorCode = mutation.error instanceof ApiError ? mutation.error.code : null
+  const primaryProject = rows[0]?.project ?? null
+  const primaryProgress = primaryProject ? computeProjectProgress(primaryProject) : null
 
   return (
     <div className="studio-page studio-cockpit">
@@ -170,6 +172,45 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
           </Button>
         }
       />
+
+      <section className="studio-cockpit-stages" data-testid="character-stage-overview">
+        <article className="studio-cockpit-stage" data-state={primaryProject ? 'active' : 'upcoming'}>
+          <div>
+            <span className="studio-meta">立绘</span>
+            <h2>{primaryProject ? `已有 ${primaryProject.title}` : '尚未开始'}</h2>
+            <p>
+              {primaryProgress
+                ? `${formatPercent(primaryProgress.percent)} · ${primaryProgress.nextLabel}`
+                : '创建项目后开始提示词与候选版本。'}
+            </p>
+          </div>
+          {primaryProject ? (
+            <Button asChild variant="secondary" size="sm">
+              <Link
+                to={`/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(primaryProject.id)}`}
+              >
+                打开立绘工作台
+              </Link>
+            </Button>
+          ) : null}
+        </article>
+        <article className="studio-cockpit-stage" data-state="upcoming">
+          <div>
+            <span className="studio-meta">分层与绑定</span>
+            <h2>等待立绘版本</h2>
+            <p>Phase 2 将接入 PSD 分层、绑定与质检。</p>
+          </div>
+          <StatusPill label="未开始" tone="neutral" />
+        </article>
+        <article className="studio-cockpit-stage" data-state="upcoming">
+          <div>
+            <span className="studio-meta">桌宠</span>
+            <h2>等待可用模型</h2>
+            <p>只有通过质检并发布的模型才能进入桌宠。</p>
+          </div>
+          <StatusPill label="未开始" tone="neutral" />
+        </article>
+      </section>
 
       <div className="studio-cockpit-grid">
         <section className="studio-cockpit-main">

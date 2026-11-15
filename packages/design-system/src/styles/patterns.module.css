@@ -161,6 +161,35 @@
   align-items: center;
 }
 
+.navigationRailStacked .railItem {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--a2l-space-1);
+  min-height: var(--a2l-space-14);
+  padding: var(--a2l-space-1) 0;
+  text-align: center;
+}
+
+.navigationRailStacked .railIcon {
+  width: var(--a2l-space-8);
+  height: var(--a2l-space-8);
+  border-radius: var(--a2l-radius-md);
+}
+
+.navigationRailStacked .railItem[data-state='active'] {
+  background: transparent;
+}
+
+.navigationRailStacked .railItem[data-state='active'] .railIcon {
+  background: var(--a2l-color-accent-soft);
+}
+
+.navigationRailStacked .railLabel {
+  width: 100%;
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+}
+
 .railBrand {
   display: grid;
   place-items: center;

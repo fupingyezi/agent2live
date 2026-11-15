@@ -1,9 +1,10 @@
-import React from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   AppFrame,
   Button,
   NavigationRail,
+  SearchField,
   StatusPill,
   type EmptyProps,
   type StatusTone
@@ -29,15 +30,17 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
   const { status, retry } = useServerEvents()
   const location = useLocation()
   const navigate = useNavigate()
+  const [search, setSearch] = useState('')
   const creatingCharacter = location.pathname === '/characters/new'
   const onProviders = location.pathname.startsWith('/settings/providers')
+  const currentSection = onProviders ? '设置 / 模型连接' : creatingCharacter ? '角色 / 新建' : '角色'
 
   return (
     <AppFrame
       navigation={
         <NavigationRail
           label="主导航"
-          collapsed
+          stacked
           items={[
             {
               id: 'characters',
@@ -47,18 +50,32 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
               onSelect: () => navigate('/')
             },
             {
+              id: 'pets',
+              label: '桌宠',
+              icon: '宠',
+              disabled: true,
+              onSelect: () => undefined
+            },
+            {
+              id: 'agent',
+              label: 'Agent',
+              icon: 'A',
+              disabled: true,
+              onSelect: () => undefined
+            },
+            {
+              id: 'models',
+              label: '模型库',
+              icon: '层',
+              disabled: true,
+              onSelect: () => undefined
+            },
+            {
               id: 'providers',
-              label: '模型连接',
+              label: '设置',
               icon: '设',
               active: onProviders,
               onSelect: () => navigate('/settings/providers')
-            },
-            {
-              id: 'new-character',
-              label: '新建角色',
-              icon: '+',
-              active: creatingCharacter,
-              onSelect: () => navigate('/characters/new')
             }
           ]}
         />
@@ -67,10 +84,28 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
       <div className="studio-shell" data-testid="studio-ready" data-sse-status={status}>
         <header className="studio-topbar">
           <div className="studio-topbar-brand">
-            <span className="studio-wordmark">agent2live</span>
-            <span className="studio-local">本地优先</span>
+            <span className="studio-breadcrumb" data-testid="studio-breadcrumb">
+              {currentSection}
+            </span>
           </div>
           <div className="studio-topbar-actions">
+            <form
+              className="studio-search"
+              role="search"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const query = search.trim()
+                navigate(query ? `/?q=${encodeURIComponent(query)}` : '/')
+              }}
+            >
+              <SearchField
+                aria-label="搜索角色、项目"
+                clearLabel="清空搜索"
+                value={search}
+                placeholder="搜索角色、项目"
+                onValueChange={setSearch}
+              />
+            </form>
             <div className="studio-sse" data-testid="sse-status">
               <Button
                 variant="quiet"
@@ -81,9 +116,6 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
                 <StatusPill label={SSE_LABELS[status]} tone={SSE_TONES[status]} />
               </Button>
             </div>
-            <Button asChild size="sm">
-              <Link to="/characters/new">新建角色</Link>
-            </Button>
           </div>
         </header>
         <div className="studio-content">
