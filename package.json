@@ -40,6 +40,8 @@
     "verify:backup": "node scripts/verify-backup.mjs",
     "test:scripts": "node --test scripts/verify-backup.test.mjs scripts/phase1-gate.test.mjs scripts/collect-test-evidence.test.mjs",
     "phase1:gate": "node scripts/phase1-gate.mjs",
+    "phase1:convergence-gate": "node scripts/phase1-convergence-gate.mjs",
+    "test:convergence-gate": "node --test scripts/phase1-convergence-gate.test.mjs",
     "phase0.5:gate": "node scripts/write-phase0.5-evidence.mjs && node scripts/phase0.5-gate.mjs",
     "test:gate": "node --test scripts/phase0-gate.test.mjs scripts/phase0.5-gate.test.mjs",
     "phase0.5:evidence": "node scripts/write-phase0.5-evidence.mjs",
