@@ -407,7 +407,7 @@ test('hands off from creation confirmation to the just-created character card', 
     await studio.page.getByTestId('open-character-card').click()
     await expect.poll(() => studio.page.url()).toMatch(/\/characters\/chr_[^/]+$/)
     await expect(studio.page.locator('[data-testid="character-just-created"]')).toContainText('刚创建')
-    await expect(studio.page.locator('[data-testid="character-artwork-empty"]')).toContainText('还没出图')
+    await expect(studio.page.locator('[data-testid="character-artwork-empty"]')).toContainText('还没有出图')
     await expect(studio.page.locator('[data-testid="character-draft-status"]')).toContainText('2 张参考图')
 
     await studio.page.getByTestId('open-art-workbench').click()

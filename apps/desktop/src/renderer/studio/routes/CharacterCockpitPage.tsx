@@ -4,33 +4,46 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AsyncButton,
   Button,
-  CountBadge,
-  EmptyState,
   Field,
   InlineNotice,
-  PageHeader,
-  SectionHeader,
   StatusPill,
-  SurfaceCard,
-  Tag,
   Textarea,
   TextField,
   type EmptyProps
 } from '@agent2live/design-system'
-import { ApiError } from '@studio/api'
-import { createArtProject, getCharacter, getCharacterLineage, getPromptWorkspace } from '@studio/api'
-import { queryKeys } from '@studio/api'
+import {
+  ApiError,
+  createArtProject,
+  getCharacter,
+  getCharacterLineage,
+  getPromptWorkspace,
+  listArtVersions,
+  queryKeys
+} from '@studio/api'
 import type { ArtProjectDto, CreateArtProjectInput, LineageNodeDto } from '@studio/api'
-import { CharacterBackupPanel } from '@studio/components'
-import { StudioError } from '@studio/components'
-import { StudioLoading } from '@studio/components'
-import { formatDateTime, formatPercent, formatStage, stageTone } from '@studio/format'
+import { CharacterBackupPanel, StudioError, StudioLoading } from '@studio/components'
+import { formatDateTime, formatPercent } from '@studio/format'
+import { useAssetUrl } from '@studio/hooks'
 import { computeProjectProgress } from '@studio/project-progress'
 
 interface ProjectRow {
   project: ArtProjectDto
   branchLabel: string | null
   parentDeleted: boolean
+}
+
+interface CockpitAvatarProps {
+  assetId: string | null
+  title: string
+}
+
+const CockpitAvatar: React.FC<CockpitAvatarProps> = ({ assetId, title }) => {
+  const { url } = useAssetUrl(assetId)
+  return (
+    <div className="cockpit-avatar">
+      {url ? <img src={url} alt={`${title} 主立绘`} /> : <span aria-hidden="true" />}
+    </div>
+  )
 }
 
 function flattenRows(roots: LineageNodeDto[]): ProjectRow[] {
@@ -69,7 +82,6 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
     queryFn: ({ signal }) => getCharacterLineage(id, signal),
     enabled: Boolean(id)
   })
-
   const rows = useMemo(() => flattenRows(lineageQuery.data?.roots ?? []), [lineageQuery.data])
   const primaryProject = rows[0]?.project ?? null
   const workspaceQuery = useQuery({
@@ -77,8 +89,11 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
     queryFn: ({ signal }) => getPromptWorkspace(primaryProject!.id, signal),
     enabled: Boolean(primaryProject)
   })
-  // The lineage endpoint reports a character with no projects as 404; the character
-  // query already proves existence, so that response means an empty project list.
+  const versionsQuery = useQuery({
+    queryKey: queryKeys.artVersions(primaryProject?.id ?? 'none'),
+    queryFn: ({ signal }) => listArtVersions(primaryProject!.id, signal),
+    enabled: Boolean(primaryProject)
+  })
   const lineageMissing = lineageQuery.error instanceof ApiError && lineageQuery.error.status === 404
 
   const mutation = useMutation({
@@ -98,7 +113,7 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
   if (characterQuery.isPending || lineageQuery.isPending) {
     return (
       <div className="studio-page">
-        <StudioLoading label="正在加载角色驾驶舱…" />
+        <StudioLoading label="正在加载角色卡片…" />
       </div>
     )
   }
@@ -127,6 +142,36 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
     )
   }
 
+  const character = characterQuery.data
+  const workspace = workspaceQuery.data
+  const versions = versionsQuery.data ?? []
+  const activeArtVersion =
+    (primaryProject?.activeVersionId
+      ? versions.find((version) => version.id === primaryProject.activeVersionId)
+      : null) ?? null
+  const activeArtAssetId =
+    activeArtVersion?.references.find((reference) => reference.isPrimary)?.assetId ??
+    activeArtVersion?.references[0]?.assetId ??
+    null
+  const referenceCount = workspace?.latestSubmission?.materials.length ?? 0
+  const promptDraftCount = (workspace?.versions.length ?? 0) + (workspace?.activeDraft ? 1 : 0)
+  const justCreated =
+    primaryProject?.activeVersionId === null &&
+    workspace?.latestSubmission !== null &&
+    workspace?.activeDraft !== null
+  const progress = primaryProject ? computeProjectProgress(primaryProject) : null
+  const workbenchPath = primaryProject
+    ? `/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(primaryProject.id)}`
+    : null
+  const live2dPath = primaryProject
+    ? `/characters/${encodeURIComponent(id)}/live2d?project=${encodeURIComponent(primaryProject.id)}`
+    : `/characters/${encodeURIComponent(id)}/live2d`
+  const statusLabel = justCreated
+    ? '刚创建'
+    : activeArtVersion
+      ? `已存 v${activeArtVersion.versionNumber}`
+      : '进行中'
+
   const clearFailure = (): void => {
     setLocalError(null)
     if (mutation.isError) mutation.reset()
@@ -148,189 +193,258 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
       return
     }
     setLocalError(null)
-    const cleanDescription = description.trim()
     mutation.mutate(
-      cleanDescription ? { title: cleanTitle, description: cleanDescription } : { title: cleanTitle }
+      description.trim() ? { title: cleanTitle, description: description.trim() } : { title: cleanTitle }
     )
   }
 
-  const serverError = mutation.error instanceof ApiError ? mutation.error.message : null
-  const errorCode = mutation.error instanceof ApiError ? mutation.error.code : null
-  const primaryProgress = primaryProject ? computeProjectProgress(primaryProject) : null
-  const primaryWorkspace = primaryProject ? workspaceQuery.data : null
-  const justCreated =
-    primaryProject?.activeVersionId === null &&
-    primaryWorkspace?.latestSubmission !== null &&
-    primaryWorkspace?.activeDraft !== null
-  const primaryReferenceCount = primaryWorkspace?.latestSubmission?.materials.length ?? 0
-  const primaryArtworkPath = primaryProject
-    ? `/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(primaryProject.id)}`
-    : null
+  const mutationError = mutation.error instanceof ApiError ? mutation.error.message : null
+  const mutationErrorCode = mutation.error instanceof ApiError ? mutation.error.code : null
 
   return (
-    <div className="studio-page studio-cockpit">
-      <PageHeader
-        back={
-          <Link className="studio-back" to="/">
-            ← 返回角色
-          </Link>
-        }
-        eyebrow="角色驾驶舱"
-        title={characterQuery.data.title}
-        description={characterQuery.data.summary || '这个角色还没有简介。'}
-        actions={
-          justCreated && primaryArtworkPath ? (
-            <>
-              <Button asChild variant="secondary">
-                <Link to={primaryArtworkPath}>编辑设定</Link>
-              </Button>
-              <Button asChild>
-                <Link to={primaryArtworkPath} data-testid="open-art-workbench">
-                  出一张立绘
-                </Link>
-              </Button>
-            </>
-          ) : (
-            <Button asChild variant="secondary">
-              <Link to={`/characters/${encodeURIComponent(id)}/live2d`} data-testid="open-live2d">
-                Live2D 绑定
-              </Link>
-            </Button>
-          )
-        }
-      />
+    <div className="studio-page studio-role-card">
+      <header className="role-card-header">
+        <div className="role-card-identity">
+          <CockpitAvatar assetId={activeArtAssetId} title={character.title} />
+          <div>
+            <h1>{character.title}</h1>
+            <div className="role-card-status">
+              <StatusPill
+                label={statusLabel}
+                tone={justCreated ? 'warning' : activeArtVersion ? 'success' : 'neutral'}
+              />
+              <span>{`提示词 ${promptDraftCount} 段，参考图 ${referenceCount} 张`}</span>
+            </div>
+          </div>
+        </div>
+        <div className="role-card-actions">
+          <Button asChild variant="secondary">
+            <Link to={workbenchPath ?? '#'}>编辑设定</Link>
+          </Button>
+          <Button asChild>
+            <Link to={workbenchPath ?? '#'} data-testid="open-art-workbench" aria-disabled={!workbenchPath}>
+              {activeArtVersion ? '继续创作' : '出第一张立绘'}
+            </Link>
+          </Button>
+        </div>
+      </header>
 
-      <section className="studio-cockpit-stages" data-testid="character-stage-overview">
+      <section className="role-card-stages">
         <article
-          className="studio-cockpit-stage"
-          data-state={primaryProject ? 'active' : 'upcoming'}
+          className="role-stage-card"
+          data-state="current"
           {...(justCreated ? { 'data-testid': 'character-just-created' } : {})}
         >
-          <div>
-            <span className="studio-meta">{justCreated ? '立绘 · 刚创建' : '立绘'}</span>
-            <h2 {...(justCreated ? { 'data-testid': 'character-artwork-empty' } : {})}>
-              {justCreated ? '还没出图' : primaryProject ? `已有 ${primaryProject.title}` : '尚未开始'}
-            </h2>
-            <p {...(justCreated ? { 'data-testid': 'character-draft-status' } : {})}>
-              {justCreated
-                ? `${primaryReferenceCount} 张参考图 · 草稿已自动保存`
-                : primaryProgress
-                  ? `${formatPercent(primaryProgress.percent)} · ${primaryProgress.nextLabel}`
-                  : '创建项目后开始提示词与候选版本。'}
-            </p>
-          </div>
-          {primaryProject ? (
-            <Button asChild variant="secondary" size="sm">
-              <Link to={primaryArtworkPath!}>{justCreated ? '继续编辑提示词' : '打开立绘工作台'}</Link>
-            </Button>
+          <header>
+            <strong>立绘</strong>
+            <StatusPill label={statusLabel} tone={justCreated ? 'warning' : 'success'} />
+          </header>
+          <h2 {...(justCreated ? { 'data-testid': 'character-artwork-empty' } : {})}>
+            {justCreated ? '提示词写好，还没有出图' : '从候选里挑出可用版本'}
+          </h2>
+          <p {...(justCreated ? { 'data-testid': 'character-draft-status' } : {})}>
+            {justCreated
+              ? `${referenceCount} 张参考图 · 草稿已自动保存`
+              : progress
+                ? `${formatPercent(progress.percent)} · ${progress.nextLabel}`
+                : '继续完善提示词与参考图'}
+          </p>
+          {workbenchPath ? (
+            <Link to={workbenchPath}>{justCreated ? '去出立绘' : '打开立绘工作台'}</Link>
           ) : null}
         </article>
-        <article className="studio-cockpit-stage" data-state="upcoming">
-          <div>
-            <span className="studio-meta">分层与绑定</span>
-            <h2>等待立绘版本</h2>
-            <p>Phase 2 将接入 PSD 分层、绑定与质检。</p>
-          </div>
-          <StatusPill label="未开始" tone="neutral" />
+        <article className="role-stage-card" data-state="waiting">
+          <header>
+            <strong>分层与绑定</strong>
+            <StatusPill label="等立绘" tone="neutral" />
+          </header>
+          <h2>{justCreated ? '等立绘定下来' : '等待立绘完成'}</h2>
+          <p>立绘出图后解锁</p>
         </article>
-        <article className="studio-cockpit-stage" data-state="upcoming">
-          <div>
-            <span className="studio-meta">桌宠</span>
-            <h2>等待可用模型</h2>
-            <p>只有通过质检并发布的模型才能进入桌宠。</p>
-          </div>
-          <StatusPill label="未开始" tone="neutral" />
+        <article className="role-stage-card" data-state="upcoming">
+          <header>
+            <strong>桌宠</strong>
+            <StatusPill label="未开始" tone="neutral" />
+          </header>
+          <h2>等绑定完成</h2>
+          <p>绑定完成后可用</p>
         </article>
       </section>
 
-      <div className="studio-cockpit-grid">
-        <section className="studio-cockpit-main">
-          <SectionHeader
-            title="美术项目"
-            description="每个项目对应一个可独立演进的造型方向。"
-            actions={<CountBadge value={rows.length} />}
-          />
-          {rows.length === 0 ? (
-            <div data-testid="lineage-empty">
-              <EmptyState
-                icon="◇"
-                title="还没有美术项目"
-                description="在右侧创建第一个项目，再从提示词和素材开始构建造型。"
-              />
+      <div className="role-card-body">
+        <section className="role-lineage-card">
+          <header>
+            <div>
+              <strong>项目谱系</strong>
+              <span>{primaryProject ? `每步支持单独回退 · ${primaryProject.title}` : '还没有美术项目'}</span>
             </div>
-          ) : (
-            <div className="studio-project-list">
+            <Link to={workbenchPath ?? '#'}>查看项目</Link>
+          </header>
+
+          <div className="role-pipeline">
+            {[
+              { name: '立绘', value: activeArtVersion ? `v${activeArtVersion.versionNumber}` : '未生成' },
+              { name: '分层', value: '未生成' },
+              { name: '绑定', value: '未生成' },
+              { name: '模型', value: '待构建' }
+            ].map((step, index) => (
+              <React.Fragment key={step.name}>
+                <div className="role-pipeline-step" data-state={index === 0 ? 'current' : 'upcoming'}>
+                  <span>{step.name}</span>
+                  <strong>{step.value}</strong>
+                  <small>{index === 0 ? (activeArtVersion ? '已完成' : '等出图') : '等待前一步'}</small>
+                </div>
+                {index < 3 ? <span className="role-pipeline-arrow">›</span> : null}
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="role-history">
+            <div>
+              <time>{justCreated ? '刚刚' : formatDateTime(character.updatedAt)}</time>
+              <span>保存角色草稿</span>
+              <em>草稿</em>
+            </div>
+            <div>
+              <time>
+                {justCreated ? '刚刚' : formatDateTime(primaryProject?.createdAt ?? character.updatedAt)}
+              </time>
+              <span>{`标好 ${referenceCount} 张参考图用途`}</span>
+              <em>草稿</em>
+            </div>
+            <div>
+              <time>{justCreated ? '刚刚' : formatDateTime(character.createdAt)}</time>
+              <span>写完初始化提示词</span>
+              <em>草稿</em>
+            </div>
+          </div>
+          <div
+            className="role-progress-track"
+            role="progressbar"
+            aria-label={`${character.title} Phase 1 进度`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress?.percent ?? 0}
+            data-testid="art-progress"
+          >
+            <span style={{ width: `${progress?.percent ?? 0}%` }} />
+          </div>
+        </section>
+
+        <aside className="role-current-card">
+          <header>
+            <strong>在用</strong>
+            <Link to={workbenchPath ?? '#'}>查看全部</Link>
+          </header>
+          <dl>
+            <div>
+              <dt>立绘</dt>
+              <dd>{activeArtVersion ? `v${activeArtVersion.versionNumber}` : '未生成'}</dd>
+            </div>
+            <div>
+              <dt>分层</dt>
+              <dd>未生成</dd>
+            </div>
+            <div>
+              <dt>绑定</dt>
+              <dd>未生成</dd>
+            </div>
+            <div>
+              <dt>模型</dt>
+              <dd>待构建</dd>
+            </div>
+            <div>
+              <dt>上次改动</dt>
+              <dd>{justCreated ? '刚刚' : formatDateTime(character.updatedAt)}</dd>
+            </div>
+          </dl>
+        </aside>
+      </div>
+
+      <section className="role-qc-card">
+        <header>
+          <strong>{justCreated ? '还没有出图' : '待检查项'}</strong>
+          <span>{justCreated ? '零项' : `${promptDraftCount} 个草稿`}</span>
+        </header>
+        {[
+          [
+            '立绘',
+            justCreated ? '提示词与参考图就绪' : '选择一个可用版本',
+            justCreated ? '去出图' : '去查看'
+          ],
+          ['分层', '等立绘定下来', '等出图'],
+          ['绑定', '等分层确认', '等分层']
+        ].map(([stage, issue, action]) => (
+          <div className="role-qc-row" key={stage}>
+            <span>{stage}</span>
+            <strong>{issue}</strong>
+            <Link to={workbenchPath ?? '#'}>{action}</Link>
+          </div>
+        ))}
+      </section>
+
+      <div className="role-next-step">
+        <span aria-hidden="true">→</span>
+        <strong>{justCreated ? '还没出第一张图' : '继续推进当前立绘'}</strong>
+        <Link to={workbenchPath ?? '#'}>{justCreated ? '去出立绘' : '打开工作台'}</Link>
+      </div>
+
+      <details className="role-secondary-tools" open>
+        <summary>新建其他造型、Live2D 与角色备份</summary>
+        <div className="role-secondary-grid">
+          <section>
+            <h2>可独立演进的造型方向</h2>
+            <p className="studio-meta">项目谱系当前有 {rows.length} 个造型方向。</p>
+            <div className="role-project-list">
               {rows.map(({ project, branchLabel, parentDeleted }) => {
-                const progress = computeProjectProgress(project)
-                const artPath = `/characters/${encodeURIComponent(project.characterId)}/art?project=${encodeURIComponent(project.id)}`
-                const live2dPath = `/characters/${encodeURIComponent(project.characterId)}/live2d?project=${encodeURIComponent(project.id)}`
+                const projectProgress = computeProjectProgress(project)
+                const artPath = `/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(project.id)}`
+                const projectLive2dPath = `/characters/${encodeURIComponent(id)}/live2d?project=${encodeURIComponent(project.id)}`
                 return (
-                  <SurfaceCard key={project.id} asChild>
-                    <article
-                      className="studio-project-card"
-                      data-testid="project-card"
-                      data-project-id={project.id}
-                      data-progress={progress.percent}
+                  <article
+                    className="role-project-row"
+                    data-testid="project-card"
+                    data-project-id={project.id}
+                    data-progress={projectProgress.percent}
+                    key={project.id}
+                  >
+                    <header>
+                      <strong>{project.title}</strong>
+                      <span>{projectProgress.percent}%</span>
+                    </header>
+                    <p>{project.description || '尚未填写项目描述'}</p>
+                    {branchLabel || parentDeleted ? (
+                      <p className="role-project-branch">
+                        {branchLabel ? `分支：${branchLabel}` : ''}
+                        {parentDeleted ? `${branchLabel ? ' · ' : ''}父分支已删除` : ''}
+                      </p>
+                    ) : null}
+                    <div
+                      role="progressbar"
+                      aria-label={`${project.title} 完成度`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={projectProgress.percent}
+                      data-testid="art-progress"
+                      data-percent={projectProgress.percent}
                     >
-                      <div className="studio-card-row">
-                        <h3 className="studio-card-title">
-                          <Link className="studio-project-title-link" to={artPath}>
-                            {project.title}
-                          </Link>
-                        </h3>
-                        <StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />
-                      </div>
-                      <p className="studio-card-copy">{project.description || '尚未填写项目描述'}</p>
-                      <div className="studio-meta-row">
-                        <span className="studio-meta">更新于 {formatDateTime(project.updatedAt)}</span>
-                        {branchLabel ? <Tag>分支：{branchLabel}</Tag> : null}
-                        {parentDeleted ? <Tag>父分支已删除</Tag> : null}
-                      </div>
-                      <div className="studio-progress-block">
-                        <div className="studio-progress-caption">
-                          <span>Phase 1 进度</span>
-                          <span>
-                            {formatPercent(progress.percent)} · {progress.nextLabel}
-                          </span>
-                        </div>
-                        <div
-                          className="studio-progress-track"
-                          role="progressbar"
-                          aria-label={`${project.title} 完成度`}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={progress.percent}
-                          data-testid="art-progress"
-                          data-percent={progress.percent}
-                        >
-                          <span className="studio-progress-fill" style={{ width: `${progress.percent}%` }} />
-                        </div>
-                      </div>
-                      <div className="studio-project-actions">
-                        <Button asChild variant="secondary" size="sm">
-                          <Link to={artPath}>打开工作台</Link>
-                        </Button>
-                        <Button asChild variant="quiet" size="sm">
-                          <Link to={live2dPath}>Live2D</Link>
-                        </Button>
-                      </div>
-                    </article>
-                  </SurfaceCard>
+                      <span style={{ width: `${projectProgress.percent}%` }} />
+                    </div>
+                    <div className="role-project-row-actions">
+                      <Link to={artPath}>打开工作台</Link>
+                      <Link to={projectLive2dPath}>Live2D</Link>
+                    </div>
+                  </article>
                 )
               })}
             </div>
-          )}
-        </section>
-
-        <aside className="studio-cockpit-aside">
-          <SurfaceCard title="新建美术项目" description="一个项目对应一个可独立演进的造型方向。">
             <form className="studio-form" onSubmit={onSubmit} noValidate>
-              <Field id="project-title" label="项目名称" required>
+              <Field id="project-title" label="美术项目名称" required>
                 <TextField
                   id="project-title"
                   value={title}
                   maxLength={100}
-                  placeholder="例如：默认造型"
+                  placeholder="例如：旅行装"
                   onValueChange={(value) => {
                     setTitle(value)
                     clearFailure()
@@ -342,7 +456,7 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
                   id="project-description"
                   value={description}
                   maxLength={4000}
-                  rows={3}
+                  rows={2}
                   placeholder="方向、用途或限制"
                   onValueChange={(value) => {
                     setDescription(value)
@@ -355,20 +469,30 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
                   <span role="alert">{localError}</span>
                 </InlineNotice>
               ) : null}
-              {serverError ? (
+              {mutationError ? (
                 <InlineNotice tone="danger">
-                  <span role="alert">{serverError}</span>
-                  {errorCode ? <span className="studio-meta">（{errorCode}）</span> : null}
+                  <span role="alert">{mutationError}</span>
+                  {mutationErrorCode ? <span className="studio-meta">（{mutationErrorCode}）</span> : null}
                 </InlineNotice>
               ) : null}
               <AsyncButton type="submit" busy={mutation.isPending} busyLabel="创建中…">
-                创建项目
+                新建造型
               </AsyncButton>
             </form>
-          </SurfaceCard>
-          <CharacterBackupPanel characterId={id} />
-        </aside>
-      </div>
+          </section>
+          <section>
+            <h2>后续入口</h2>
+            <div className="role-secondary-actions">
+              <Button asChild variant="secondary">
+                <Link to={live2dPath} data-testid="open-live2d">
+                  Live2D 绑定
+                </Link>
+              </Button>
+            </div>
+            <CharacterBackupPanel characterId={id} />
+          </section>
+        </div>
+      </details>
     </div>
   )
 }
