@@ -27,7 +27,7 @@ test('creates a character and art project, streams events, and survives reload',
     await providerNav.focus()
     await expect(providerNav).toBeFocused()
     await providerNav.press('Enter')
-    await expect(studio.getByRole('heading', { name: '模型连接', level: 1 })).toBeVisible()
+    await expect(studio.getByRole('heading', { name: '模型供应商', level: 1 })).toBeVisible()
     await expect(providerNav).toHaveAttribute('aria-current', 'page')
     await studio.getByRole('button', { name: '角色', exact: true }).click()
 

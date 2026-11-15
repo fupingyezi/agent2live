@@ -1,5 +1,9 @@
 import { ApiClient, newIdempotencyKey } from './client'
-import type { CreateProviderConnectionInput, UpdateProviderConnectionInput } from '@agent2live/contracts/api'
+import type {
+  CreateProviderConnectionInput,
+  ProviderProbeInput,
+  UpdateProviderConnectionInput
+} from '@agent2live/contracts/api'
 import type {
   ArtProjectDto,
   ArtVersionDto,
@@ -30,6 +34,7 @@ import type {
   PromptVersionSummaryDto,
   PromptWorkspaceDto,
   ProviderConnectionDto,
+  ProviderProbeDto,
   SubmitPromptInputResult
 } from './types'
 
@@ -508,6 +513,18 @@ export function updateProvider(
     method: 'PATCH',
     body: input,
     ifMatch: rowVersion
+  })
+}
+
+export function testProviderConnection(
+  providerId: string,
+  input: ProviderProbeInput,
+  signal?: AbortSignal
+): Promise<ProviderProbeDto> {
+  return api.request<ProviderProbeDto>(`/api/v1/providers/${encodeURIComponent(providerId)}/test`, {
+    method: 'POST',
+    body: input,
+    ...withSignal(signal)
   })
 }
 

@@ -26,7 +26,8 @@ import type {
   PromptVersionDto as ContractPromptVersionDto,
   PromptVersionSummary as ContractPromptVersionSummary,
   PromptWorkspaceDto as ContractPromptWorkspaceDto,
-  ProviderConnectionDto as ContractProviderConnectionDto
+  ProviderConnectionDto as ContractProviderConnectionDto,
+  ProviderProbeDto as ContractProviderProbeDto
 } from '@agent2live/contracts'
 
 export type {
@@ -69,6 +70,7 @@ type TimestampKey =
   | 'discardedAt'
   | 'publishedAt'
   | 'lastSeenAt'
+  | 'checkedAt'
 
 type IsoTimestamp<T> = T extends number ? string : T extends number | null ? string | null : T
 
@@ -92,6 +94,7 @@ export type JobDto = WithIsoTimestamps<ContractJobDto>
 export type JobEventDto = WithIsoTimestamps<ContractJobEventDto>
 export type AssetDto = WithIsoTimestamps<ContractAssetDto>
 export type ProviderConnectionDto = WithIsoTimestamps<ContractProviderConnectionDto>
+export type ProviderProbeDto = WithIsoTimestamps<ContractProviderProbeDto>
 export type CharacterBackupDto = WithIsoTimestamps<ContractCharacterBackupDto>
 
 export type PromptDraftDto = WithIsoTimestamps<ContractPromptDraftDto>

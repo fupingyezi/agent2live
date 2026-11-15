@@ -13,6 +13,7 @@ interface ProviderJson {
   adapter: string
   enabled: boolean
   hasSecret: boolean
+  rowVersion: number
 }
 
 function findPlaintext(root: string, needle: string): string[] {
@@ -32,6 +33,22 @@ function findPlaintext(root: string, needle: string): string[] {
   return hits
 }
 
+async function readProviders(page: Awaited<ReturnType<typeof studioPage>>): Promise<ProviderJson[]> {
+  return page.evaluate(async () => {
+    const bridge = (
+      window as unknown as {
+        agent2live: { getServerInfo(): Promise<{ baseUrl: string; token: string }> }
+      }
+    ).agent2live
+    const info = await bridge.getServerInfo()
+    const response = await fetch(`${info.baseUrl}/api/v1/providers`, {
+      headers: { authorization: `Bearer ${info.token}`, accept: 'application/json' }
+    })
+    if (!response.ok) throw new Error(await response.text())
+    return (await response.json()).items
+  })
+}
+
 test('stores provider secrets in the vault and never exposes them through the API', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-providers-'))
   const app = await electron.launch({
@@ -46,7 +63,7 @@ test('stores provider secrets in the vault and never exposes them through the AP
       timeout: 20_000
     })
 
-    await studio.getByRole('button', { name: '模型连接', exact: true }).click()
+    await studio.getByRole('button', { name: '设置', exact: true }).click()
     await expect(studio.locator('[data-testid="providers-page"]')).toBeVisible()
     await expect(studio.locator('[data-testid="providers-empty"]')).toBeVisible()
 
@@ -61,6 +78,34 @@ test('stores provider secrets in the vault and never exposes them through the AP
     await expect(mockCard).toBeVisible()
     await expect(mockCard.getByText('无需密钥')).toBeVisible()
     await expect(mockCard.getByText('已启用')).toBeVisible()
+
+    await studio.locator('[data-testid="add-provider"]').click()
+    await studio.locator('[data-testid="provider-preset"]').selectOption('mock-chat')
+    await studio.locator('[data-testid="provider-submit"]').click()
+    const mockChatCard = studio.locator('[data-testid="provider-card"]').filter({ hasText: 'Mock 对话' })
+    await expect(mockChatCard).toBeVisible()
+
+    const beforeProbe = await readProviders(studio)
+    await mockChatCard.getByRole('button', { name: '测试连接', exact: true }).click()
+    await expect(mockChatCard.getByTestId('provider-probe-result')).toContainText('连接正常', {
+      timeout: 20_000
+    })
+    await expect(mockChatCard.getByTestId('provider-probe-result')).toContainText('ms')
+
+    await mockCard.getByRole('button', { name: '测试连接', exact: true }).click()
+    const billingDialog = studio.getByRole('dialog')
+    await expect(billingDialog).toContainText('可能产生费用')
+    await billingDialog.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(mockCard.getByTestId('provider-probe-result')).toHaveCount(0)
+    await mockCard.getByRole('button', { name: '测试连接', exact: true }).click()
+    await studio.getByRole('dialog').getByRole('button', { name: '开始测试', exact: true }).click()
+    await expect(mockCard.getByTestId('provider-probe-result')).toContainText('连接正常', {
+      timeout: 20_000
+    })
+    const afterProbe = await readProviders(studio)
+    expect(afterProbe.map((provider) => [provider.id, provider.rowVersion])).toEqual(
+      beforeProbe.map((provider) => [provider.id, provider.rowVersion])
+    )
 
     // 真实连接：先建 disabled 行，再存密钥，再 PATCH 激活。
     await studio.locator('[data-testid="add-provider"]').click()
@@ -105,7 +150,7 @@ test('stores provider secrets in the vault and never exposes them through the AP
     await studio.locator('[data-testid="provider-api-key"]').fill(SECOND_KEY)
     await studio.locator('[data-testid="provider-submit"]').click()
     await expect(studio.getByText('连接与密钥已更新。')).toBeVisible()
-    await expect(studio.locator('[data-testid="provider-card"]')).toHaveCount(2)
+    await expect(studio.locator('[data-testid="provider-card"]')).toHaveCount(3)
     await expect(
       studio.locator('[data-testid="provider-card"][data-provider-id="' + providerId + '"]')
     ).toBeVisible()
