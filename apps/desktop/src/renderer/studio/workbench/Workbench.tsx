@@ -133,6 +133,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, characterTitle, a
   const [forkSource, setForkSource] = useState<ForkSource | null>(null)
   const [designView, setDesignView] = useState<'references' | 'candidates' | 'parallel'>('references')
   const [generationControlsOpen, setGenerationControlsOpen] = useState(false)
+  const [candidateSaveRequest, setCandidateSaveRequest] = useState(0)
   const initializedJob = useRef<string | null>(null)
   const aiKind = searchParams.get('aiKind')
   const aiJob = searchParams.get('aiJob')
@@ -235,6 +236,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, characterTitle, a
       providers={providers}
       controlsOpen={generationControlsOpen}
       onCloseControls={() => setGenerationControlsOpen(false)}
+      candidateSaveRequest={candidateSaveRequest}
       onAccepted={(mutation) => {
         queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
         setPanel('versions')
@@ -418,10 +420,14 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, characterTitle, a
               type="button"
               className="workbench-design-primary-action"
               onClick={() => {
-                const openFirstGeneration = designView === 'references'
-                setDesignView('candidates')
                 setPanel('generate')
-                setGenerationControlsOpen(openFirstGeneration)
+                if (designView === 'references') {
+                  setDesignView('candidates')
+                  setGenerationControlsOpen(true)
+                } else {
+                  setGenerationControlsOpen(false)
+                  setCandidateSaveRequest((request) => request + 1)
+                }
               }}
             >
               {designView === 'references' ? '生成' : '保存为最新版本'}

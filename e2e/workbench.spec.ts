@@ -187,11 +187,9 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(generationStatus.getByTestId('candidate-card')).not.toHaveCount(0)
     const candidate = generationStatus.getByTestId('candidate-card').first()
     await expect(candidate.getByRole('img', { name: '生成候选' })).toBeVisible()
-    await generationStatus
-      .getByTestId('candidate-strip')
-      .getByRole('button', { name: '设置为立绘', exact: true })
-      .click()
+    await studio.getByRole('button', { name: '保存为最新版本', exact: true }).click()
     const candidateDialog = studio.getByRole('dialog')
+    await expect(candidateDialog).toBeVisible()
     await candidateDialog.getByRole('button', { name: '接受', exact: true }).click()
     await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v1', {
       timeout: 20_000

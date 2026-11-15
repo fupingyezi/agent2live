@@ -60,6 +60,7 @@ export interface GenerationPanelProps {
   providers: ProviderConnectionDto[]
   controlsOpen?: boolean
   onCloseControls?: () => void
+  candidateSaveRequest?: number
   onAccepted: (mutation: ArtVersionMutationDto) => void
 }
 
@@ -69,6 +70,7 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
   providers,
   controlsOpen = true,
   onCloseControls,
+  candidateSaveRequest = 0,
   onAccepted
 }) => {
   const queryClient = useQueryClient()
@@ -334,6 +336,7 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
             <CandidateCompare
               candidates={generation.candidates}
               acceptingId={acceptingId}
+              saveRequest={candidateSaveRequest}
               onAccept={(candidate) => acceptMutation.mutate(candidate)}
             />
           ) : (

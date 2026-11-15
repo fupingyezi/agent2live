@@ -140,9 +140,15 @@ export interface CandidateCompareProps {
   candidates: GenerationCandidateDto[]
   acceptingId: string | null
   onAccept: (candidate: GenerationCandidateDto) => void
+  saveRequest: number
 }
 
-export const CandidateCompare: React.FC<CandidateCompareProps> = ({ candidates, acceptingId, onAccept }) => {
+export const CandidateCompare: React.FC<CandidateCompareProps> = ({
+  candidates,
+  acceptingId,
+  onAccept,
+  saveRequest
+}) => {
   const orderedCandidates = [...candidates].sort(
     (left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
   )
@@ -154,6 +160,11 @@ export const CandidateCompare: React.FC<CandidateCompareProps> = ({ candidates, 
   useEffect(() => {
     if (!userSelected.current) setSelectedId(orderedCandidates[0]?.id ?? '')
   }, [candidateSignature])
+
+  useEffect(() => {
+    if (saveRequest === 0 || orderedCandidates.length === 0) return
+    setConfirming(orderedCandidates.find((candidate) => candidate.id === selectedId) ?? orderedCandidates[0]!)
+  }, [saveRequest])
 
   if (orderedCandidates.length === 0) {
     return <EmptyState compact title="这次生成没有产生候选" description="调整提示词或模型参数后再试。" />
