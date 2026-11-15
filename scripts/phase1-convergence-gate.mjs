@@ -1,11 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PROMPT_WORKBENCH_PAGES, PROVIDER_PAGES } from './phase1-gate.mjs'
 
 const DEFAULT_EVIDENCE_DIR = 'docs/plans/evidence/phase1'
 const REVIEW_SCHEMA = 'ui-design-review/1'
 const REFERENCE_SCHEMA = 'ui-reference/1'
 const REAL_PROVIDER_SCHEMA = 'real-providers/1'
+const REAL_VISION_SCHEMA = 'real-vision/1'
 
 function issue(category, status, message, problems, warnings) {
   const entry = { status, problems: message ? [message] : [] }
@@ -42,6 +44,10 @@ function evaluateVisual(phase1Gate, problems) {
   }
   if (!Number.isInteger(visuals.required) || visuals.required <= 0 || visuals.valid !== visuals.required) {
     issue(category, 'fail', 'Visual regression evidence is incomplete', problems, [])
+    return category
+  }
+  if (visuals.promptWorkbench?.valid !== 10 || visuals.providerS8?.valid !== 1) {
+    issue(category, 'fail', 'Prompt workbench must cover 10/10 screens and Provider S8 1/1', problems, [])
     return category
   }
   issue(category, 'pass', null, problems, [])
@@ -101,8 +107,17 @@ function evaluateDesignReview(designReview, reference, problems) {
       ? reference.pages.map((page) => page?.name).filter((name) => typeof name === 'string')
       : []
   )
-  if (expectedNames.size !== 7 || !Array.isArray(designReview.pages)) {
-    issue(category, 'fail', 'Design review must cover exactly the seven reference pages', problems, [])
+  if (
+    expectedNames.size !== PROMPT_WORKBENCH_PAGES.length + PROVIDER_PAGES.length ||
+    !Array.isArray(designReview.pages)
+  ) {
+    issue(
+      category,
+      'fail',
+      'Design review must cover exactly the ten prompt-workbench pages and one provider page',
+      problems,
+      []
+    )
     return category
   }
   const reviewNames = new Set()
@@ -172,11 +187,40 @@ function evaluateRealProvider(name, realProviders, requireRealProviders, problem
   return category
 }
 
+function evaluateRealVision(realVision, requireRealProviders, problems, warnings) {
+  const category = { status: 'warning', problems: [] }
+  if (!realVision || realVision.__parseError) {
+    if (requireRealProviders) {
+      issue(category, 'blocked', 'Real vision provider evidence is missing', problems, warnings)
+    } else {
+      issue(
+        category,
+        'warning',
+        'Real vision provider evidence is not present; mock-only acceptance remains',
+        problems,
+        warnings
+      )
+    }
+    return category
+  }
+  if (realVision.schemaVersion !== REAL_VISION_SCHEMA) {
+    issue(category, 'fail', 'Real vision provider evidence schema is invalid', problems, warnings)
+    return category
+  }
+  if (realVision.status !== 'pass' || realVision.schemaPass !== true) {
+    issue(category, 'fail', 'Real vision provider check failed', problems, warnings)
+    return category
+  }
+  issue(category, 'pass', null, problems, warnings)
+  return category
+}
+
 export function evaluateConvergenceGate({
   phase1Gate,
   designReview,
   reference,
   realProviders,
+  realVision,
   requireRealProviders = false
 }) {
   const problems = []
@@ -185,6 +229,7 @@ export function evaluateConvergenceGate({
     PHASE1: evaluatePhase1(phase1Gate, problems),
     'DESIGN-REVIEW': evaluateDesignReview(designReview, reference, problems),
     'REAL-CHAT': evaluateRealProvider('chat', realProviders, requireRealProviders, problems, warnings),
+    'REAL-VISION': evaluateRealVision(realVision, requireRealProviders, problems, warnings),
     'REAL-IMAGE': evaluateRealProvider('image', realProviders, requireRealProviders, problems, warnings),
     VISUAL: evaluateVisual(phase1Gate, problems),
     A11Y: evaluateA11y(phase1Gate, problems)
@@ -257,6 +302,7 @@ function main() {
       designReview: readJson(join(root, 'ui', 'design-review.json')),
       reference: readJson(join(root, 'ui', 'reference.json')),
       realProviders: readJson(join(root, 'real-providers.json')),
+      realVision: readJson(join(root, 'real-vision.json')),
       requireRealProviders
     })
     process.stdout.write(renderSummary(result))

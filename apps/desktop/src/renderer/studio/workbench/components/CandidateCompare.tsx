@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { GenerationCandidateDto } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
 import { AsyncButton, ConfirmDialog, EmptyState, StatusPill } from '@agent2live/design-system'
@@ -36,14 +36,17 @@ const CandidateImage: React.FC<CandidateImageProps> = ({ assetId, alt }) => {
 
 interface CandidateStageProps {
   candidate: GenerationCandidateDto
-  busy: boolean
-  onAccept: (candidate: GenerationCandidateDto) => void
+  index: number
 }
 
-const CandidateStage: React.FC<CandidateStageProps> = ({ candidate, busy, onAccept }) => {
+const CandidateStage: React.FC<CandidateStageProps> = ({ candidate, index }) => {
   const issues = validationLines(candidate.validation)
   return (
     <article className="candidate-stage" data-testid="candidate-card">
+      <header className="candidate-stage-header">
+        <strong>候选 {String.fromCharCode(65 + index)}</strong>
+        <span>刚刚</span>
+      </header>
       <div className="candidate-stage-image">
         <CandidateImage assetId={candidate.assetId} alt="生成候选" />
         <StatusPill
@@ -62,33 +65,19 @@ const CandidateStage: React.FC<CandidateStageProps> = ({ candidate, busy, onAcce
         />
       </div>
       <div className="candidate-stage-footer">
-        <div>
-          <strong>候选</strong>
-          <p className="studio-meta">
-            {candidate.asset
-              ? `${candidate.asset.width ?? '—'} × ${candidate.asset.height ?? '—'}`
-              : '图片信息不可用'}{' '}
-            · 原图未裁切
-          </p>
-          {issues.length > 0 ? (
-            <ul className="validation-list">
-              {issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">未报告验证问题</p>
-          )}
-        </div>
-        <AsyncButton
-          type="button"
-          busy={busy}
-          busyLabel="接受中…"
-          disabled={candidate.status !== 'ready'}
-          onClick={() => onAccept(candidate)}
-        >
-          接受候选
-        </AsyncButton>
+        <span>
+          {candidate.asset
+            ? `${candidate.asset.width ?? '—'} × ${candidate.asset.height ?? '—'}`
+            : '图片信息不可用'}
+        </span>
+        <span>原图未裁切</span>
+        {issues.length > 0 ? (
+          <ul className="validation-list" hidden>
+            {issues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </article>
   )
@@ -98,32 +87,54 @@ interface CandidateStripProps {
   candidates: GenerationCandidateDto[]
   selectedId: string
   onSelect: (candidateId: string) => void
+  acceptingId: string | null
+  onAccept: (candidate: GenerationCandidateDto) => void
 }
 
-const CandidateStrip: React.FC<CandidateStripProps> = ({ candidates, selectedId, onSelect }) => (
-  <aside className="candidate-strip" data-testid="candidate-strip">
-    <div className="candidate-strip-heading">
-      <strong>候选清单</strong>
-      <span className="studio-meta">{candidates.length} 张</span>
-    </div>
-    <div className="candidate-thumbnails">
-      {candidates.map((candidate, index) => (
-        <button
-          key={candidate.id}
+const CandidateStrip: React.FC<CandidateStripProps> = ({
+  candidates,
+  selectedId,
+  onSelect,
+  acceptingId,
+  onAccept
+}) => {
+  const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0]!
+  return (
+    <aside className="candidate-strip" data-testid="candidate-strip">
+      <div className="candidate-strip-heading">
+        <strong>候选清单</strong>
+        <span className="studio-meta">{candidates.length} 张</span>
+      </div>
+      <div className="candidate-thumbnails">
+        {candidates.map((candidate, index) => (
+          <button
+            key={candidate.id}
+            type="button"
+            className="candidate-thumbnail"
+            aria-label={`查看候选 ${index + 1}`}
+            aria-pressed={selectedId === candidate.id}
+            data-state={selectedId === candidate.id ? 'active' : 'default'}
+            onClick={() => onSelect(candidate.id)}
+          >
+            <CandidateImage assetId={candidate.assetId} alt={`候选 ${index + 1} 缩略图`} />
+            <span>{String.fromCharCode(65 + index)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="candidate-strip-footer">
+        <AsyncButton
           type="button"
-          className="candidate-thumbnail"
-          aria-label={`查看候选 ${index + 1}`}
-          aria-pressed={selectedId === candidate.id}
-          data-state={selectedId === candidate.id ? 'active' : 'default'}
-          onClick={() => onSelect(candidate.id)}
+          busy={acceptingId === selected.id}
+          busyLabel="设置中…"
+          disabled={selected.status !== 'ready'}
+          onClick={() => onAccept(selected)}
         >
-          <CandidateImage assetId={candidate.assetId} alt={`候选 ${index + 1} 缩略图`} />
-          <span>{String.fromCharCode(65 + index)}</span>
-        </button>
-      ))}
-    </div>
-  </aside>
-)
+          设置为立绘
+        </AsyncButton>
+      </div>
+    </aside>
+  )
+}
 
 export interface CandidateCompareProps {
   candidates: GenerationCandidateDto[]
@@ -132,25 +143,38 @@ export interface CandidateCompareProps {
 }
 
 export const CandidateCompare: React.FC<CandidateCompareProps> = ({ candidates, acceptingId, onAccept }) => {
-  const [selectedId, setSelectedId] = useState(
-    () => candidates.find((candidate) => candidate.status === 'ready')?.id ?? candidates[0]?.id ?? ''
+  const orderedCandidates = [...candidates].sort(
+    (left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
   )
+  const [selectedId, setSelectedId] = useState(() => orderedCandidates[0]?.id ?? '')
   const [confirming, setConfirming] = useState<GenerationCandidateDto | null>(null)
+  const userSelected = useRef(false)
+  const candidateSignature = orderedCandidates.map((candidate) => candidate.id).join(':')
 
-  if (candidates.length === 0) {
+  useEffect(() => {
+    if (!userSelected.current) setSelectedId(orderedCandidates[0]?.id ?? '')
+  }, [candidateSignature])
+
+  if (orderedCandidates.length === 0) {
     return <EmptyState compact title="这次生成没有产生候选" description="调整提示词或模型参数后再试。" />
   }
-  const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0]!
+  const selected = orderedCandidates.find((candidate) => candidate.id === selectedId) ?? orderedCandidates[0]!
+  const selectedIndex = orderedCandidates.findIndex((candidate) => candidate.id === selected.id)
 
   return (
     <section className="candidate-compare" data-testid="candidate-compare">
       <div className="candidate-workbench" data-testid="candidate-stage">
-        <CandidateStage
-          candidate={selected}
-          busy={acceptingId === selected.id}
+        <CandidateStage candidate={selected} index={selectedIndex} />
+        <CandidateStrip
+          candidates={orderedCandidates}
+          selectedId={selected.id}
+          onSelect={(candidateId) => {
+            userSelected.current = true
+            setSelectedId(candidateId)
+          }}
+          acceptingId={acceptingId}
           onAccept={(candidate) => setConfirming(candidate)}
         />
-        <CandidateStrip candidates={candidates} selectedId={selected.id} onSelect={setSelectedId} />
       </div>
 
       <ConfirmDialog

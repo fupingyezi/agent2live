@@ -9,15 +9,20 @@ export const GATE_SCHEMA_VERSION = 'phase1-gate/1'
 export const PHASE1_EVIDENCE_DIR = 'docs/plans/evidence/phase1'
 export const BACKUP_ARTIFACT_PATH = `${PHASE1_EVIDENCE_DIR}/backup/character-export.zip`
 export const PHASE0_PREREQUISITE_PATH = `${PHASE1_EVIDENCE_DIR}/phase0-prerequisite.json`
-export const UI_EVIDENCE_PAGES = Object.freeze([
+export const PROMPT_WORKBENCH_PAGES = Object.freeze([
+  'created-confirmation',
+  'character-just-created',
   'overview',
   'new-character-empty',
   'new-character-full',
-  'character-card',
+  'reference-editor',
+  'reference-hover',
   'workbench-references',
   'workbench-candidates',
-  'providers'
+  'character-card'
 ])
+export const PROVIDER_PAGES = Object.freeze(['providers'])
+export const UI_EVIDENCE_PAGES = Object.freeze([...PROMPT_WORKBENCH_PAGES, ...PROVIDER_PAGES])
 export const UI_VISUAL_BASELINES = Object.freeze(
   UI_EVIDENCE_PAGES.map((name) => `${PHASE1_EVIDENCE_DIR}/ui/visual/${name}-1440x900.png`)
 )
@@ -717,7 +722,7 @@ function validateAxeEvidence(axe) {
       actual.length !== UI_VISUAL_BASELINES.length ||
       actual.some((baseline) => !UI_VISUAL_BASELINES.includes(baseline))
     ) {
-      issues.push('visualBaselines must list exactly the seven fixed 1440x900 screenshots')
+      issues.push('visualBaselines must list exactly the eleven fixed 1440x900 screenshots')
     }
     if (new Set(actual).size !== actual.length) {
       issues.push('visualBaselines must not contain duplicates')
@@ -1097,19 +1102,24 @@ export function evaluatePhase1Gate({ evidence, repository, root = process.cwd(),
   const axe = requireUiJsonEvidence('axe', 'UI_AXE', 'UI axe')
   const uiTokenLint = requireUiJsonEvidence('tokenLint', 'UI_TOKEN_LINT', 'UI token lint')
   let uiVisualCount = 0
+  let promptWorkbenchVisualCount = 0
+  let providerVisualCount = 0
   for (const name of UI_EVIDENCE_PAGES) {
     const entry = evidence?.visuals?.[name]
+    const label = PROVIDER_PAGES.includes(name) ? `Provider S8 ${name}` : `Prompt workbench ${name}`
     if (!entry || entry.status === 'missing') {
-      mark('G1-UI', 'blocked', 'UI_VISUAL_MISSING', `${name} 1440x900 visual baseline is missing`)
+      mark('G1-UI', 'blocked', 'UI_VISUAL_MISSING', `${label} 1440x900 visual baseline is missing`)
       continue
     }
     if (entry.status !== 'ok' || !Buffer.isBuffer(entry.bytes)) {
-      mark('G1-UI', 'fail', 'UI_VISUAL_MALFORMED', `${name} 1440x900 visual baseline is not readable bytes`)
+      mark('G1-UI', 'fail', 'UI_VISUAL_MALFORMED', `${label} 1440x900 visual baseline is not readable bytes`)
       continue
     }
     const visualIssues = validateVisualEvidence(name, entry.bytes)
     if (visualIssues.length === 0) {
       uiVisualCount += 1
+      if (PROVIDER_PAGES.includes(name)) providerVisualCount += 1
+      else promptWorkbenchVisualCount += 1
     } else {
       for (const issue of visualIssues) {
         mark('G1-UI', 'fail', 'UI_VISUAL_INVALID', issue)
@@ -1261,7 +1271,15 @@ export function evaluatePhase1Gate({ evidence, repository, root = process.cwd(),
       uiTokenLint: evidence?.tokenLint?.status ?? 'missing',
       uiVisuals: {
         required: UI_EVIDENCE_PAGES.length,
-        valid: uiVisualCount
+        valid: uiVisualCount,
+        promptWorkbench: {
+          required: PROMPT_WORKBENCH_PAGES.length,
+          valid: promptWorkbenchVisualCount
+        },
+        providerS8: {
+          required: PROVIDER_PAGES.length,
+          valid: providerVisualCount
+        }
       }
     },
     repository: {
@@ -1347,6 +1365,10 @@ export function renderGateMarkdown(result) {
     `- UI token lint: ${result.evidence.uiTokenLint}`,
     `- UI visuals: ${result.evidence.uiVisuals.valid}/` +
       `${result.evidence.uiVisuals.required} 1440x900 baselines`,
+    `- Prompt workbench: ${result.evidence.uiVisuals.promptWorkbench.valid}/` +
+      `${result.evidence.uiVisuals.promptWorkbench.required}`,
+    `- Provider S8: ${result.evidence.uiVisuals.providerS8.valid}/` +
+      `${result.evidence.uiVisuals.providerS8.required}`,
     '',
     'Evidence and plans are internal working documents and are ignored by git.',
     ''

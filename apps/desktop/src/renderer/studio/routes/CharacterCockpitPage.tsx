@@ -213,7 +213,9 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
                 label={statusLabel}
                 tone={justCreated ? 'warning' : activeArtVersion ? 'success' : 'neutral'}
               />
-              <span>{`提示词 ${promptDraftCount} 段，参考图 ${referenceCount} 张`}</span>
+              <span>
+                {justCreated ? `提示词 ${promptDraftCount} 段，参考图 ${referenceCount} 张` : '最近编辑'}
+              </span>
             </div>
           </div>
         </div>

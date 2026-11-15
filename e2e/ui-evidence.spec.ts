@@ -4,16 +4,9 @@ import { ApiClient, type ArtProjectDto } from './helpers/api'
 import { goldenPromptState, makePng } from './helpers/seed'
 import { captureVisual, lintStudioTokens, scanAxe, resizeToBaseline, type AxePageResult } from './helpers/axe'
 import { evidenceRelativePath, writeEvidenceJson } from './helpers/evidence'
+import { UI_EVIDENCE_PAGES } from '../scripts/phase1-gate.mjs'
 
-const UI_PAGES = [
-  'overview',
-  'new-character-empty',
-  'new-character-full',
-  'character-card',
-  'workbench-references',
-  'workbench-candidates',
-  'providers'
-] as const
+const UI_PAGES = UI_EVIDENCE_PAGES
 
 async function seedArtwork(
   api: ApiClient,
@@ -42,7 +35,7 @@ async function seedArtwork(
     projectId: project.id,
     promptVersionId: committed.version.id,
     providerConnectionId: providerId,
-    count: 2,
+    count: 4,
     size: '512x896',
     seed
   })
@@ -50,16 +43,22 @@ async function seedArtwork(
   const generation = await api.waitForGenerationReady(created.generationId)
   const first = generation.candidates.find((candidate) => candidate.status === 'ready')
   if (!first) throw new Error('UI evidence generation produced no ready candidate')
-  const accepted = await api.acceptCandidate(first.id, null)
+  const currentProject = await api.getProject(project.id)
+  const manual = await api.createManualArtVersion({
+    projectId: project.id,
+    assetId: first.assetId,
+    promptVersionId: committed.version.id,
+    expectedProjectRowVersion: currentProject.rowVersion
+  })
   return {
     projectId: project.id,
     generationId: created.generationId,
-    activeArtVersionId: accepted.artVersion.id
+    activeArtVersionId: manual.artVersion.id
   }
 }
 
 test('captures axe, token lint, and 1440x900 visual baselines', async () => {
-  test.setTimeout(180_000)
+  test.setTimeout(240_000)
   const studio = await launchStudio('agent2live-ui-evidence-')
   try {
     const { page, endpoint } = studio
@@ -120,10 +119,31 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await expect(page.getByText('6 张已满，删除一张后继续上传')).toBeVisible()
     await capture('new-character-full')
 
+    const hoverCard = page.locator('[data-testid="character-reference-card"]').nth(1)
+    await hoverCard.hover()
+    await expect(hoverCard.getByTestId('reference-hover-actions')).toHaveCSS('opacity', '1')
+    await capture('reference-hover')
+    await hoverCard.getByRole('button', { name: '编辑', exact: true }).click()
+    const referenceEditor = page.getByRole('dialog', { name: '参考图' })
+    await expect(referenceEditor).toBeVisible()
+    await expect
+      .poll(() =>
+        referenceEditor
+          .getByRole('img', { name: 'reference-2.png' })
+          .evaluate((image) => (image as HTMLImageElement).naturalWidth)
+      )
+      .toBeGreaterThan(0)
+    await capture('reference-editor')
+    await referenceEditor.getByRole('button', { name: '取消', exact: true }).click()
+
     await page.getByRole('button', { name: '创建并生成', exact: true }).click()
     await expect(page.locator('[data-testid="character-created"]')).toBeVisible({
       timeout: 30_000
     })
+    await capture('created-confirmation')
+    await page.getByTestId('open-character-card').click()
+    await expect(page.locator('[data-testid="character-just-created"]')).toBeVisible()
+    await capture('character-just-created')
     await page.getByTestId('open-art-workbench').click()
     await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     const segments = new URL(page.url()).hash.slice(2).split('/').filter(Boolean)
@@ -131,6 +151,13 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     expect(characterId).toMatch(/^chr_/)
     const projectId = new URL(page.url()).hash.match(/[?&]project=([^&]+)/)?.[1]
     expect(projectId).toMatch(/^artp_/)
+
+    await expect(page.locator('.workbench-design-version-tree')).toHaveCSS('width', '220px')
+    await expect(page.locator('.workbench-design-inspector')).toHaveCSS('width', '320px')
+    await expect(page.locator('.workbench-design-topbar')).toHaveCSS('height', '48px')
+    await expect(page.locator('[data-testid="workbench-reference-card"]')).toHaveCount(6)
+    await expect(page.locator('[data-testid="workbench-reference-card"]').first()).toHaveCSS('width', '255px')
+    await capture('workbench-references')
 
     const workspace = (
       await api.json<{
@@ -171,14 +198,20 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
       'data-active-version-id',
       seeded.activeArtVersionId
     )
-    await capture('workbench-references')
-
-    await page.getByRole('tab', { name: '生成', exact: true }).click()
+    await page.getByRole('button', { name: '候选', exact: true }).click()
     await expect(page.locator('[data-testid="generation-status"]')).toBeVisible({ timeout: 20_000 })
     await expect(page.locator('[data-testid="candidate-compare"]')).toBeVisible({ timeout: 20_000 })
     await expect(page.locator('[data-testid="candidate-card"] img').first()).toBeVisible({
       timeout: 20_000
     })
+    await expect(page.getByRole('button', { name: '候选', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    await expect(page.locator('[data-testid="candidate-card"]')).toHaveCSS('width', '427px')
+    await expect(page.locator('[data-testid="candidate-strip"]')).toHaveCSS('width', '350px')
+    await expect(page.locator('[data-testid="candidate-strip"]')).toContainText('4 张')
+    await expect(page.locator('[data-testid="candidate-card"]')).toContainText('候选 A')
     await capture('workbench-candidates')
 
     await page.getByRole('button', { name: '设置', exact: true }).click()

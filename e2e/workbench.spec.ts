@@ -171,9 +171,10 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(studio.getByTestId('version-graph')).toContainText('v1')
     await expect(studio.locator('[data-testid="reference-chain"]')).toContainText('提示词 v1')
 
-    await studio.getByRole('tab', { name: '生成', exact: true }).click()
+    await studio.getByRole('button', { name: '生成', exact: true }).click()
     const generationPanel = studio.locator('[data-testid="generation-panel"]')
     await expect(generationPanel).toBeVisible()
+    await expect(generationPanel.getByTestId('generation-controls')).toBeVisible()
     await expect(generationPanel.getByTestId('generation-settings')).toBeHidden()
     await generationPanel.getByText('生成设置', { exact: true }).click()
     await expect(generationPanel.getByTestId('generation-settings')).toBeVisible()
@@ -186,7 +187,10 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(generationStatus.getByTestId('candidate-card')).not.toHaveCount(0)
     const candidate = generationStatus.getByTestId('candidate-card').first()
     await expect(candidate.getByRole('img', { name: '生成候选' })).toBeVisible()
-    await candidate.getByRole('button', { name: '接受候选', exact: true }).click()
+    await generationStatus
+      .getByTestId('candidate-strip')
+      .getByRole('button', { name: '设置为立绘', exact: true })
+      .click()
     const candidateDialog = studio.getByRole('dialog')
     await candidateDialog.getByRole('button', { name: '接受', exact: true }).click()
     await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v1', {

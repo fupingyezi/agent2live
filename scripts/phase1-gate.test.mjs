@@ -5,6 +5,8 @@ import {
   BACKUP_ARTIFACT_PATH,
   MIN_ASSERTIONS_BY_FILE,
   PHASE1_GATES,
+  PROMPT_WORKBENCH_PAGES,
+  PROVIDER_PAGES,
   UI_EVIDENCE_PAGES,
   UI_TOKEN_RULES,
   UI_VISUAL_BASELINES,
@@ -57,6 +59,41 @@ const VERIFICATION_CHECKS = {
   blobFilesValid: true,
   textSafe: true
 }
+
+test('defines ten prompt-workbench pages and one independent provider page', () => {
+  assert.equal(PROMPT_WORKBENCH_PAGES.length, 10)
+  assert.deepEqual(
+    [...PROMPT_WORKBENCH_PAGES],
+    [
+      'created-confirmation',
+      'character-just-created',
+      'overview',
+      'new-character-empty',
+      'new-character-full',
+      'reference-editor',
+      'reference-hover',
+      'workbench-references',
+      'workbench-candidates',
+      'character-card'
+    ]
+  )
+  assert.deepEqual([...PROVIDER_PAGES], ['providers'])
+  assert.equal(UI_EVIDENCE_PAGES.length, 11)
+})
+
+test('reports prompt-workbench and provider screenshot gaps separately', () => {
+  const missingPrompt = validEvidence()
+  delete missingPrompt.visuals.overview
+  const promptResult = evaluate({ evidence: missingPrompt })
+  assert.match(promptResult.problems.map((problem) => problem.message).join('\n'), /Prompt workbench/)
+
+  const missingProvider = validEvidence()
+  delete missingProvider.visuals.providers
+  const providerResult = evaluate({ evidence: missingProvider })
+  const messages = providerResult.problems.map((problem) => problem.message).join('\n')
+  assert.match(messages, /Provider S8/)
+  assert.doesNotMatch(messages, /Prompt workbench.*providers/)
+})
 
 function ok(value) {
   return { status: 'ok', value }

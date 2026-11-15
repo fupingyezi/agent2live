@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { MaterialRole, PromptInputMaterialDto, PromptSpecV2 } from '@studio/api'
 import { getArtProject, getCharacter, getPromptWorkspace, queryKeys } from '@studio/api'
 import { StudioPageTopbar, StudioError, StudioLoading } from '@studio/components'
-import { Button, SectionHeader, StatusPill, type EmptyProps } from '@agent2live/design-system'
+import { Button, type EmptyProps } from '@agent2live/design-system'
 import characterEmptyArt from '@studio/assets/empty-states/character-empty.png'
 import { useAssetUrl } from '@studio/hooks'
 
@@ -20,6 +20,18 @@ const ROLE_LABELS: Record<MaterialRole, string> = {
   other: '补充参考'
 }
 
+const ROLE_SHORT_LABELS: Record<MaterialRole, string> = {
+  identity_reference: '身份',
+  style_reference: '画风',
+  outfit_reference: '服装',
+  color_reference: '配色',
+  background_reference: '背景',
+  pose_reference: '姿势',
+  sketch: '草图',
+  texture: '材质',
+  other: '参考'
+}
+
 interface CreatedReferenceProps {
   material: PromptInputMaterialDto
 }
@@ -30,6 +42,7 @@ const CreatedReference: React.FC<CreatedReferenceProps> = ({ material }) => {
     <figure className="created-reference" data-testid="created-reference">
       <div className="created-reference-image">
         {url ? <img src={url} alt={ROLE_LABELS[material.role]} /> : <span aria-hidden="true">…</span>}
+        <span className="created-reference-role">{ROLE_SHORT_LABELS[material.role]}</span>
       </div>
       <figcaption>
         <strong>{ROLE_LABELS[material.role]}</strong>
@@ -139,38 +152,27 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
       <StudioPageTopbar
         breadcrumb="角色新建完成"
         tone="completion"
-        status={<StatusPill label="草稿已自动保存" tone="success" />}
+        status={<span className="created-topbar-status">草稿已自动保存</span>}
       />
 
       <main className="created-page">
-        <div className="created-page-heading">
-          <span>创建完成</span>
-          <h1>{character.title} 已准备好</h1>
-          <p>{project.title} 和初始化提示词草稿已经建立。</p>
-        </div>
+        <h1>角色已创建</h1>
+        <section className="created-result-card">
+          <header>
+            <strong>创建结果</strong>
+            <span>草稿</span>
+          </header>
 
-        <section className="created-summary-card" data-testid="character-created-summary">
-          <CreatedAvatar characterId={character.id} assetId={primaryAssetId} title={character.title} />
-          <div className="created-summary-copy">
-            <span className="studio-meta">角色 · 最近创建</span>
-            <h2>{character.title}</h2>
-            <p>{character.summary || '还没有填写角色简介。'}</p>
-            <div className="created-summary-meta">
-              <StatusPill label="草稿已自动保存" tone="success" />
-              <span>
-                {materials.length} 张参考图 · 默认项目“{project.title}”
-              </span>
+          <div className="created-summary-card" data-testid="character-created-summary">
+            <CreatedAvatar characterId={character.id} assetId={primaryAssetId} title={character.title} />
+            <div className="created-summary-copy">
+              <h2>{character.title}</h2>
+              <p>{character.summary || '还没有填写角色简介。'}</p>
             </div>
           </div>
-        </section>
 
-        <div className="created-layout">
-          <section className="created-panel" data-testid="character-created-references">
-            <SectionHeader
-              title="参考图"
-              description="这些参考已经写入初始化提示词。"
-              actions={<span className="studio-meta">{materials.length} 张</span>}
-            />
+          <section className="created-references-section" data-testid="character-created-references">
+            <h2>参考图</h2>
             {materials.length > 0 ? (
               <div className="created-reference-grid">
                 {materials.map((material) => (
@@ -182,34 +184,33 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
             )}
           </section>
 
-          <section className="created-panel created-prompt-panel">
-            <SectionHeader title="初始化提示词" description="草稿可以从这里继续调整。" />
+          <section className="created-prompt-panel" data-testid="created-prompt-panel">
+            <h2>初始化提示词</h2>
             <div className="created-prompt" data-testid="character-created-prompt">
               <pre>{draftText || '初始化提示词为空。'}</pre>
             </div>
           </section>
-        </div>
 
-        <footer className="created-footer">
-          <div>
-            <strong>草稿已自动保存</strong>
-            <span className="studio-meta">
-              {materials.length} 张参考图 · 项目“{project.title}”
-            </span>
+          <div className="created-draft-note">
+            <span>设定与参考图已存成草稿，进入角色卡片后开始出立绘</span>
+            <span>{materials.length} 张 · 用途已标注</span>
           </div>
-          <div className="created-actions">
-            <Button asChild variant="secondary">
-              <Link to={workbenchPath} data-testid="open-art-workbench">
-                立绘管理
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to={`/characters/${encodeURIComponent(id)}`} data-testid="open-character-card">
-                角色卡片
-              </Link>
-            </Button>
-          </div>
-        </footer>
+
+          <footer className="created-footer">
+            <div className="created-actions">
+              <Button asChild>
+                <Link to={`/characters/${encodeURIComponent(id)}`} data-testid="open-character-card">
+                  角色卡片
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link to={workbenchPath} data-testid="open-art-workbench">
+                  立绘管理
+                </Link>
+              </Button>
+            </div>
+          </footer>
+        </section>
       </main>
     </div>
   )

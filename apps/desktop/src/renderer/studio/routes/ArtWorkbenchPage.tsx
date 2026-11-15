@@ -1,13 +1,12 @@
 import React, { useEffect } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Button, EmptyState, PageHeader, StatusPill, type EmptyProps } from '@agent2live/design-system'
-import { flattenLineage, getArtProject, getCharacterLineage } from '@studio/api'
+import { Button, EmptyState, type EmptyProps } from '@agent2live/design-system'
+import { flattenLineage, getArtProject, getCharacter, getCharacterLineage } from '@studio/api'
 import { ApiError } from '@studio/api'
 import { queryKeys } from '@studio/api'
 import { StudioError } from '@studio/components'
 import { StudioLoading } from '@studio/components'
-import { formatStage, stageTone } from '@studio/format'
 import { Workbench } from '@studio/workbench'
 
 export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
@@ -30,6 +29,11 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
     queryKey: queryKeys.lineage(id),
     queryFn: ({ signal }) => getCharacterLineage(id, signal),
     enabled: Boolean(id) && !projectId
+  })
+  const characterQuery = useQuery({
+    queryKey: queryKeys.character(id),
+    queryFn: ({ signal }) => getCharacter(id, signal),
+    enabled: Boolean(id) && Boolean(projectId)
   })
 
   const firstProject = lineageQuery.data ? (flattenLineage(lineageQuery.data.roots)[0] ?? null) : null
@@ -116,18 +120,12 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
       data-testid="art-workbench"
       data-project-id={project.id}
     >
-      <PageHeader
-        back={
-          <Link className="studio-back" to={`/characters/${encodeURIComponent(characterId)}`}>
-            ← 返回角色驾驶舱
-          </Link>
-        }
-        eyebrow="美术工作台"
-        title={project.title}
-        description={project.description || '这个项目还没有描述。'}
-        actions={<StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />}
+      <Workbench
+        key={project.id}
+        project={project}
+        characterTitle={characterQuery.data?.title ?? project.title}
+        aiWarning={aiWarning}
       />
-      <Workbench key={project.id} project={project} aiWarning={aiWarning} />
     </div>
   )
 }

@@ -5,6 +5,7 @@ export interface StudioPageTopbarProps {
   status?: React.ReactNode
   actions?: React.ReactNode
   tone?: 'overview' | 'completion' | 'editor'
+  className?: string
 }
 
 /** 页面级顶栏，由当前路由拥有并组合面包屑、状态和操作。 */
@@ -12,10 +13,15 @@ export const StudioPageTopbar: React.FC<StudioPageTopbarProps> = ({
   breadcrumb,
   status,
   actions,
-  tone = 'overview'
+  tone = 'overview',
+  className
 }) => {
   return (
-    <header className="studio-page-topbar" data-testid="studio-page-topbar" data-tone={tone}>
+    <header
+      className={['studio-page-topbar', className].filter(Boolean).join(' ')}
+      data-testid="studio-page-topbar"
+      data-tone={tone}
+    >
       <span className="studio-breadcrumb" data-testid="studio-breadcrumb">
         {breadcrumb}
       </span>
