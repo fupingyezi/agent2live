@@ -24,7 +24,12 @@ export default defineConfig({
             'spikes/**/*.test.ts',
             'scripts/**/*.test.ts'
           ],
-          exclude: ['**/node_modules/**', '**/dist/**', 'packages/design-system/**'],
+          exclude: [
+            '**/node_modules/**',
+            '**/dist/**',
+            '**/.packaged-server/**',
+            'packages/design-system/**'
+          ],
           environment: 'node',
           testTimeout: 20_000,
           hookTimeout: 20_000,
