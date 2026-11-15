@@ -173,7 +173,7 @@ test('runs opt-in real Chat and Image provider probes', async () => {
             : 'fail',
       generatedAt: new Date().toISOString(),
       gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      checks
+      checks: settings.chat ? checks : { image: checks.image }
     })
   }
 })
