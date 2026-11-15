@@ -95,7 +95,9 @@ test('creates a character and art project, streams events, and survives reload',
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(0)
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(1)
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveCSS('height', '48px')
+    await expect(studio.getByTestId('studio-page-topbar')).toHaveAttribute('data-tone', 'editor')
     await expect.poll(() => studio.url()).toContain('project=artp_')
     const projectUrl = studio.url()
 
