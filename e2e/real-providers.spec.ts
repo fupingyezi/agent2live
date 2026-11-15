@@ -49,23 +49,23 @@ function requiredSettings(): {
       }
     }
   }
-  const chatNames = [
-    'AGENT2LIVE_REAL_CHAT_BASE_URL',
-    'AGENT2LIVE_REAL_CHAT_MODEL',
-    'AGENT2LIVE_REAL_CHAT_API_KEY'
-  ] as const
-  const missing = chatNames.filter((name) => !process.env[name]?.trim())
-  if (missing.length > 0) {
-    throw new Error(`real provider smoke is missing environment variables: ${missing.join(', ')}`)
+  const chatApiKey = process.env.AGENT2LIVE_REAL_CHAT_API_KEY ?? process.env.DEEPSEEK_API_KEY
+  if (!chatApiKey?.trim()) {
+    throw new Error('real provider smoke is missing AGENT2LIVE_REAL_CHAT_API_KEY or DEEPSEEK_API_KEY')
   }
+  const chatBaseUrl =
+    process.env.AGENT2LIVE_REAL_CHAT_BASE_URL ??
+    process.env.DEEPSEEK_BASE_URL ??
+    'https://api.deepseek.com/v1'
+  const chatModel = process.env.AGENT2LIVE_REAL_CHAT_MODEL ?? process.env.DEEPSEEK_MODEL ?? 'deepseek-chat'
   return {
     chat: {
       kind: 'chat',
       preset: 'openai-chat',
       label: 'Real Chat Smoke',
-      baseUrl: process.env.AGENT2LIVE_REAL_CHAT_BASE_URL!,
-      model: process.env.AGENT2LIVE_REAL_CHAT_MODEL!,
-      apiKey: process.env.AGENT2LIVE_REAL_CHAT_API_KEY!
+      baseUrl: chatBaseUrl,
+      model: chatModel,
+      apiKey: chatApiKey
     },
     image: {
       kind: 'image',
