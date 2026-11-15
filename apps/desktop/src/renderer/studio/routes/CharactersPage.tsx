@@ -1,20 +1,76 @@
 import React, { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   Button,
   EmptyState,
-  PageHeader,
   SearchField,
   StatusPill,
   SurfaceCard,
   type EmptyProps
 } from '@agent2live/design-system'
-import { listCharacters } from '@studio/api'
-import { queryKeys } from '@studio/api'
+import {
+  ApiError,
+  flattenLineage,
+  getCharacterLineage,
+  listArtVersions,
+  listCharacters,
+  queryKeys
+} from '@studio/api'
+import type { ArtProjectDto, ArtVersionDto, CharacterDto } from '@studio/api'
 import { StudioError, StudioPageTopbar } from '@studio/components'
 import { StudioLoading } from '@studio/components'
-import { formatDateTime } from '@studio/format'
+import { formatDateTime, formatPercent } from '@studio/format'
+import { useAssetUrl } from '@studio/hooks'
+import { computeProjectProgress } from '@studio/project-progress'
+
+interface CharacterOverviewItem {
+  character: CharacterDto
+  project: ArtProjectDto | null
+  activeArtVersion: ArtVersionDto | null
+  primaryAssetId: string | null
+}
+
+interface CharacterOverviewArtProps {
+  title: string
+  assetId: string | null
+  variant: 'hero' | 'card'
+}
+
+interface CharacterOverviewStagesProps {
+  ready: boolean
+}
+
+const CharacterOverviewArt: React.FC<CharacterOverviewArtProps> = ({ title, assetId, variant }) => {
+  const { url } = useAssetUrl(assetId)
+  const className = variant === 'hero' ? 'studio-character-art' : 'studio-character-thumb'
+  return (
+    <div className={className} data-state={url ? 'ready' : 'empty'}>
+      {url && assetId ? (
+        <img src={url} alt={`${title} 主参考图`} data-asset-id={assetId} />
+      ) : (
+        <span aria-hidden="true">{title.slice(0, 1)}</span>
+      )}
+    </div>
+  )
+}
+
+const CharacterOverviewStages: React.FC<CharacterOverviewStagesProps> = ({ ready }) => (
+  <div className="studio-overview-stages" aria-label="角色阶段">
+    <span data-state={ready ? 'complete' : 'upcoming'}>立绘</span>
+    <span data-state="upcoming">分层</span>
+    <span data-state="upcoming">绑定</span>
+  </div>
+)
+
+function characterProjectStatus(item: CharacterOverviewItem): {
+  label: string
+  tone: 'neutral' | 'success' | 'warning'
+} {
+  if (!item.project) return { label: '尚未开始', tone: 'neutral' }
+  if (!item.activeArtVersion) return { label: '待出图', tone: 'warning' }
+  return { label: '已出立绘', tone: 'success' }
+}
 
 export const CharactersPage: React.FC<EmptyProps> = () => {
   const navigate = useNavigate()
@@ -29,7 +85,65 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
     if (!queryText) return true
     return `${character.title} ${character.summary}`.toLocaleLowerCase().includes(queryText)
   })
-  const featured = characters[0] ?? null
+  const lineageQueries = useQueries({
+    queries: characters.map((character) => ({
+      queryKey: queryKeys.lineage(character.id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getCharacterLineage(character.id, signal),
+      enabled: query.isSuccess,
+      retry: (failureCount: number, error: Error) => {
+        if (error instanceof ApiError && error.status === 404) return false
+        return failureCount < 2
+      }
+    }))
+  })
+  const projects = characters.map((_character, index) => {
+    const lineage = lineageQueries[index]?.data
+    return lineage ? (flattenLineage(lineage.roots)[0] ?? null) : null
+  })
+  const versionQueries = useQueries({
+    queries: characters.map((character, index) => {
+      const project = projects[index] ?? null
+      return {
+        queryKey: project
+          ? queryKeys.artVersions(project.id)
+          : (['projects', 'none', 'art-versions', character.id] as const),
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          project ? listArtVersions(project.id, signal) : Promise.resolve([]),
+        enabled: Boolean(project)
+      }
+    })
+  })
+  const items: CharacterOverviewItem[] = characters.map((character, index) => {
+    const project = projects[index] ?? null
+    const versions = versionQueries[index]?.data ?? []
+    const activeArtVersion =
+      (project?.activeVersionId
+        ? versions.find((version) => version.id === project.activeVersionId)
+        : null) ?? null
+    const primaryAssetId =
+      activeArtVersion?.references.find((reference) => reference.isPrimary)?.assetId ??
+      activeArtVersion?.references[0]?.assetId ??
+      null
+    return { character, project, activeArtVersion, primaryAssetId }
+  })
+  const featured = items[0] ?? null
+  const overviewLoading =
+    query.isPending ||
+    lineageQueries.some((lineageQuery) => lineageQuery.isLoading) ||
+    versionQueries.some((versionQuery) => versionQuery.isLoading)
+  const overviewError =
+    lineageQueries.find(
+      (lineageQuery) =>
+        lineageQuery.error && !(lineageQuery.error instanceof ApiError && lineageQuery.error.status === 404)
+    )?.error ??
+    versionQueries.find((versionQuery) => versionQuery.error)?.error ??
+    query.error
+
+  const retryOverview = (): void => {
+    void query.refetch()
+    for (const lineageQuery of lineageQueries) void lineageQuery.refetch()
+    for (const versionQuery of versionQueries) void versionQuery.refetch()
+  }
 
   return (
     <div className="studio-page-frame">
@@ -58,32 +172,24 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
           </>
         }
       />
-      <div className="studio-page">
-        <PageHeader
-          eyebrow="角色"
-          title="角色总览"
-          description="每个角色拥有独立的美术项目、提示词和 Live2D 绑定。"
-          actions={
-            <>
-              <Button disabled title="导入模型将在 Live2D 模型库阶段开放">
-                导入模型
-              </Button>
-              <Button asChild>
-                <Link to="/characters/new">新建角色</Link>
-              </Button>
-            </>
-          }
-        />
+      <div className="studio-page studio-overview-page">
+        <header className="studio-overview-header">
+          <div>
+            <h1>角色总览</h1>
+            <p>{query.data?.length ?? 0} 个角色</p>
+          </div>
+          <div className="studio-overview-header-actions">
+            <Button disabled title="导入模型将在 Live2D 模型库阶段开放">
+              导入模型
+            </Button>
+            <Button asChild>
+              <Link to="/characters/new">新建角色</Link>
+            </Button>
+          </div>
+        </header>
 
-        {query.isPending ? <StudioLoading label="正在加载角色…" /> : null}
-        {query.isError ? (
-          <StudioError
-            error={query.error}
-            onRetry={() => {
-              void query.refetch()
-            }}
-          />
-        ) : null}
+        {overviewLoading ? <StudioLoading label="正在加载角色总览…" /> : null}
+        {overviewError ? <StudioError error={overviewError} onRetry={retryOverview} /> : null}
         {query.isSuccess && query.data.length === 0 ? (
           <EmptyState
             icon="◇"
@@ -101,24 +207,32 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
         ) : null}
         {query.isSuccess && featured ? (
           <>
-            <section className="studio-featured-character" data-testid="character-overview-hero">
-              <div className="studio-character-art" aria-hidden="true">
-                <span>{featured.title.slice(0, 1)}</span>
-              </div>
+            <section
+              className="studio-featured-character"
+              data-testid="character-overview-hero"
+              data-character-id={featured.character.id}
+            >
+              <CharacterOverviewArt
+                title={featured.character.title}
+                assetId={featured.primaryAssetId}
+                variant="hero"
+              />
               <div className="studio-featured-copy">
                 <div>
                   <p className="studio-meta">当前角色 · 最近编辑</p>
-                  <h2>{featured.title}</h2>
-                  <p>{featured.summary || '尚未填写简介'}</p>
+                  <h2>{featured.character.title}</h2>
+                  <p>{featured.character.summary || '尚未填写简介'}</p>
                 </div>
                 <div className="studio-featured-status">
-                  <StatusPill label="立绘" tone="success" />
-                  <span className="studio-meta">提示词与美术版本可在角色卡片中继续</span>
+                  <CharacterOverviewStages ready={Boolean(featured.activeArtVersion)} />
+                  <span className="studio-meta">更新于 {formatDateTime(featured.character.updatedAt)}</span>
                 </div>
               </div>
-              <Button asChild>
-                <Link to={`/characters/${encodeURIComponent(featured.id)}`}>进入角色卡片</Link>
-              </Button>
+              <div className="studio-featured-action">
+                <Button asChild>
+                  <Link to={`/characters/${encodeURIComponent(featured.character.id)}`}>进入角色卡片</Link>
+                </Button>
+              </div>
             </section>
 
             <div className="studio-section-heading">
@@ -126,33 +240,54 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
               <span className="studio-meta">按最近编辑</span>
             </div>
             <div className="studio-character-grid">
-              {characters.map((character) => (
-                <SurfaceCard asChild key={character.id}>
-                  <Link
-                    to={`/characters/${encodeURIComponent(character.id)}`}
-                    className="studio-character-card"
-                    data-testid="character-card"
-                    data-character-id={character.id}
-                  >
-                    <div className="studio-character-thumb" aria-hidden="true">
-                      <span>{character.title.slice(0, 1)}</span>
-                    </div>
-                    <div className="studio-card-row">
-                      <h2 className="studio-card-title">{character.title}</h2>
-                      <span className="studio-card-arrow" aria-hidden="true">
-                        →
-                      </span>
-                    </div>
-                    <p className="studio-card-copy">{character.summary || '尚未填写简介'}</p>
-                    <div className="studio-stage-mini">
-                      <span data-state="complete">立绘</span>
-                      <span data-state="upcoming">分层</span>
-                      <span data-state="upcoming">绑定</span>
-                    </div>
-                    <p className="studio-meta">更新于 {formatDateTime(character.updatedAt)}</p>
-                  </Link>
-                </SurfaceCard>
-              ))}
+              {items.map((item) => {
+                const status = characterProjectStatus(item)
+                const progress = item.project ? computeProjectProgress(item.project) : null
+                return (
+                  <SurfaceCard asChild key={item.character.id}>
+                    <Link
+                      to={`/characters/${encodeURIComponent(item.character.id)}`}
+                      className="studio-character-card"
+                      data-testid="character-card"
+                      data-character-id={item.character.id}
+                    >
+                      <CharacterOverviewArt
+                        title={item.character.title}
+                        assetId={item.primaryAssetId}
+                        variant="card"
+                      />
+                      <div className="studio-character-card-body">
+                        <div className="studio-card-row">
+                          <h2 className="studio-card-title">{item.character.title}</h2>
+                          <StatusPill label={status.label} tone={status.tone} />
+                        </div>
+                        {progress ? (
+                          <div className="studio-overview-progress">
+                            <div className="studio-progress-caption">
+                              <span>Phase 1</span>
+                              <span>{formatPercent(progress.percent)}</span>
+                            </div>
+                            <div
+                              className="studio-progress-track"
+                              role="progressbar"
+                              aria-label={`${item.character.title} 完成度`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={progress.percent}
+                            >
+                              <span
+                                className="studio-progress-fill"
+                                style={{ width: `${progress.percent}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                        <p className="studio-meta">更新于 {formatDateTime(item.character.updatedAt)}</p>
+                      </div>
+                    </Link>
+                  </SurfaceCard>
+                )
+              })}
             </div>
           </>
         ) : null}

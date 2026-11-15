@@ -3,6 +3,9 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
+import { ApiClient } from './helpers/api'
+import { launchStudio } from './helpers/app'
+import { goldenPromptState, makePng } from './helpers/seed'
 import { studioPage } from './support/windows'
 
 type StudioPage = Awaited<ReturnType<typeof studioPage>>
@@ -164,5 +167,77 @@ test('initializes a character from reference images', async () => {
     await expect(studio.locator('[data-testid="material-tray"]')).toContainText('风格参考')
   } finally {
     await app.close()
+  }
+})
+
+test('restores the character overview from projects and active art versions', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-overview-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const withoutProject = await api.createCharacter('灯', '还没有美术项目的角色。')
+    const awaitingArt = await api.createCharacter('砚', '已经有项目，但还没有立绘。')
+    await api.createProject(awaitingArt.id, '默认造型', '等待首张立绘。')
+    const featured = await api.createCharacter('霜', '银白长发、绿色眼睛，安静但会主动替人遮雨的剑士。')
+    const featuredProject = await api.createProject(featured.id, '默认造型', '已有一张主参考图。')
+
+    const referenceBytes = await makePng(320, 480, '#d8ebe2')
+    const input = await api.uploadPromptInput(featuredProject.id, referenceBytes, {
+      filename: 'overview-reference.png'
+    })
+    const referenceAssetId = input.submission.materials[0]!.assetId
+    const draft = await api.savePromptDraft(
+      featuredProject.id,
+      input.draft.id,
+      goldenPromptState(referenceAssetId),
+      input.draft.rowVersion
+    )
+    const committed = await api.commitPromptDraft(featuredProject.id, draft.id, draft.rowVersion)
+    const artAsset = await api.uploadAsset(
+      await makePng(512, 768, '#b8d7cc'),
+      'image/png',
+      'overview-art.png'
+    )
+    const artwork = await api.createManualArtVersion({
+      projectId: featuredProject.id,
+      assetId: artAsset.id,
+      promptVersionId: committed.version.id,
+      expectedProjectRowVersion: committed.project.rowVersion
+    })
+    expect(artwork.project.activeVersionId).toBe(artwork.artVersion.id)
+
+    await studio.page.reload()
+    await expect(studio.page.locator('[data-testid="studio-ready"]')).toBeVisible()
+    const hero = studio.page.locator('[data-testid="character-overview-hero"]')
+    await expect(hero).toHaveAttribute('data-character-id', featured.id)
+    await expect(hero).toContainText(featured.title)
+
+    const cards = studio.page.locator('[data-testid="character-card"]')
+    await expect(cards).toHaveCount(3)
+    await expect(cards.nth(0)).toHaveAttribute('data-character-id', featured.id)
+    await expect(cards.nth(1)).toHaveAttribute('data-character-id', awaitingArt.id)
+    await expect(cards.nth(2)).toHaveAttribute('data-character-id', withoutProject.id)
+
+    const featuredCard = studio.page.locator(
+      `[data-testid="character-card"][data-character-id="${featured.id}"]`
+    )
+    const featuredImage = featuredCard.locator('img')
+    await expect(featuredImage).toHaveAttribute('data-asset-id', artAsset.id)
+    await expect
+      .poll(() => featuredImage.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0)
+
+    const awaitingCard = studio.page.locator(
+      `[data-testid="character-card"][data-character-id="${awaitingArt.id}"]`
+    )
+    await expect(awaitingCard).toContainText('待出图')
+    const withoutProjectCard = studio.page.locator(
+      `[data-testid="character-card"][data-character-id="${withoutProject.id}"]`
+    )
+    await expect(withoutProjectCard).toContainText('尚未开始')
+    await expect(withoutProjectCard.locator('img')).toHaveCount(0)
+  } finally {
+    await studio.close()
   }
 })

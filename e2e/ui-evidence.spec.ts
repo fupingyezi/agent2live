@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { launchStudio } from './helpers/app'
-import { ApiClient } from './helpers/api'
+import { ApiClient, type ArtProjectDto } from './helpers/api'
 import { goldenPromptState, makePng } from './helpers/seed'
 import { captureVisual, lintStudioTokens, scanAxe, resizeToBaseline, type AxePageResult } from './helpers/axe'
 import { evidenceRelativePath, writeEvidenceJson } from './helpers/evidence'
@@ -15,15 +15,16 @@ const UI_PAGES = [
   'providers'
 ] as const
 
-async function seedWorkbench(
+async function seedArtwork(
   api: ApiClient,
-  characterId: string
+  project: ArtProjectDto,
+  providerId: string,
+  seed: number
 ): Promise<{
   projectId: string
   generationId: string
   activeArtVersionId: string
 }> {
-  const project = await api.createProject(characterId, '视觉基线项目', 'G1-UI 证据数据')
   const input = await api.uploadPromptInput(project.id, await makePng(), {
     filename: 'ui-reference.png'
   })
@@ -35,14 +36,13 @@ async function seedWorkbench(
     input.draft.rowVersion
   )
   const committed = await api.commitPromptDraft(project.id, draft.id, draft.rowVersion)
-  const provider = await api.createMockImageProvider()
   const created = await api.createGeneration({
     projectId: project.id,
     promptVersionId: committed.version.id,
-    providerConnectionId: provider.id,
+    providerConnectionId: providerId,
     count: 2,
     size: '512x896',
-    seed: 20261112
+    seed
   })
   await api.waitForJob(created.jobId)
   const generation = await api.waitForGenerationReady(created.generationId)
@@ -56,6 +56,19 @@ async function seedWorkbench(
   }
 }
 
+async function seedWorkbench(
+  api: ApiClient,
+  characterId: string,
+  providerId: string
+): Promise<{
+  projectId: string
+  generationId: string
+  activeArtVersionId: string
+}> {
+  const project = await api.createProject(characterId, '视觉基线项目', 'G1-UI 证据数据')
+  return seedArtwork(api, project, providerId, 20261112)
+}
+
 test('captures axe, token lint, and 1440x900 visual baselines', async () => {
   test.setTimeout(180_000)
   const studio = await launchStudio('agent2live-ui-evidence-')
@@ -66,15 +79,18 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
       state: 'visible',
       timeout: 30_000
     })
-    await expect(page.locator('[data-testid="sse-status"]')).toContainText('实时已连接', {
+    await expect(page.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
     await resizeToBaseline(studio.app, page)
 
+    const imageProvider = await api.createMockImageProvider()
+    const overviewProjects: ArtProjectDto[] = []
     for (const title of ['昀', '砚', '灯']) {
       const character = await api.createCharacter(title, `${title} 的视觉基线角色简介。`)
-      await api.createProject(character.id, `${title} 的默认造型`, '视觉基线项目')
+      overviewProjects.push(await api.createProject(character.id, `${title} 的默认造型`, '视觉基线项目'))
     }
+    await seedArtwork(api, overviewProjects.at(-1)!, imageProvider.id, 20261111)
     await page.reload()
     await page.locator('[data-testid="studio-ready"]').waitFor({ state: 'visible', timeout: 30_000 })
 
@@ -109,7 +125,7 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     const characterId = decodeURIComponent(segments[1] ?? '')
     expect(characterId).toMatch(/^chr_/)
 
-    const seeded = await seedWorkbench(api, characterId)
+    const seeded = await seedWorkbench(api, characterId, imageProvider.id)
     await page.evaluate((id) => {
       window.location.hash = `#/characters/${encodeURIComponent(id)}`
     }, characterId)
