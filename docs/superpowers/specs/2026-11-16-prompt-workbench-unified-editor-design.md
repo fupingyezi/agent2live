@@ -104,9 +104,24 @@ DeepSeek 读取完整颗粒化 PromptSpec、角色设定和锁定约束，生成
 
 - 关联 PromptVersion 的 `fullPrompt` 和颗粒块；
 - ArtVersion 保存的参考图集合和立绘；
-- 当前版本可执行的操作，例如设为当前、回滚、Fork 和参考图修订。
+- 当前版本可执行的操作，例如还原、Fork 和参考图修订。
 
 当前未保存草稿作为顶部独立草稿节点显示，提交后才进入不可变版本历史。ArtVersion 的来源和 Fork 规则继续遵循现有技术方案。
+
+历史版本只能查看或基于它创建新草稿，不能直接生成。要使用历史版本继续生成，必须显式执行“还原此版本”。
+
+### 还原版本
+
+还原不是把 active 指针移回旧版本，而是创建一个新的不可变 ArtVersion：
+
+- 复制所选 ArtVersion 的立绘、完整参考图集合、主图、排序、角色和权重；
+- 复用所选 ArtVersion 的 `promptVersionId`；
+- 新 ArtVersion 获得新的 `versionNumber`；
+- `originVersionId` 指向被还原的历史版本；
+- active 指针移动到新 ArtVersion；
+- 原历史版本保持不可变。
+
+还原完成后，新 ArtVersion 成为当前节点，右侧继续显示相同 PromptVersion，生成按钮才可用。生成始终从 active ArtVersion 出发，不直接使用被选中的历史节点。
 
 ## 中间画布与 Modal
 
@@ -124,7 +139,7 @@ DeepSeek 读取完整颗粒化 PromptSpec、角色设定和锁定约束，生成
 - 选择生成模型、尺寸、数量和 Seed，并确认生成任务；
 - 接受候选；
 - 手工上传立绘；
-- 激活、切换或回滚版本；
+- 还原历史版本；
 - 选择 Fork 来源和填写分支信息；
 - 处理锁定块同步冲突。
 
@@ -178,6 +193,7 @@ DeepSeek 读取完整颗粒化 PromptSpec、角色设定和锁定约束，生成
 - 修改任意一侧后，保存前能同步另一侧。
 - 锁定块不会被静默修改。
 - 左侧切换版本时，提示词、参考图、立绘和操作一起切换。
+- 历史版本不能直接生成；还原后必须产生新的 ArtVersion 并设为 active。
 - 工作台下方不再存在提示词编辑区或生成设置区。
 - 纯文本创建和带图片创建最终得到相同结构的 PromptSpec。
 - 已有 PromptSpec 在补齐 `fullPrompt` 后仍可正常读取。
