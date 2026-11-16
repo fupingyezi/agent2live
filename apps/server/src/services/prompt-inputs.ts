@@ -226,7 +226,9 @@ export class PromptInputService {
           missingRequirementIds: missingRequirementIds.slice(0, 50)
         })
       }
-      const state = normalizeSpecForSubmission(baseState, submission, brief)
+      const state = normalizeSpecForSubmission(baseState, submission, brief, {
+        adoptGlobalNotes: true
+      })
       const contentHash = specContentHash(state)
 
       if (existing) {

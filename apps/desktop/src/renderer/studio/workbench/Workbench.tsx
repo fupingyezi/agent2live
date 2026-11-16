@@ -479,6 +479,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const requestSelection = (target: { kind: 'art'; version: ArtVersionDto } | { kind: 'draft' }): void => {
     if (selectionBusy) return
     if (dirty) {
+      setSelectionError(null)
       setPendingSelection(target)
       return
     }
@@ -757,6 +758,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         }}
       >
         <p>保存后会先同步完整提示词与颗粒化提示词，再切换到目标版本。</p>
+        {selectionError ? (
+          <div role="alert">
+            <InlineNotice tone="danger">{selectionError}</InlineNotice>
+          </div>
+        ) : null}
         <div className="workbench-switch-dialog-actions">
           <AsyncButton
             type="button"

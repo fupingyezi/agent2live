@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import type { PromptSpecV2 } from '@agent2live/contracts'
 import { createTestApp } from './helpers/app'
 import { multipartPayload, postMetadataOnlyInput, seedProject, specWithAsset } from './helpers/seed-prompt'
 import { png } from './helpers/files'
+import { normalizeLegacyFullPrompt } from '../src/prompt/full-prompt'
 
 async function postInput(
   ctx: Awaited<ReturnType<typeof createTestApp>>,
@@ -58,7 +60,7 @@ describe('prompt drafts and versions', () => {
           revision: number
           rowVersion: number
           inputSubmissionId: string
-          state: { fullPrompt: string }
+          state: PromptSpecV2
         }
         warnings: string[]
       }>()
@@ -69,11 +71,21 @@ describe('prompt drafts and versions', () => {
       expect(inputBody.draft.state.fullPrompt).toContain('保持清透')
 
       const assetId = inputBody.submission.materials[0]!.assetId
+      const savedState = specWithAsset(assetId)
+      const explicitDerivedPrompt = normalizeLegacyFullPrompt({
+        ...savedState,
+        fullPrompt: ''
+      }).fullPrompt
       const saved = await ctx.app.inject({
         method: 'PATCH',
         url: `/api/v1/art-projects/${project.id}/prompt-drafts/${inputBody.draft.id}`,
         headers: { ...ctx.auth, 'if-match': `"${inputBody.draft.rowVersion}"` },
-        payload: { state: specWithAsset(assetId) }
+        payload: {
+          state: {
+            ...savedState,
+            fullPrompt: explicitDerivedPrompt
+          }
+        }
       })
       expect(saved.statusCode).toBe(200)
       const savedDraft = saved.json<{
@@ -84,6 +96,7 @@ describe('prompt drafts and versions', () => {
       }>()
       expect(savedDraft.revision).toBe(2)
       expect(savedDraft.contentHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(savedDraft.state.fullPrompt).toBe(explicitDerivedPrompt)
 
       const commit = await ctx.app.inject({
         method: 'POST',

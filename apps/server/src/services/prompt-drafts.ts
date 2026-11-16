@@ -80,7 +80,8 @@ export function toDraftDto(row: PromptDraftRow): PromptDraftDto {
 export function normalizeSpecForSubmission(
   state: PromptSpecV2,
   submission: PromptInputSubmissionDto,
-  brief: CharacterBriefVersion | null = null
+  brief: CharacterBriefVersion | null = null,
+  options: { adoptGlobalNotes?: boolean } = {}
 ): PromptSpecV2 {
   let next: PromptSpecV2 = {
     ...structuredClone(state),
@@ -102,6 +103,7 @@ export function normalizeSpecForSubmission(
   for (const material of next.materialRefs) material.note = normalizeText(material.note)
   const derivedFullPrompt = normalizeLegacyFullPrompt({ ...state, fullPrompt: '' }).fullPrompt.trim()
   if (
+    options.adoptGlobalNotes === true &&
     submission.globalNotes.trim() &&
     (!next.fullPrompt.trim() || next.fullPrompt.trim() === derivedFullPrompt)
   ) {
