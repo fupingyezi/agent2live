@@ -293,6 +293,39 @@ body,
   border-radius: var(--a2l-radius-xl);
 }
 
+.studio-character-card-shell {
+  position: relative;
+  display: flex;
+}
+
+.studio-character-card-shell > .studio-character-card {
+  flex: 1 1 auto;
+}
+
+.studio-character-card-shell .studio-character-delete {
+  position: absolute;
+  z-index: 2;
+  top: var(--a2l-space-2);
+  right: var(--a2l-space-2);
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  color: var(--a2l-color-text-secondary);
+  background: color-mix(in srgb, var(--a2l-color-surface) 92%, transparent);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: var(--a2l-shadow-popover);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.studio-character-card-shell .studio-character-delete:hover:not(:disabled) {
+  color: var(--a2l-color-danger);
+  background: var(--a2l-color-surface);
+}
+
 .studio-character-thumb {
   display: grid;
   overflow: hidden;

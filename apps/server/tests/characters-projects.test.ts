@@ -270,7 +270,7 @@ describe('characters and projects', () => {
     }
   })
 
-  it('refuses to delete a character that still has live projects', async () => {
+  it('cascades character deletion to all of its live projects', async () => {
     const ctx = await createTestApp()
     try {
       const character = (
@@ -281,23 +281,63 @@ describe('characters and projects', () => {
           payload: { title: 'C' }
         })
       ).json<{ id: string }>()
-      const project = await ctx.app.inject({
-        method: 'POST',
-        url: `/api/v1/characters/${character.id}/art-projects`,
-        headers: ctx.auth,
-        payload: { title: 'P' }
-      })
-      expect(project.statusCode).toBe(201)
+      const projectIds: string[] = []
+      for (const title of ['P1', 'P2']) {
+        const project = await ctx.app.inject({
+          method: 'POST',
+          url: `/api/v1/characters/${character.id}/art-projects`,
+          headers: ctx.auth,
+          payload: { title }
+        })
+        expect(project.statusCode).toBe(201)
+        projectIds.push(project.json<{ id: string }>().id)
+      }
 
       const deleted = await ctx.app.inject({
         method: 'DELETE',
         url: `/api/v1/characters/${character.id}`,
         headers: { ...ctx.auth, 'if-match': '"1"' }
       })
-      expect(deleted.statusCode).toBe(400)
-      expect(deleted.json()).toMatchObject({
-        error: { code: 'REQUEST_INVALID', details: { reason: 'character_has_projects' } }
+      expect(deleted.statusCode).toBe(204)
+
+      const characterAfter = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/characters/${character.id}`,
+        headers: ctx.auth
       })
+      expect(characterAfter.statusCode).toBe(410)
+      expect(characterAfter.json()).toMatchObject({
+        error: { code: 'RESOURCE_DELETED', details: { resource: 'character' } }
+      })
+
+      for (const projectId of projectIds) {
+        const projectAfter = await ctx.app.inject({
+          method: 'GET',
+          url: `/api/v1/art-projects/${projectId}`,
+          headers: ctx.auth
+        })
+        expect(projectAfter.statusCode).toBe(410)
+        expect(projectAfter.json()).toMatchObject({
+          error: { code: 'RESOURCE_DELETED', details: { resource: 'artProject' } }
+        })
+      }
+
+      const projectDeletedEvents = ctx.db
+        .prepare("select scope_id from event_log where type = 'project.deleted' order by seq asc")
+        .all() as Array<{ scope_id: string }>
+      expect(projectDeletedEvents.map((row) => row.scope_id).sort()).toEqual([...projectIds].sort())
+
+      const characterEvents = ctx.db
+        .prepare("select count(*) as count from event_log where type = 'character.deleted'")
+        .get() as { count: number }
+      expect(characterEvents.count).toBe(1)
+
+      const actions = ctx.db
+        .prepare('select action from audit_events order by at asc, rowid asc')
+        .all() as Array<{ action: string }>
+      expect(actions.map((row) => row.action)).toEqual(
+        expect.arrayContaining(['project.deleted', 'project.deleted', 'character.deleted'])
+      )
     } finally {
       await ctx.close()
     }

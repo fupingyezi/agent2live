@@ -1,9 +1,12 @@
 import React, { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
+  IconButton,
+  InlineNotice,
   SearchField,
   StatusPill,
   SurfaceCard,
@@ -11,6 +14,7 @@ import {
 } from '@agent2live/design-system'
 import {
   ApiError,
+  deleteCharacter,
   flattenLineage,
   getCharacterLineage,
   listArtVersions,
@@ -75,8 +79,12 @@ function characterProjectStatus(item: CharacterOverviewItem): {
 
 export const CharactersPage: React.FC<EmptyProps> = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
+  const [pendingDelete, setPendingDelete] = useState<CharacterDto | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const queryText = (searchParams.get('q') ?? '').trim().toLocaleLowerCase()
   const query = useQuery({
     queryKey: queryKeys.characters,
@@ -144,6 +152,35 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
     void query.refetch()
     for (const lineageQuery of lineageQueries) void lineageQuery.refetch()
     for (const versionQuery of versionQueries) void versionQuery.refetch()
+  }
+
+  const openDelete = (character: CharacterDto): void => {
+    setPendingDelete(character)
+    setDeleteError(null)
+  }
+
+  const closeDelete = (): void => {
+    if (deleteBusy) return
+    setPendingDelete(null)
+  }
+
+  const confirmDelete = (): void => {
+    if (!pendingDelete) return
+    const characterId = pendingDelete.id
+    setDeleteBusy(true)
+    setDeleteError(null)
+    deleteCharacter(characterId, pendingDelete.rowVersion)
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.character(characterId) })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.lineages })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(characterId) })
+        setPendingDelete(null)
+      })
+      .catch((reason) => {
+        setDeleteError(reason instanceof ApiError ? reason.message : String(reason))
+      })
+      .finally(() => setDeleteBusy(false))
   }
 
   return (
@@ -245,63 +282,98 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
                 const status = characterProjectStatus(item)
                 const progress = item.project ? computeProjectProgress(item.project) : null
                 return (
-                  <SurfaceCard asChild key={item.character.id}>
-                    <Link
-                      to={`/characters/${encodeURIComponent(item.character.id)}`}
-                      className="studio-character-card"
-                      data-testid="character-card"
-                      data-character-id={item.character.id}
-                    >
-                      <CharacterOverviewArt
-                        title={item.character.title}
-                        assetId={item.primaryAssetId}
-                        variant="card"
-                      />
-                      <div className="studio-character-card-body">
-                        {item.activeArtVersion ? (
-                          <>
-                            <div className="studio-card-row">
-                              <h2 className="studio-card-title">{item.character.title}</h2>
-                              <StatusPill label={status.label} tone={status.tone} />
-                            </div>
-                            {progress ? (
-                              <div className="studio-overview-progress">
-                                <div className="studio-progress-caption">
-                                  <span>Phase 1</span>
-                                  <span>{formatPercent(progress.percent)}</span>
-                                </div>
-                                <div
-                                  className="studio-progress-track"
-                                  role="progressbar"
-                                  aria-label={`${item.character.title} 完成度`}
-                                  aria-valuemin={0}
-                                  aria-valuemax={100}
-                                  aria-valuenow={progress.percent}
-                                >
-                                  <span
-                                    className="studio-progress-fill"
-                                    style={{ width: `${progress.percent}%` }}
-                                  />
-                                </div>
+                  <div className="studio-character-card-shell" key={item.character.id}>
+                    <SurfaceCard asChild>
+                      <Link
+                        to={`/characters/${encodeURIComponent(item.character.id)}`}
+                        className="studio-character-card"
+                        data-testid="character-card"
+                        data-character-id={item.character.id}
+                      >
+                        <CharacterOverviewArt
+                          title={item.character.title}
+                          assetId={item.primaryAssetId}
+                          variant="card"
+                        />
+                        <div className="studio-character-card-body">
+                          {item.activeArtVersion ? (
+                            <>
+                              <div className="studio-card-row">
+                                <h2 className="studio-card-title">{item.character.title}</h2>
+                                <StatusPill label={status.label} tone={status.tone} />
                               </div>
-                            ) : null}
-                            <p className="studio-meta">更新于 {formatDateTime(item.character.updatedAt)}</p>
-                          </>
-                        ) : (
-                          <div className="studio-character-empty-copy">
-                            <h2>
-                              {item.character.title} · {item.project ? '还没有立绘' : '尚未开始'}
-                            </h2>
-                            <p>「这里还空着呀。」写一句话试试。</p>
-                            <span>从一句话开始，不用先准备素材</span>
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                  </SurfaceCard>
+                              {progress ? (
+                                <div className="studio-overview-progress">
+                                  <div className="studio-progress-caption">
+                                    <span>Phase 1</span>
+                                    <span>{formatPercent(progress.percent)}</span>
+                                  </div>
+                                  <div
+                                    className="studio-progress-track"
+                                    role="progressbar"
+                                    aria-label={`${item.character.title} 完成度`}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-valuenow={progress.percent}
+                                  >
+                                    <span
+                                      className="studio-progress-fill"
+                                      style={{ width: `${progress.percent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+                              <p className="studio-meta">更新于 {formatDateTime(item.character.updatedAt)}</p>
+                            </>
+                          ) : (
+                            <div className="studio-character-empty-copy">
+                              <h2>
+                                {item.character.title} · {item.project ? '还没有立绘' : '尚未开始'}
+                              </h2>
+                              <p>「这里还空着呀。」写一句话试试。</p>
+                              <span>从一句话开始，不用先准备素材</span>
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+                    </SurfaceCard>
+                    <IconButton
+                      type="button"
+                      className="studio-character-delete"
+                      label={`删除角色 ${item.character.title}`}
+                      title={`删除角色「${item.character.title}」`}
+                      onClick={() => openDelete(item.character)}
+                    >
+                      ×
+                    </IconButton>
+                  </div>
                 )
               })}
             </div>
+
+            <ConfirmDialog
+              open={pendingDelete !== null}
+              title="删除角色？"
+              destructive
+              confirmLabel="删除"
+              busy={deleteBusy}
+              onCancel={closeDelete}
+              onConfirm={confirmDelete}
+            >
+              {pendingDelete ? (
+                <>
+                  <p>
+                    「{pendingDelete.title}」及其全部美术项目、提示词与生成记录将一并删除，此操作不能从 UI
+                    撤销。
+                  </p>
+                  {deleteError ? (
+                    <div role="alert">
+                      <InlineNotice tone="danger">{deleteError}</InlineNotice>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </ConfirmDialog>
           </>
         ) : null}
       </div>

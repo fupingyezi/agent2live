@@ -75,6 +75,13 @@ export function createCharacter(
   })
 }
 
+export function deleteCharacter(characterId: string, rowVersion: number): Promise<void> {
+  return api.request<void>(`/api/v1/characters/${encodeURIComponent(characterId)}`, {
+    method: 'DELETE',
+    ifMatch: rowVersion
+  })
+}
+
 export async function getCharacterLineage(
   characterId: string,
   signal?: AbortSignal

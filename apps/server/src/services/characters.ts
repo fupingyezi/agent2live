@@ -139,12 +139,6 @@ export class CharacterService {
   softDelete(id: string, expectedRowVersion: number, ids: RequestIds): void {
     withEvents(this.deps.db, this.deps.events, (events) => {
       this.get(id)
-      const activeProjects = this.deps.db
-        .prepare('select id from art_projects where character_id = ? and deleted_at is null')
-        .all(id) as Array<{ id: string }>
-      if (activeProjects.length > 0) {
-        throw new AppError('REQUEST_INVALID', { reason: 'character_has_projects' })
-      }
       const now = this.deps.clock.now()
       const updated = this.deps.db
         .prepare(
@@ -153,6 +147,35 @@ export class CharacterService {
         )
         .run(now, now, id, expectedRowVersion)
       if (updated.changes !== 1) throw new AppError('ROW_VERSION_CONFLICT', { expected: expectedRowVersion })
+      const projects = this.deps.db
+        .prepare('select id from art_projects where character_id = ? and deleted_at is null order by id asc')
+        .all(id) as Array<{ id: string }>
+      for (const project of projects) {
+        this.deps.db
+          .prepare(
+            `update art_projects set deleted_at = ?, updated_at = ?, row_version = row_version + 1
+             where id = ? and deleted_at is null`
+          )
+          .run(now, now, project.id)
+        this.deps.audit.append({
+          actor: { kind: 'local-user' },
+          action: 'project.deleted',
+          targetType: 'art_project',
+          targetId: project.id,
+          outcome: 'success',
+          requestId: ids.requestId,
+          traceId: ids.traceId,
+          metadata: { cascadedFromCharacterId: id }
+        })
+        events.append({
+          type: 'project.deleted',
+          scopeKind: 'project',
+          scopeId: project.id,
+          payload: { projectId: project.id },
+          requestId: ids.requestId,
+          traceId: ids.traceId
+        })
+      }
       this.deps.audit.append({
         actor: { kind: 'local-user' },
         action: 'character.deleted',

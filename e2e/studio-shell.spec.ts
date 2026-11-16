@@ -340,6 +340,30 @@ test('restores the character overview from projects and active art versions', as
     await expect
       .poll(() => withoutProjectEmptyArt.evaluate((image) => (image as HTMLImageElement).naturalWidth))
       .toBeGreaterThan(0)
+
+    for (const character of [withoutProject, featured, awaitingArt]) {
+      await expect(studio.page.getByRole('button', { name: `删除角色 ${character.title}` })).toBeEnabled()
+    }
+
+    await studio.page.getByRole('button', { name: `删除角色 ${featured.title}` }).click()
+    const deleteDialog = studio.page.getByRole('dialog', { name: '删除角色？' })
+    await expect(deleteDialog).toBeVisible()
+    await expect(deleteDialog).toContainText(`「${featured.title}」`)
+    await expect(deleteDialog).toContainText('美术项目')
+    await deleteDialog.getByRole('button', { name: '删除', exact: true }).click()
+    await expect(cards).toHaveCount(2)
+    await expect(
+      studio.page.locator(`[data-testid="character-card"][data-character-id="${featured.id}"]`)
+    ).toHaveCount(0)
+    await expect(hero).toHaveAttribute('data-character-id', awaitingArt.id)
+    await expect(api.getProject(featuredProject.id)).rejects.toMatchObject({
+      status: 410,
+      problem: { error: { code: 'RESOURCE_DELETED', details: { resource: 'artProject' } } }
+    })
+    await expect(api.getCharacter(featured.id)).rejects.toMatchObject({
+      status: 410,
+      problem: { error: { code: 'RESOURCE_DELETED', details: { resource: 'character' } } }
+    })
   } finally {
     await studio.close()
   }
