@@ -698,6 +698,35 @@ export const ERROR_REGISTRY = {
       })
       .strict()
   ),
+  PROMPT_SYNC_INVALID_OUTPUT: def(
+    'PROMPT_SYNC_INVALID_OUTPUT',
+    502,
+    'dependency',
+    true,
+    'warning',
+    'errors.promptSyncInvalidOutput',
+    'retry',
+    '提示词同步结果无法解析',
+    '可以重试同步',
+    z.object({ reason: z.string().max(100) }).strict()
+  ),
+  PROMPT_SYNC_STALE: def(
+    'PROMPT_SYNC_STALE',
+    409,
+    'conflict',
+    false,
+    'warning',
+    'errors.promptSyncStale',
+    'refresh_resource',
+    '提示词同步基线已变化',
+    '请刷新草稿后重新同步',
+    z
+      .object({
+        baseDraftRowVersion: z.number().int().positive(),
+        currentDraftRowVersion: z.number().int().positive().nullable()
+      })
+      .strict()
+  ),
   PROMPT_REVERSE_RESOLVED: def(
     'PROMPT_REVERSE_RESOLVED',
     409,

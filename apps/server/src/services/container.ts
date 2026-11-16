@@ -21,6 +21,7 @@ import { PromptDraftService } from './prompt-drafts'
 import { PromptInputService } from './prompt-inputs'
 import { PromptReverseService } from './prompt-reverse'
 import { PromptSuggestionService } from './prompt-suggestions'
+import { PromptSyncService } from './prompt-sync'
 import { ArtVersionService } from './art-versions'
 import { GenerationService } from './generations'
 import { ForkService } from './forks'
@@ -28,6 +29,7 @@ import { BackupService } from './backups'
 import { JobEngine } from '../jobs/engine'
 import { createPromptReverseJob, PROMPT_REVERSE_JOB_TYPE } from '../jobs/prompt-reverse'
 import { createPromptSuggestionJob, PROMPT_SUGGESTION_JOB_TYPE } from '../jobs/prompt-suggestion'
+import { createPromptSyncJob, PROMPT_SYNC_JOB_TYPE } from '../jobs/prompt-sync'
 import { createImageGenerationJob, IMAGE_GENERATION_JOB_TYPE } from '../jobs/image-generation'
 import { createCharacterBackupJob, BACKUP_JOB_TYPE } from '../jobs/character-backup'
 import { withEvents } from './events-buffer'
@@ -63,6 +65,7 @@ export interface Services {
   inputs: PromptInputService
   reverse: PromptReverseService
   suggestions: PromptSuggestionService
+  promptSync: PromptSyncService
   artVersions: ArtVersionService
   generations: GenerationService
   forks: ForkService
@@ -139,6 +142,18 @@ export function createServices(deps: ServiceDeps): Services {
     audit,
     events
   })
+  const promptSync = new PromptSyncService({
+    db,
+    clock,
+    projects,
+    drafts,
+    submissions,
+    briefs,
+    connections: providerConnections,
+    registry: providerRegistry,
+    invocations: providerInvocations,
+    audit
+  })
   const artVersions = new ArtVersionService({
     db,
     clock,
@@ -185,6 +200,7 @@ export function createServices(deps: ServiceDeps): Services {
   const handlers = new Map<string, JobDefinition>(deps.jobHandlers ?? [])
   handlers.set(PROMPT_REVERSE_JOB_TYPE, createPromptReverseJob(reverse))
   handlers.set(PROMPT_SUGGESTION_JOB_TYPE, createPromptSuggestionJob(suggestions))
+  handlers.set(PROMPT_SYNC_JOB_TYPE, createPromptSyncJob(promptSync))
   handlers.set(IMAGE_GENERATION_JOB_TYPE, createImageGenerationJob(generations))
   handlers.set(BACKUP_JOB_TYPE, createCharacterBackupJob(backups))
   const jobs = new JobEngine({
@@ -215,6 +231,7 @@ export function createServices(deps: ServiceDeps): Services {
     inputs,
     reverse,
     suggestions,
+    promptSync,
     artVersions,
     generations,
     forks,

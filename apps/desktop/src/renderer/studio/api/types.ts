@@ -23,6 +23,8 @@ import type {
   PromptInputSubmissionDto as ContractPromptInputSubmissionDto,
   PromptReverseResultDto as ContractPromptReverseResultDto,
   PromptSuggestionDto as ContractPromptSuggestionDto,
+  PromptSyncInput as ContractPromptSyncInput,
+  PromptSyncResultDto as ContractPromptSyncResultDto,
   PromptVersionDto as ContractPromptVersionDto,
   PromptVersionSummary as ContractPromptVersionSummary,
   PromptWorkspaceDto as ContractPromptWorkspaceDto,
@@ -106,6 +108,8 @@ export type PromptWorkspaceDto = WithIsoTimestamps<ContractPromptWorkspaceDto>
 export type SubmitPromptInputResult = WithIsoTimestamps<ContractPromptInputResult>
 export type PromptReverseResultDto = WithIsoTimestamps<ContractPromptReverseResultDto>
 export type PromptSuggestionDto = WithIsoTimestamps<ContractPromptSuggestionDto>
+export type PromptSyncInput = ContractPromptSyncInput
+export type PromptSyncResultDto = ContractPromptSyncResultDto
 export type ArtVersionReferenceDto = WithIsoTimestamps<ContractArtVersionReferenceDto>
 export type ArtVersionDto = WithIsoTimestamps<ContractArtVersionDto>
 export type ArtVersionListDto = WithIsoTimestamps<ContractArtVersionListDto>

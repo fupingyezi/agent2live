@@ -31,6 +31,7 @@ import type {
   PromptReverseResultDto,
   PromptSuggestionDto,
   PromptSpecV2,
+  PromptSyncInput,
   PromptVersionDto,
   PromptVersionSummaryDto,
   PromptWorkspaceDto,
@@ -229,6 +230,19 @@ export function requestPromptReverse(
     body: { providerConnectionId },
     idempotencyKey
   })
+}
+
+export function requestPromptSync(
+  projectId: string,
+  draftId: string,
+  input: PromptSyncInput,
+  ifMatch: number,
+  idempotencyKey = newIdempotencyKey()
+): Promise<{ jobId: string }> {
+  return api.request<{ jobId: string }>(
+    `/api/v1/art-projects/${encodeURIComponent(projectId)}/prompt-drafts/${encodeURIComponent(draftId)}/sync`,
+    { method: 'POST', body: input, ifMatch, idempotencyKey }
+  )
 }
 
 export async function listPromptReverseResults(

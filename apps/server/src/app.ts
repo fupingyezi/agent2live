@@ -22,6 +22,7 @@ import { registerProjectRoutes } from './routes/projects'
 import { registerPromptRoutes } from './routes/prompt'
 import { registerPromptReverseRoutes } from './routes/prompt-reverse'
 import { registerPromptSuggestionRoutes } from './routes/prompt-suggestions'
+import { registerPromptSyncRoutes } from './routes/prompt-sync'
 import { registerProviderRoutes } from './routes/providers'
 import type { Services } from './services/container'
 
@@ -163,6 +164,10 @@ export function buildApp(options: AppOptions): FastifyInstance {
       })
       registerPromptSuggestionRoutes(scope, {
         promptSuggestions: services.suggestions,
+        jobs: services.jobs
+      })
+      registerPromptSyncRoutes(scope, {
+        promptSync: services.promptSync,
         jobs: services.jobs
       })
       registerGenerationRoutes(scope, {
