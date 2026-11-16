@@ -53,13 +53,20 @@ describe('prompt drafts and versions', () => {
       expect(input.statusCode).toBe(201)
       const inputBody = input.json<{
         submission: { id: string; revision: number; materials: Array<{ assetId: string }> }
-        draft: { id: string; revision: number; rowVersion: number; inputSubmissionId: string }
+        draft: {
+          id: string
+          revision: number
+          rowVersion: number
+          inputSubmissionId: string
+          state: { fullPrompt: string }
+        }
         warnings: string[]
       }>()
       expect(inputBody.submission.revision).toBe(1)
       expect(inputBody.submission.materials).toHaveLength(1)
       expect(inputBody.draft.inputSubmissionId).toBe(inputBody.submission.id)
       expect(inputBody.draft.revision).toBe(1)
+      expect(inputBody.draft.state.fullPrompt).toContain('保持清透')
 
       const assetId = inputBody.submission.materials[0]!.assetId
       const saved = await ctx.app.inject({
@@ -77,7 +84,6 @@ describe('prompt drafts and versions', () => {
       }>()
       expect(savedDraft.revision).toBe(2)
       expect(savedDraft.contentHash).toMatch(/^[0-9a-f]{64}$/)
-      expect(savedDraft.state.fullPrompt).toContain('保持清透')
 
       const commit = await ctx.app.inject({
         method: 'POST',
