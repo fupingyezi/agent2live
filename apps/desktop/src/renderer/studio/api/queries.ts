@@ -137,12 +137,18 @@ export function getPromptWorkspace(projectId: string, signal?: AbortSignal): Pro
 
 export function createPromptDraft(
   projectId: string,
-  from: 'active_version' | 'empty',
+  from:
+    | 'active_version'
+    | 'empty'
+    | {
+        from: 'version'
+        versionId: string
+      },
   idempotencyKey = newIdempotencyKey()
 ): Promise<PromptDraftDto> {
   return api.request<PromptDraftDto>(`/api/v1/art-projects/${encodeURIComponent(projectId)}/prompt-drafts`, {
     method: 'POST',
-    body: { from },
+    body: typeof from === 'string' ? { from } : from,
     idempotencyKey
   })
 }

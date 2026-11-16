@@ -376,11 +376,16 @@ export interface CharacterBackupDto {
   errorCode: string | null
 }
 
-export const createDraftInputSchema = z
-  .object({
-    from: z.enum(['active_version', 'empty']).default('active_version')
-  })
-  .strict()
+export const createDraftInputSchema = z.discriminatedUnion('from', [
+  z.object({ from: z.literal('active_version') }).strict(),
+  z.object({ from: z.literal('empty') }).strict(),
+  z
+    .object({
+      from: z.literal('version'),
+      versionId: z.string().min(1).max(64)
+    })
+    .strict()
+])
 
 export const commitPromptDraftInputSchema = z
   .object({

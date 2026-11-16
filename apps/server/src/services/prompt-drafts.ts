@@ -144,6 +144,11 @@ export class PromptDraftService {
         state = version.state
         baseVersionId = version.id
         inputSubmissionId = version.inputSubmissionId
+      } else if (input.from === 'version') {
+        const version = this.deps.versions.get(projectId, input.versionId)
+        state = version.state
+        baseVersionId = version.id
+        inputSubmissionId = version.inputSubmissionId
       }
       const now = this.deps.clock.now()
       const id = newId('promptDraft')

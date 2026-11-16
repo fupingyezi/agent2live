@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { PromptSpecV2 } from '@agent2live/contracts'
+import type { PromptEditSource } from '@agent2live/contracts'
 import {
   makePromptBlock,
   makeRequirement,
@@ -24,12 +25,14 @@ interface WorkbenchStore extends WorkbenchSnapshot {
   selectedVersionId: string | null
   selectedSuggestionId: string | null
   selectedReverseId: string | null
+  lastEdited: PromptEditSource | null
   hydrate(snapshot: WorkbenchSnapshot): void
   reset(): void
   setPanel(panel: WorkbenchPanel): void
   selectVersion(versionId: string | null): void
   selectSuggestion(suggestionId: string | null): void
   selectReverse(reverseId: string | null): void
+  updateFullPrompt(fullPrompt: string): void
   updateBlock(blockId: string, patch: { label?: string; text?: string; category?: string }): void
   updateBlockWeight(blockId: string, weight: number): void
   updateBlockReferences(blockId: string, patch: { requirementRefs?: string[]; materialRefs?: string[] }): void
@@ -73,6 +76,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
   selectedVersionId: null,
   selectedSuggestionId: null,
   selectedReverseId: null,
+  lastEdited: null,
 
   hydrate(snapshot) {
     const current = get()
@@ -84,7 +88,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       rowVersion: snapshot.rowVersion,
       draft: normalized ? structuredClone(normalized) : null,
       savedDraft: normalized,
-      dirty: false
+      dirty: false,
+      lastEdited: null
     })
   },
 
@@ -96,7 +101,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       panel: 'versions',
       selectedVersionId: null,
       selectedSuggestionId: null,
-      selectedReverseId: null
+      selectedReverseId: null,
+      lastEdited: null
     })
   },
 
@@ -113,6 +119,16 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     set({ selectedReverseId })
   },
 
+  updateFullPrompt(fullPrompt) {
+    const current = get()
+    const spec = requireDraft(current)
+    set({
+      draft: { ...spec, fullPrompt },
+      dirty: true,
+      lastEdited: 'full'
+    })
+  },
+
   updateBlock(blockId, patch) {
     const current = get()
     const spec = requireDraft(current)
@@ -126,7 +142,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     if (patch.category !== undefined) {
       target.category = patch.category as typeof target.category
     }
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   updateBlockWeight(blockId, weight) {
@@ -137,7 +153,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     if (spec.lockAll || block.locked) throw new Error('block is locked')
     const next = structuredClone(spec)
     findBlock(next, blockId)!.weight = weight
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   updateBlockReferences(blockId, patch) {
@@ -154,7 +170,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     if (patch.materialRefs !== undefined) {
       target.materialRefs = [...new Set(patch.materialRefs)]
     }
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   toggleBlockLock(blockId) {
@@ -166,13 +182,13 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     const next = structuredClone(spec)
     const target = findBlock(next, blockId)!
     target.locked = !target.locked
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   removeBlock(blockId) {
     const current = get()
     const next = removeBlockHelper(requireDraft(current), blockId)
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   addBlock(negative) {
@@ -183,14 +199,14 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     const block = makePromptBlock(negative)
     if (negative) next.negativeBlocks.push(block)
     else next.blocks.push(block)
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   toggleLockAll() {
     const spec = requireDraft(get())
     const next = structuredClone(spec)
     next.lockAll = !next.lockAll
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   updateRequirement(requirementId, patch) {
@@ -203,7 +219,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     const target = next.sourceRequirements.find((item) => item.id === requirementId)!
     if (patch.text !== undefined) target.text = patch.text
     if (patch.strength !== undefined) target.strength = patch.strength
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   addRequirement(strength) {
@@ -211,12 +227,12 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     if (spec.lockAll) throw new Error('all prompt blocks are locked')
     const next = structuredClone(spec)
     next.sourceRequirements.push(makeRequirement(strength))
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   removeRequirement(requirementId) {
     const next = removeRequirementHelper(requireDraft(get()), requirementId)
-    set({ draft: next, dirty: true })
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
 
   markSaved(draft, rowVersion, revision) {
@@ -225,6 +241,7 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       draft: structuredClone(normalized),
       savedDraft: normalized,
       dirty: false,
+      lastEdited: null,
       rowVersion,
       revision
     })
@@ -235,7 +252,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     if (!current.dirty) return
     set({
       draft: current.savedDraft ? structuredClone(current.savedDraft) : null,
-      dirty: false
+      dirty: false,
+      lastEdited: null
     })
   },
 
@@ -244,7 +262,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     set({
       draft: structuredClone(normalized),
       savedDraft: normalized,
-      dirty: false
+      dirty: false,
+      lastEdited: null
     })
   },
 
@@ -256,7 +275,8 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       rowVersion: snapshot.rowVersion,
       draft: normalized ? structuredClone(normalized) : null,
       savedDraft: normalized,
-      dirty: false
+      dirty: false,
+      lastEdited: null
     })
   }
 }))

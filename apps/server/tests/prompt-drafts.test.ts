@@ -194,6 +194,70 @@ describe('prompt drafts and versions', () => {
     }
   })
 
+  it('creates a draft from a selected historical prompt version', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await seedProject(ctx)
+      const input = await postInput(ctx, project.id)
+      const body = input.json<{
+        draft: { id: string; rowVersion: number }
+        submission: { id: string; materials: Array<{ assetId: string }> }
+      }>()
+      const firstSave = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${body.draft.rowVersion}"` },
+        payload: { state: specWithAsset(body.submission.materials[0]!.assetId) }
+      })
+      const firstSaved = firstSave.json<{ rowVersion: number }>()
+      const firstCommit = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${body.draft.id}/commit`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${firstSaved.rowVersion}"`,
+          'idempotency-key': 'commit-history-0001'
+        },
+        payload: {}
+      })
+      const firstVersion = firstCommit.json<{
+        version: { id: string; state: { fullPrompt: string } }
+      }>().version
+
+      const second = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts`,
+        headers: { ...ctx.auth, 'idempotency-key': 'draft-history-0001' },
+        payload: { from: 'active_version' }
+      })
+      await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${second.json<{ id: string }>().id}/commit`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${second.json<{ rowVersion: number }>().rowVersion}"`,
+          'idempotency-key': 'commit-history-0002'
+        },
+        payload: {}
+      })
+
+      const historical = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts`,
+        headers: { ...ctx.auth, 'idempotency-key': 'draft-history-0002' },
+        payload: { from: 'version', versionId: firstVersion.id }
+      })
+      expect(historical.statusCode).toBe(201)
+      expect(historical.json()).toMatchObject({
+        baseVersionId: firstVersion.id,
+        inputSubmissionId: body.submission.id,
+        state: { fullPrompt: firstVersion.state.fullPrompt }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('requires input and blocks uncovered mandatory requirements unless acknowledged', async () => {
     const ctx = await createTestApp()
     try {

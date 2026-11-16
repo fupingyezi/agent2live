@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { ApiClient, uniqueKey } from './helpers/api'
 import { launchStudio } from './helpers/app'
-import { makePng } from './helpers/seed'
+import { goldenPromptState, makePng } from './helpers/seed'
 import { studioPage } from './support/windows'
 
 function hashSearch(url: string): URLSearchParams {
@@ -109,7 +109,8 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+    const promptEditor = studio.getByTestId('unified-prompt-inspector')
+    await expect(promptEditor.getByTestId('prompt-block-list')).toBeVisible({
       timeout: 20_000
     })
 
@@ -118,14 +119,14 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
     await inputPanel.getByRole('button', { name: /(提交|更新)素材与要求/ }).click()
 
-    await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+    await expect(promptEditor.getByTestId('prompt-block-list')).toBeVisible({
       timeout: 20_000
     })
     await expect(studio.locator('[data-testid="no-active-draft"]')).toHaveCount(0)
     await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
 
-    await studio.getByRole('button', { name: '+ 添加块', exact: true }).click()
-    const block = studio.locator('[data-testid="prompt-block"]').last()
+    await promptEditor.getByRole('button', { name: '+ 添加块', exact: true }).click()
+    const block = promptEditor.locator('[data-testid="prompt-block"]').last()
     await expect(block).toBeVisible()
     await block.getByLabel('块名称').fill('面部')
     await block.getByLabel('块内容').fill('黑色短发，冷静的灰色眼睛，干净的面部轮廓')
@@ -229,6 +230,173 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     ).toHaveCount(2)
   } finally {
     await app.close()
+  }
+})
+
+test('switches version and edits full prompt', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-workbench-versions-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    await api.json('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': uniqueKey('workbench-deepseek') },
+      body: {
+        label: 'Workbench DeepSeek',
+        kind: 'chat',
+        adapter: 'mock',
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-chat',
+        enabled: true,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+        }
+      }
+    })
+    const character = await api.createCharacter('溯', '在旧剧院整理台词的女演员。')
+    const project = await api.createProject(character.id, '默认造型', '两版提示词与立绘。')
+    const input = await api.uploadPromptInput(project.id, await makePng(), {
+      filename: 'version-one.png'
+    })
+    const assetId = input.submission.materials[0]!.assetId
+    const firstState = {
+      ...goldenPromptState(assetId),
+      fullPrompt: 'v1 完整提示词：银白长发少女站在旧剧院舞台中央，清爽赛璐璐画风。'
+    }
+    const firstDraft = await api.savePromptDraft(
+      project.id,
+      input.draft.id,
+      firstState,
+      input.draft.rowVersion
+    )
+    const firstCommit = await api.commitPromptDraft(project.id, firstDraft.id, firstDraft.rowVersion)
+    const firstArtAsset = await api.uploadAsset(await makePng(512, 768, '#b8d7cc'), 'image/png', 'art-v1.png')
+    const firstArt = await api.createManualArtVersion({
+      projectId: project.id,
+      assetId: firstArtAsset.id,
+      promptVersionId: firstCommit.version.id,
+      expectedProjectRowVersion: firstCommit.project.rowVersion
+    })
+
+    const secondDraft = await api.json<{ id: string; rowVersion: number; state: Record<string, unknown> }>(
+      'POST',
+      `/api/v1/art-projects/${project.id}/prompt-drafts`,
+      {
+        headers: { 'idempotency-key': uniqueKey('second-draft') },
+        body: { from: 'active_version' }
+      }
+    )
+    const secondState = {
+      ...secondDraft.body.state,
+      fullPrompt: 'v2 完整提示词：银白长发少女站在旧剧院舞台中央，冷色聚光灯，清爽赛璐璐画风。'
+    }
+    const savedSecond = await api.savePromptDraft(
+      project.id,
+      secondDraft.body.id,
+      secondState,
+      secondDraft.body.rowVersion
+    )
+    const secondCommit = await api.commitPromptDraft(project.id, savedSecond.id, savedSecond.rowVersion)
+    const secondArtAsset = await api.uploadAsset(
+      await makePng(512, 768, '#8fb8d8'),
+      'image/png',
+      'art-v2.png'
+    )
+    const secondArt = await api.createManualArtVersion({
+      projectId: project.id,
+      assetId: secondArtAsset.id,
+      promptVersionId: secondCommit.version.id,
+      expectedProjectRowVersion: secondCommit.project.rowVersion
+    })
+    expect(firstArt.artVersion.id).not.toBe(secondArt.artVersion.id)
+
+    let syncRequest: {
+      source: 'full' | 'blocks'
+      state: { fullPrompt: string }
+    } | null = null
+    await studio.page.route('**/api/v1/art-projects/*/prompt-drafts/*/sync', async (route) => {
+      syncRequest = route.request().postDataJSON() as typeof syncRequest
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ jobId: 'job_workbench_sync' })
+      })
+    })
+    await studio.page.route('**/api/v1/jobs/job_workbench_sync', async (route) => {
+      expect(syncRequest).not.toBeNull()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'job_workbench_sync',
+          type: 'prompt.sync',
+          status: 'succeeded',
+          attempts: 1,
+          maxAttempts: 2,
+          progress: 100,
+          errorCode: null,
+          result: {
+            state: syncRequest!.state,
+            conflicts: [],
+            warnings: []
+          },
+          cancelRequested: false,
+          createdAt: '2026-11-16T00:00:00.000Z',
+          updatedAt: '2026-11-16T00:00:00.000Z'
+        })
+      })
+    })
+
+    await studio.page.evaluate(
+      ({ characterId, projectId }) => {
+        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
+      },
+      { characterId: character.id, projectId: project.id }
+    )
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const firstNode = studio.page.locator(
+      `[data-testid="workbench-version-node"][data-version-id="${firstArt.artVersion.id}"]`
+    )
+    const secondNode = studio.page.locator(
+      `[data-testid="workbench-version-node"][data-version-id="${secondArt.artVersion.id}"]`
+    )
+    await expect(firstNode).toBeVisible()
+    await expect(secondNode).toBeVisible()
+    await firstNode.click()
+
+    const fullPrompt = studio.page.getByLabel('完整提示词')
+    await expect(fullPrompt).toHaveValue(firstState.fullPrompt)
+    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
+    const blockList = inspector.locator('[data-testid="prompt-block-list"]')
+    await expect(blockList).toBeVisible()
+    const generate = inspector.getByRole('button', { name: '生成立绘', exact: true })
+    await expect(generate).toBeDisabled()
+    await expect(studio.page.getByText('历史版本', { exact: true })).toBeVisible()
+
+    await fullPrompt.fill('本地改写的完整提示词。')
+    await expect(inspector).toContainText('有未保存修改')
+    await expect(generate).toBeDisabled()
+
+    await secondNode.click()
+    const switchDialog = studio.page.getByRole('dialog', { name: '切换版本' })
+    await expect(switchDialog).toBeVisible()
+    await switchDialog.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(fullPrompt).toHaveValue('本地改写的完整提示词。')
+
+    await inspector.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect.poll(() => syncRequest?.source).toBe('full')
+    await expect(inspector).toContainText('草稿已保存')
+
+    await secondNode.click()
+    await expect(studio.page.getByRole('dialog', { name: '切换版本' })).toHaveCount(0)
+    await expect(fullPrompt).toHaveValue(secondState.fullPrompt)
+    await expect(generate).toBeEnabled()
+  } finally {
+    await studio.close()
   }
 })
 
@@ -349,6 +517,11 @@ test('keeps creation successful and explains when no vision provider is availabl
     await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
     await studio.page.getByLabel('角色名称').fill('雾')
     await studio.page.getByLabel('角色简介').fill('值守旧灯塔的沉静记录员。')
+    await studio.page.getByLabel('上传参考图').setInputFiles({
+      name: 'mist.png',
+      mimeType: 'image/png',
+      buffer: await makePng(240, 320, '#9ec9bb')
+    })
     await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
 
     await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({

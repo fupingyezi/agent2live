@@ -58,6 +58,14 @@ export type { SuggestionDiffProps } from './SuggestionDiff'
 export { VersionGraph } from './VersionGraph'
 export type { VersionGraphProps } from './VersionGraph'
 
+/** 左侧联动显示当前草稿与不可变美术版本。 */
+export { WorkbenchVersionRail } from './WorkbenchVersionRail'
+export type { WorkbenchVersionRailProps } from './WorkbenchVersionRail'
+
+/** 在角色描述栏统一编辑完整与颗粒化提示词。 */
+export { UnifiedPromptInspector } from './UnifiedPromptInspector'
+export type { UnifiedPromptInspectorProps } from './UnifiedPromptInspector'
+
 /** 管理立绘版本、手动上传、参考图和激活状态。 */
 export { ArtVersionPanel } from './ArtVersionPanel'
 export type { ArtVersionPanelProps } from './ArtVersionPanel'

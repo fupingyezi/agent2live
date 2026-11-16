@@ -116,4 +116,17 @@ describe('workbench store', () => {
       })
     ).toThrow('block is locked')
   })
+
+  it('tracks which representation produced the latest dirty edit', () => {
+    hydrate()
+    useWorkbenchStore.getState().updateFullPrompt('新的连贯完整提示词。')
+    expect(useWorkbenchStore.getState().draft?.fullPrompt).toBe('新的连贯完整提示词。')
+    expect(useWorkbenchStore.getState().dirty).toBe(true)
+    expect(useWorkbenchStore.getState().lastEdited).toBe('full')
+
+    useWorkbenchStore.getState().updateBlock('block-1', { text: '新的颗粒块内容' })
+    expect(useWorkbenchStore.getState().draft?.blocks[0]?.text).toBe('新的颗粒块内容')
+    expect(useWorkbenchStore.getState().dirty).toBe(true)
+    expect(useWorkbenchStore.getState().lastEdited).toBe('blocks')
+  })
 })
