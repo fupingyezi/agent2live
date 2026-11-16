@@ -18,6 +18,9 @@ export type { ForkOriginBarProps } from './ForkOriginBar'
 export { GenerationPanel } from './GenerationPanel'
 export type { GenerationPanelProps } from './GenerationPanel'
 
+export { GenerationDialog } from './GenerationDialog'
+export type { GenerationDialogProps } from './GenerationDialog'
+
 /** 展示已提交的 Prompt 输入素材及处理状态。 */
 export { MaterialTray } from './MaterialTray'
 export type { MaterialTrayProps } from './MaterialTray'

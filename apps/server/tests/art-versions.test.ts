@@ -585,7 +585,15 @@ describe('art versions', () => {
         parentVersionId: historical.id,
         originVersionId: historical.id,
         promptVersionId: historical.promptVersionId,
-        references: historical.references.map((reference) => ({ ...reference })),
+        references: historical.references.map((reference) => ({
+          assetId: reference.assetId,
+          role: reference.role,
+          note: reference.note,
+          weight: reference.weight,
+          sortOrder: reference.sortOrder,
+          isPrimary: reference.isPrimary,
+          locked: reference.locked
+        })),
         source: historical.source,
         validation: historical.validation,
         canvasTransform: historical.canvasTransform

@@ -2948,6 +2948,34 @@ label.new-character-drop-zone {
   gap: 8px;
 }
 
+.generation-dialog {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.generation-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.generation-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.manual-art-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.manual-art-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .workbench-functional-dock {
   display: flex;
   padding: 24px 36px;

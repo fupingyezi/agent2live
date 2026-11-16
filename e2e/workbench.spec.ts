@@ -172,14 +172,14 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(studio.getByTestId('version-graph')).toContainText('v1')
     await expect(studio.locator('[data-testid="reference-chain"]')).toContainText('提示词 v1')
 
-    await studio.getByRole('button', { name: '生成', exact: true }).click()
+    await promptEditor.getByRole('button', { name: '生成立绘', exact: true }).click()
+    const generationDialog = studio.getByRole('dialog', { name: '生成立绘' })
+    await expect(generationDialog).toBeVisible()
+    await expect(generationDialog.getByTestId('generation-settings')).toBeVisible()
+    await generationDialog.getByRole('button', { name: '开始生成', exact: true }).click()
+    await expect(generationDialog).toHaveCount(0)
     const generationPanel = studio.locator('[data-testid="generation-panel"]')
     await expect(generationPanel).toBeVisible()
-    await expect(generationPanel.getByTestId('generation-controls')).toBeVisible()
-    await expect(generationPanel.getByTestId('generation-settings')).toBeHidden()
-    await generationPanel.getByText('生成设置', { exact: true }).click()
-    await expect(generationPanel.getByTestId('generation-settings')).toBeVisible()
-    await generationPanel.getByRole('button', { name: '开始生成', exact: true }).click()
     const generationStatus = generationPanel.getByTestId('generation-status')
     await expect(generationStatus).toBeVisible()
     await expect(generationStatus.getByTestId('candidate-compare')).toBeVisible({ timeout: 30_000 })
@@ -198,11 +198,11 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
 
     const artPanel = studio.locator('[data-testid="art-version-panel"]')
     await expect(artPanel).toBeVisible()
-    await artPanel.getByLabel('选择手工美术图片').setInputFiles(imagePath)
-    await artPanel.getByRole('button', { name: '创建手工美术版本', exact: true }).click()
+    await artPanel.getByRole('button', { name: '手工上传立绘', exact: true }).click()
     const manualDialog = studio.getByRole('dialog')
     await expect(manualDialog).toBeVisible()
-    await manualDialog.getByRole('button', { name: '创建', exact: true }).click()
+    await manualDialog.getByLabel('选择手工美术图片').setInputFiles(imagePath)
+    await manualDialog.getByRole('button', { name: '创建并激活', exact: true }).click()
 
     const referenceEditor = artPanel.locator('[data-testid="reference-set-editor"]')
     await expect(referenceEditor).toBeVisible({ timeout: 20_000 })
@@ -395,6 +395,71 @@ test('switches version and edits full prompt', async () => {
     await expect(studio.page.getByRole('dialog', { name: '切换版本' })).toHaveCount(0)
     await expect(fullPrompt).toHaveValue(secondState.fullPrompt)
     await expect(generate).toBeEnabled()
+  } finally {
+    await studio.close()
+  }
+})
+
+test('generation modal keeps settings out of the canvas', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-workbench-generation-modal-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const character = await api.createCharacter('弦', '整理旧琴谱的年轻乐师。')
+    const project = await api.createProject(character.id, '默认造型', '用于验证生成 Modal。')
+    const input = await api.uploadPromptInput(project.id, await makePng(), {
+      filename: 'generation-modal.png'
+    })
+    const state = {
+      ...goldenPromptState(input.submission.materials[0]!.assetId),
+      fullPrompt: '旧琴谱乐师弦，浅灰长衫，安静坐在窗边。'
+    }
+    const saved = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
+    const committed = await api.commitPromptDraft(project.id, saved.id, saved.rowVersion)
+    await api.json('POST', `/api/v1/art-projects/${project.id}/prompt-drafts`, {
+      headers: { 'idempotency-key': uniqueKey('generation-modal-draft') },
+      body: { from: 'active_version' }
+    })
+    expect(committed.version.id).toMatch(/^pv_/)
+    await createMockProvider(studio.page, 'image')
+
+    await studio.page.evaluate(
+      ({ characterId, projectId }) => {
+        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
+      },
+      { characterId: character.id, projectId: project.id }
+    )
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
+    const generate = inspector.getByRole('button', { name: '生成立绘', exact: true })
+    const fullPrompt = studio.page.getByLabel('完整提示词')
+    await fullPrompt.fill('旧琴谱乐师弦，浅灰长衫，安静坐在窗边，窗外有细雨。')
+    await expect(generate).toBeDisabled()
+    await inspector.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(inspector).toContainText('草稿已保存')
+    await expect(generate).toBeEnabled()
+
+    await generate.click()
+    const dialog = studio.page.getByRole('dialog', { name: '生成立绘' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByLabel('图像模型')).toBeVisible()
+    await expect(dialog.getByLabel('数量')).toBeVisible()
+    await expect(dialog.getByLabel('尺寸')).toBeVisible()
+    await expect(dialog.getByLabel('Seed')).toBeVisible()
+    await expect(studio.page.locator('[data-testid="generation-controls"]')).toHaveCount(0)
+
+    await dialog.getByRole('button', { name: '开始生成', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    const generationStatus = studio.page.getByTestId('generation-status')
+    await expect(generationStatus).toBeVisible()
+    await expect(generationStatus.getByTestId('candidate-compare')).toBeVisible({
+      timeout: 30_000
+    })
+    await expect(generationStatus.getByTestId('candidate-card')).not.toHaveCount(0)
   } finally {
     await studio.close()
   }

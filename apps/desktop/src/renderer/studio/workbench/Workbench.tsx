@@ -42,6 +42,7 @@ import {
   DraftToolbar,
   ForkDialog,
   ForkOriginBar,
+  GenerationDialog,
   GenerationPanel,
   MaterialTray,
   PromptAiPanel,
@@ -164,7 +165,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [forkSource, setForkSource] = useState<ForkSource | null>(null)
   const [designView, setDesignView] = useState<'references' | 'candidates' | 'parallel'>('references')
-  const [generationControlsOpen, setGenerationControlsOpen] = useState(false)
+  const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
+  const [createdGenerationId, setCreatedGenerationId] = useState<string | null>(null)
   const [candidateSaveRequest, setCandidateSaveRequest] = useState(0)
   const initializedJob = useRef<string | null>(null)
   const initializedSelection = useRef(false)
@@ -301,6 +303,17 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   ])
 
   useEffect(() => {
+    if (selectedPromptVersion || !workspace?.activePromptVersion || dirty) return
+    setSelectedPromptVersion(workspace.activePromptVersion)
+    hydrate({
+      draftId: null,
+      revision: null,
+      rowVersion: null,
+      draft: workspace.activePromptVersion.state
+    })
+  }, [dirty, hydrate, selectedPromptVersion, workspace?.activePromptVersion])
+
+  useEffect(() => {
     if (!initialJob || initializedJob.current === initialJob.jobId) return
     initializedJob.current = initialJob.jobId
     setPanel('ai')
@@ -343,22 +356,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const submission = workspace.latestSubmission
   const draftRowVersion = spec ? storeRowVersion : (draft?.rowVersion ?? null)
   const createError = errorMessage(createDraftMutation.error)
-  const generationWorkspace = providersQuery.isError ? (
-    <StudioError
-      error={providersQuery.error}
-      onRetry={() => {
-        void providersQuery.refetch()
-      }}
-    />
-  ) : providersQuery.isPending ? (
-    <StudioLoading label="正在加载模型连接…" />
-  ) : (
+  const generationWorkspace = (
     <GenerationPanel
       project={project}
       workspace={workspace}
-      providers={providers}
-      controlsOpen={generationControlsOpen}
-      onCloseControls={() => setGenerationControlsOpen(false)}
+      preferredGenerationId={createdGenerationId}
       candidateSaveRequest={candidateSaveRequest}
       onAccepted={(mutation) => {
         queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
@@ -469,9 +471,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     }
     const mutation = await restoreArtVersion(project.id, selectedArtVersion.id, project.rowVersion)
     queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
-    const current = queryClient.getQueryData<ArtVersionDto[]>(
-      queryKeys.artVersions(project.id)
-    )
+    const current = queryClient.getQueryData<ArtVersionDto[]>(queryKeys.artVersions(project.id))
     queryClient.setQueryData<ArtVersionDto[]>(queryKeys.artVersions(project.id), [
       mutation.artVersion,
       ...(current ?? artVersions).filter((version) => version.id !== mutation.artVersion.id)
@@ -612,7 +612,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 className="workbench-design-secondary-action"
                 onClick={() => {
                   setPanel('generate')
-                  setGenerationControlsOpen(true)
+                  setGenerationDialogOpen(true)
                 }}
               >
                 重新生成
@@ -625,9 +625,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 setPanel('generate')
                 if (designView === 'references') {
                   setDesignView('candidates')
-                  setGenerationControlsOpen(true)
+                  setGenerationDialogOpen(true)
                 } else {
-                  setGenerationControlsOpen(false)
                   setCandidateSaveRequest((request) => request + 1)
                 }
               }}
@@ -651,7 +650,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           onGenerate={() => {
             setPanel('generate')
             setDesignView('candidates')
-            setGenerationControlsOpen(true)
+            setGenerationDialogOpen(true)
           }}
         />
         {selectionError || createError ? (
@@ -660,6 +659,20 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           </div>
         ) : null}
       </div>
+
+      <GenerationDialog
+        open={generationDialogOpen}
+        project={project}
+        workspace={workspace}
+        providers={providers}
+        onClose={() => setGenerationDialogOpen(false)}
+        onCreated={(created) => {
+          setCreatedGenerationId(created.generationId)
+          setGenerationDialogOpen(false)
+          setDesignView('candidates')
+          setPanel('generate')
+        }}
+      />
 
       <Dialog
         open={pendingSelection !== null}

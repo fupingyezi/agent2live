@@ -14,6 +14,7 @@ import {
   AsyncButton,
   Button,
   ConfirmDialog,
+  Dialog,
   EmptyState,
   Field,
   FileDropZone,
@@ -84,7 +85,7 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
   )
   const [file, setFile] = useState<File | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [confirmManual, setConfirmManual] = useState(false)
+  const [manualDialogOpen, setManualDialogOpen] = useState(false)
   const [confirmActivate, setConfirmActivate] = useState(false)
 
   const active = artVersions.find((version) => version.id === project.activeVersionId) ?? null
@@ -109,7 +110,7 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
       return createManualArtVersion(project.id, asset.id, project.rowVersion)
     },
     onSuccess: async (mutation) => {
-      setConfirmManual(false)
+      setManualDialogOpen(false)
       setFile(null)
       setSelectedId(mutation.artVersion.id)
       onMutated(mutation)
@@ -243,7 +244,31 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
         {!project.activePromptVersionId ? (
           <p className="muted">先提交一个提示词版本，手工美术版本需要记录来源提示词。</p>
         ) : (
-          <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setLocalError(null)
+              setManualDialogOpen(true)
+            }}
+          >
+            手工上传立绘
+          </Button>
+        )}
+      </div>
+
+      <Dialog
+        open={manualDialogOpen}
+        title="手工上传立绘"
+        description="上传后会创建不可变 ArtVersion 并设为当前参考。"
+        onOpenChange={(open) => {
+          if (!open && !manualMutation.isPending) setManualDialogOpen(false)
+        }}
+      >
+        {!project.activePromptVersionId ? (
+          <InlineNotice tone="warning">先提交一个提示词版本，才能上传立绘。</InlineNotice>
+        ) : (
+          <div className="manual-art-dialog">
             <FileDropZone
               label="选择手工美术图片"
               accept="image/png,image/jpeg,image/webp"
@@ -266,30 +291,28 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
                 <InlineNotice tone="danger">{localError}</InlineNotice>
               </div>
             ) : null}
-            <AsyncButton
-              type="button"
-              variant="secondary"
-              busy={manualMutation.isPending}
-              busyLabel="创建中…"
-              disabled={!file || Boolean(localError) || manualMutation.isPending}
-              onClick={() => setConfirmManual(true)}
-            >
-              创建手工美术版本
-            </AsyncButton>
-          </>
+            <div className="manual-art-dialog-actions">
+              <Button
+                type="button"
+                variant="quiet"
+                disabled={manualMutation.isPending}
+                onClick={() => setManualDialogOpen(false)}
+              >
+                取消
+              </Button>
+              <AsyncButton
+                type="button"
+                busy={manualMutation.isPending}
+                busyLabel="创建中…"
+                disabled={!file || Boolean(localError) || manualMutation.isPending}
+                onClick={() => manualMutation.mutate()}
+              >
+                创建并激活
+              </AsyncButton>
+            </div>
+          </div>
         )}
-      </div>
-
-      <ConfirmDialog
-        open={confirmManual}
-        title="创建并激活手工美术版本？"
-        confirmLabel="创建"
-        busy={manualMutation.isPending}
-        onCancel={() => setConfirmManual(false)}
-        onConfirm={() => manualMutation.mutate()}
-      >
-        <p>会先上传图片，再创建一个不可变 ArtVersion 并把当前参考切换到它。此操作不能删除。</p>
-      </ConfirmDialog>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmActivate}
