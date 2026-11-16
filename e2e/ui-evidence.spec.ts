@@ -117,13 +117,16 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await page.getByLabel('上传参考图').setInputFiles(references)
     await expect(page.locator('[data-testid="character-reference-card"]')).toHaveCount(6)
     await expect(page.getByText('6 张已满，删除一张后继续上传')).toBeVisible()
+    await page.mouse.move(0, 0)
     await capture('new-character-full')
 
     const hoverCard = page.locator('[data-testid="character-reference-card"]').nth(1)
     await hoverCard.hover()
     await expect(hoverCard.getByTestId('reference-hover-actions')).toHaveCSS('opacity', '1')
     await capture('reference-hover')
-    await hoverCard.getByRole('button', { name: '编辑', exact: true }).click()
+    const editReference = hoverCard.getByRole('button', { name: '编辑', exact: true })
+    await editReference.focus()
+    await page.keyboard.press('Enter')
     const referenceEditor = page.getByRole('dialog', { name: '参考图' })
     await expect(referenceEditor).toBeVisible()
     await expect
