@@ -71,7 +71,7 @@ describe('prompt drafts and versions', () => {
       expect(inputBody.draft.state.fullPrompt).toContain('保持清透')
 
       const assetId = inputBody.submission.materials[0]!.assetId
-      const savedState = specWithAsset(assetId)
+      const savedState = specWithAsset(assetId) as PromptSpecV2
       const explicitDerivedPrompt = normalizeLegacyFullPrompt({
         ...savedState,
         fullPrompt: ''
