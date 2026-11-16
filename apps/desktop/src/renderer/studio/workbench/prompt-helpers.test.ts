@@ -13,6 +13,7 @@ import {
 function baseSpec(): PromptSpecV2 {
   return {
     schemaVersion: 'prompt-spec/2',
+    fullPrompt: '黑色长发，避免高饱和背景。',
     lockAll: false,
     sourceRequirements: [
       { id: 'req-hair', text: '黑色长发', strength: 'must' },

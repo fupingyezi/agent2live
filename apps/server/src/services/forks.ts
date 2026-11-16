@@ -13,6 +13,7 @@ import {
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { specContentHash } from '../prompt/compile'
+import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import { withEvents } from './events-buffer'
 import { parseObject, type ArtVersionReferenceDto, type ArtVersionService } from './art-versions'
 import type { AssetService } from './assets'
@@ -468,7 +469,7 @@ export class ForkService {
       | SourcePromptVersionRow
       | undefined
     if (!prompt) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'promptVersion' })
-    const parsed = promptSpecSchema.parse(JSON.parse(prompt.content_json))
+    const parsed = normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(prompt.content_json)))
     if (specContentHash(parsed) !== prompt.content_hash) {
       throw new AppError('FORK_SOURCE_UNCOMMITTED', {})
     }
@@ -523,7 +524,7 @@ export class ForkService {
       .prepare('select * from prompt_versions where id = ? and art_project_id = ?')
       .get(art.prompt_version_id, art.art_project_id) as SourcePromptVersionRow | undefined
     if (!promptRow) throw new AppError('SYS_INTERNAL', { reason: 'art prompt version missing' })
-    const parsed = promptSpecSchema.parse(JSON.parse(promptRow.content_json))
+    const parsed = normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(promptRow.content_json)))
     if (specContentHash(parsed) !== promptRow.content_hash) {
       throw new AppError('FORK_SOURCE_UNCOMMITTED', {})
     }

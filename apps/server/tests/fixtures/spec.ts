@@ -3,6 +3,7 @@ import type { PromptSpecV2 } from '@agent2live/contracts'
 export function specFixture(): PromptSpecV2 {
   return {
     schemaVersion: 'prompt-spec/2',
+    fullPrompt: '银白长发的蓝眼少女，正视半身；清爽的日系赛璐璐插画；淡蓝色渐变背景。',
     lockAll: false,
     sourceRequirements: [
       { id: 'req_identity', text: '银白长发与蓝色眼睛', strength: 'must' },

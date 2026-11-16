@@ -36,6 +36,7 @@ const MANDATORY_CATEGORIES = new Set(['subject', 'face', 'safety'])
 export function specCoreOf(spec: PromptSpecV2): PromptSpecCore {
   return {
     schemaVersion: spec.schemaVersion,
+    fullPrompt: spec.fullPrompt,
     lockAll: spec.lockAll,
     sourceRequirements: spec.sourceRequirements,
     materialRefs: spec.materialRefs,

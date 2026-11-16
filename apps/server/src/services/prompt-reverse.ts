@@ -21,6 +21,7 @@ import {
   reverseContentHash
 } from '../prompt/reverse'
 import { assertBriefProjection } from '../prompt/brief-projection'
+import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import type { AuditService } from './audit'
 import type { AssetService } from './assets'
 import type { CharacterBriefService } from './character-briefs'
@@ -66,7 +67,7 @@ export interface PromptReverseDeps {
 
 function storedState(raw: string): PromptSpecV2 {
   try {
-    return promptSpecSchema.parse(JSON.parse(raw))
+    return normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(raw)))
   } catch {
     throw new AppError('SYS_INTERNAL', {})
   }

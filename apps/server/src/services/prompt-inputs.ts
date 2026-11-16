@@ -11,6 +11,7 @@ import { withEvents } from './events-buffer'
 import type { EventStore } from '../events/store'
 import type { Clock } from './clock'
 import { specContentHash } from '../prompt/compile'
+import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import type { AuditService } from './audit'
 import type { AssetService } from './assets'
 import type { CharacterBriefService } from './character-briefs'
@@ -109,7 +110,7 @@ export class PromptInputService {
         .get(projectId) as { character_id: string; active_prompt_version_id: string | null } | undefined
       if (!project) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artProject' })
       const baseState: PromptSpecV2 = existing
-        ? promptSpecSchema.parse(JSON.parse(existing.state_json))
+        ? normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(existing.state_json)))
         : project.active_prompt_version_id
           ? this.deps.drafts.versionState(projectId, project.active_prompt_version_id)
           : structuredClone(EMPTY_STATE)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ImageCapabilityProfile } from '@agent2live/contracts'
-import { compilePrompt, specContentHash } from '../src/prompt/compile'
+import { compilePrompt, specContentHash, specCoreOf } from '../src/prompt/compile'
 import { normalizeText } from '../src/prompt/normalize'
 import { specFixture } from './fixtures/spec'
 
@@ -98,6 +98,14 @@ describe('compilePrompt', () => {
     }
     expect(specContentHash(withRuntimeIds)).toBe(baseline)
     expect(specContentHash({ ...spec, blocks: [...spec.blocks].reverse() })).not.toBe(baseline)
+  })
+
+  it('includes fullPrompt in the canonical core and content hash', () => {
+    const spec = specFixture()
+    const baseline = specContentHash(spec)
+    spec.fullPrompt = '另一段完整提示词。'
+    expect(specCoreOf(spec).fullPrompt).toBe(spec.fullPrompt)
+    expect(specContentHash(spec)).not.toBe(baseline)
   })
 })
 

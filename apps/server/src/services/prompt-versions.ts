@@ -6,6 +6,7 @@ import {
   type PromptVersionSummary
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
+import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 
 export type { PromptVersionDto, PromptVersionSummary }
 
@@ -21,7 +22,7 @@ interface VersionRow {
 }
 
 export function toVersionDto(row: VersionRow): PromptVersionDto {
-  const state = promptSpecSchema.parse(JSON.parse(row.content_json))
+  const state = normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(row.content_json)))
   return {
     id: row.id,
     artProjectId: row.art_project_id,

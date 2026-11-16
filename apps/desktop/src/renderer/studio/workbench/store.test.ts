@@ -5,6 +5,7 @@ import { useWorkbenchStore } from './store'
 function spec(): PromptSpecV2 {
   return {
     schemaVersion: 'prompt-spec/2',
+    fullPrompt: '冰蓝色眼睛，安静地看向前方。',
     lockAll: false,
     sourceRequirements: [{ id: 'req-1', text: '蓝色眼睛', strength: 'must' }],
     materialRefs: [],

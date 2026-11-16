@@ -119,6 +119,7 @@ export const promptConstraintsSchema = z
 
 const promptSpecShape = {
   schemaVersion: z.literal('prompt-spec/2'),
+  fullPrompt: z.string().trim().max(20_000).default(''),
   lockAll: z.boolean(),
   sourceRequirements: z.array(promptRequirementSchema).max(200),
   materialRefs: z.array(promptMaterialRefSchema).max(14),

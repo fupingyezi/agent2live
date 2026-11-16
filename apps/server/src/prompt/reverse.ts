@@ -8,6 +8,7 @@ import {
 import type { ChatContentPart, ChatMessage } from '@agent2live/providers'
 import { AppError } from '../errors'
 import { specContentHash } from './compile'
+import { normalizeLegacyFullPrompt } from './full-prompt'
 import { assertBriefProjection, briefToContextText } from './brief-projection'
 import { normalizeText } from './normalize'
 import type { PromptInputSubmissionDto } from '../services/prompt-submissions'
@@ -82,7 +83,7 @@ export function buildReverseState(
     throw new AppError('PROMPT_REVERSE_INVALID_OUTPUT', { attempt: 1 })
   }
   try {
-    return promptSpecSchema.parse(next)
+    return normalizeLegacyFullPrompt(promptSpecSchema.parse(next))
   } catch {
     throw new AppError('PROMPT_REVERSE_INVALID_OUTPUT', { attempt: 1 })
   }

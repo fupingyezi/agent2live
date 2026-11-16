@@ -29,6 +29,7 @@ import type { ProviderInvocationService } from './provider-invocations'
 import type { ProviderRegistry } from './provider-registry'
 import type { RequestIds } from './request-ids'
 import { specContentHash } from '../prompt/compile'
+import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import { applyPromptOperations } from '../prompt/apply-operations'
 import { buildSuggestionPrompt, parseSuggestionOutput, validateSuggestionOutput } from '../prompt/suggestion'
 
@@ -578,7 +579,7 @@ export class PromptSuggestionService {
 
   private parseStoredState(raw: string): PromptSpecV2 {
     try {
-      return promptSpecSchema.parse(JSON.parse(raw))
+      return normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(raw)))
     } catch {
       throw new AppError('SYS_INTERNAL', {})
     }

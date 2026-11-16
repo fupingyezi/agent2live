@@ -3,6 +3,7 @@ import type { PromptBlock, PromptSpecV2 } from '@agent2live/contracts'
 
 const CORE_KEYS = [
   'schemaVersion',
+  'fullPrompt',
   'lockAll',
   'sourceRequirements',
   'materialRefs',

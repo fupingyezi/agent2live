@@ -14,6 +14,7 @@ import { withEvents } from './events-buffer'
 import type { EventStore } from '../events/store'
 import type { Clock } from './clock'
 import { normalizeText } from '../prompt/normalize'
+import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import { assertBriefProjection, mergeBriefProjection } from '../prompt/brief-projection'
 import { specContentHash } from '../prompt/compile'
 import type { AuditService } from './audit'
@@ -52,6 +53,7 @@ export interface PromptDraftDeps {
 
 export const EMPTY_STATE: PromptSpecV2 = {
   schemaVersion: 'prompt-spec/2',
+  fullPrompt: '',
   lockAll: false,
   sourceRequirements: [],
   materialRefs: [],
@@ -66,7 +68,7 @@ export function toDraftDto(row: PromptDraftRow): PromptDraftDto {
     artProjectId: row.art_project_id,
     revision: row.revision,
     status: row.status,
-    state: promptSpecSchema.parse(JSON.parse(row.state_json)),
+    state: normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(row.state_json))),
     contentHash: row.content_hash,
     inputSubmissionId: row.input_submission_id,
     baseVersionId: row.base_version_id,
@@ -103,7 +105,7 @@ export function normalizeSpecForSubmission(
   } else if (next.blocks.some((block) => block.source === 'character-brief')) {
     throw new AppError('PROMPT_BRIEF_PROJECTION_STALE', {})
   }
-  return promptSpecSchema.parse(next)
+  return normalizeLegacyFullPrompt(promptSpecSchema.parse(next))
 }
 
 export function uncoveredRequirements(state: PromptSpecV2): string[] {
@@ -245,7 +247,7 @@ export class PromptDraftService {
       }
       const submission = this.deps.submissions.get(projectId, draft.input_submission_id)
       const brief = this.briefForSubmission(submission)
-      const state = promptSpecSchema.parse(JSON.parse(draft.state_json))
+      const state = normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(draft.state_json)))
       if (brief) {
         assertBriefProjection(state, brief.content)
       } else if (state.blocks.some((block) => block.source === 'character-brief')) {

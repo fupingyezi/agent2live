@@ -10,6 +10,7 @@ import { hashCanonical } from './hash'
 
 const spec = {
   schemaVersion: 'prompt-spec/2',
+  fullPrompt: '银白长发的蓝眼少女，正视半身，清爽的日系赛璐璐插画。',
   lockAll: false,
   sourceRequirements: [
     { id: 'req_identity', text: '银白长发与蓝色眼睛', strength: 'must' },
@@ -85,7 +86,17 @@ describe('PromptSpecV2', () => {
   it('accepts a complete spec and canonical-hashes stably', () => {
     const parsed = promptSpecSchema.parse(spec)
     expect(parsed.schemaVersion).toBe('prompt-spec/2')
+    expect(parsed.fullPrompt).toBe(spec.fullPrompt)
     expect(hashCanonical(parsed)).toBe(hashCanonical({ ...spec, blocks: [...spec.blocks] }))
+  })
+
+  it('defaults missing fullPrompt to an empty string for legacy data', () => {
+    const { fullPrompt: _fullPrompt, ...legacy } = spec
+    expect(promptSpecSchema.parse(legacy).fullPrompt).toBe('')
+  })
+
+  it('limits fullPrompt to 20,000 characters', () => {
+    expect(() => promptSpecSchema.parse({ ...spec, fullPrompt: '画'.repeat(20_001) })).toThrow()
   })
 
   it('rejects duplicate block IDs across positive and negative blocks', () => {
