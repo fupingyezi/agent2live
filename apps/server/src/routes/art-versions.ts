@@ -5,6 +5,7 @@ import {
   artVersionListQuerySchema,
   createManualArtVersionInputSchema,
   hashCanonical,
+  restoreArtVersionInputSchema,
   reviseArtVersionReferencesInputSchema
 } from '@agent2live/contracts'
 import { idsOf, requireIdempotencyKey } from './helpers'
@@ -112,6 +113,33 @@ export function registerArtVersionRoutes(
           role: input.role,
           note: input.note,
           weight: input.weight,
+          expectedProjectRowVersion: expected,
+          ctx: idsOf(request)
+        })
+        return { status: 201, body: mutation }
+      }
+    )
+    const body = result.response.body as ArtVersionMutationDto
+    reply
+      .status(result.response.status)
+      .header('etag', `"${body.project.rowVersion}"`)
+      .header('location', `/api/v1/art-projects/${id}/art-versions/${body.artVersion.id}`)
+    return body
+  })
+
+  app.post('/api/v1/art-projects/:id/art-versions/:versionId/restore', async (request, reply) => {
+    const { id, versionId } = request.params as { id: string; versionId: string }
+    const key = requireIdempotencyKey(request)
+    const expected = parseIfMatch(request.headers['if-match'] as string | undefined)
+    restoreArtVersionInputSchema.parse(request.body ?? {})
+    const result = deps.idempotency.run(
+      `artVersion.restore:${id}:${versionId}`,
+      key,
+      hashCanonical({ projectId: id, versionId, expectedProjectRowVersion: expected }),
+      () => {
+        const mutation = deps.artVersions.restore({
+          projectId: id,
+          versionId,
           expectedProjectRowVersion: expected,
           ctx: idsOf(request)
         })

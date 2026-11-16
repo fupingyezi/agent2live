@@ -2909,6 +2909,23 @@ label.new-character-drop-zone {
   grid-column: 1 / -1;
 }
 
+.workbench-prompt-restore {
+  min-height: 36px;
+  color: var(--a2l-color-text);
+  background: var(--a2l-color-surface-selected);
+  border: var(--a2l-border-width) solid var(--a2l-color-border-strong);
+  border-radius: var(--a2l-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  grid-column: 1 / -1;
+}
+
+.workbench-prompt-restore:disabled {
+  color: var(--a2l-color-text-muted);
+  background: var(--a2l-color-surface-subtle);
+  cursor: not-allowed;
+}
+
 .workbench-prompt-generate:disabled {
   color: var(--a2l-color-text-muted);
   background: var(--a2l-color-surface-subtle);

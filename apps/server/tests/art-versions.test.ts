@@ -435,6 +435,205 @@ describe('art versions', () => {
     }
   })
 
+  it('restores a historical version as a new active immutable snapshot', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const primaryAsset = (
+        await ctx.services.assets.ingestUpload({
+          bytes: await png(480, 720),
+          declaredMime: 'image/png',
+          originalName: 'restore-primary.png',
+          requestId: 'av-restore-seed-1',
+          traceId: 'av-restore-seed-1'
+        })
+      ).asset
+      const auxiliaryAsset = (
+        await ctx.services.assets.ingestUpload({
+          bytes: await png(320, 480),
+          declaredMime: 'image/png',
+          originalName: 'restore-auxiliary.png',
+          requestId: 'av-restore-seed-2',
+          traceId: 'av-restore-seed-2'
+        })
+      ).asset
+      const currentAsset = (
+        await ctx.services.assets.ingestUpload({
+          bytes: await png(480, 720),
+          declaredMime: 'image/png',
+          originalName: 'restore-current.png',
+          requestId: 'av-restore-seed-3',
+          traceId: 'av-restore-seed-3'
+        })
+      ).asset
+
+      const projectBefore = await currentProject(ctx, project.id)
+      const first = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/art-versions/manual`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${projectBefore.rowVersion}"`,
+          'idempotency-key': 'av-restore-v1'
+        },
+        payload: { assetId: primaryAsset.id }
+      })
+      expect(first.statusCode).toBe(201)
+      const firstBody = first.json<{
+        artVersion: { id: string }
+        project: { rowVersion: number }
+      }>()
+
+      const revised = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-versions/${firstBody.artVersion.id}/reference-revisions`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${firstBody.project.rowVersion}"`,
+          'idempotency-key': 'av-restore-v2'
+        },
+        payload: {
+          reason: 'add',
+          references: [
+            {
+              assetId: primaryAsset.id,
+              role: 'identity_reference',
+              note: '主图',
+              weight: 1,
+              sortOrder: 0,
+              isPrimary: true,
+              locked: true
+            },
+            {
+              assetId: auxiliaryAsset.id,
+              role: 'style_reference',
+              note: '只继承画风',
+              weight: 1.4,
+              sortOrder: 1,
+              isPrimary: false,
+              locked: false
+            }
+          ]
+        }
+      })
+      expect(revised.statusCode).toBe(201)
+      const historical = revised.json<{
+        artVersion: {
+          id: string
+          versionNumber: number
+          promptVersionId: string
+          references: Array<{
+            assetId: string
+            role: string
+            note: string
+            weight: number
+            sortOrder: number
+            isPrimary: boolean
+            locked: boolean
+          }>
+          source: Record<string, unknown>
+          validation: Record<string, unknown>
+          canvasTransform: Record<string, unknown>
+        }
+        project: { rowVersion: number }
+      }>().artVersion
+
+      const current = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/art-versions/manual`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${revised.json<{ project: { rowVersion: number } }>().project.rowVersion}"`,
+          'idempotency-key': 'av-restore-current'
+        },
+        payload: { assetId: currentAsset.id, promptVersionId: version.id }
+      })
+      expect(current.statusCode).toBe(201)
+      const currentBody = current.json<{
+        artVersion: { id: string; versionNumber: number }
+        project: { rowVersion: number }
+      }>()
+
+      const restore = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/art-versions/${historical.id}/restore`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${currentBody.project.rowVersion}"`,
+          'idempotency-key': 'av-restore-0001'
+        },
+        payload: {}
+      })
+      expect(restore.statusCode).toBe(201)
+      const restoredBody = restore.json<{
+        artVersion: {
+          id: string
+          versionNumber: number
+          parentVersionId: string | null
+          originVersionId: string | null
+          promptVersionId: string
+          references: typeof historical.references
+          source: Record<string, unknown>
+          validation: Record<string, unknown>
+          canvasTransform: Record<string, unknown>
+        }
+        project: { activeVersionId: string; rowVersion: number }
+      }>()
+      expect(restoredBody.artVersion.id).not.toBe(historical.id)
+      expect(restoredBody.artVersion).toMatchObject({
+        versionNumber: currentBody.artVersion.versionNumber + 1,
+        parentVersionId: historical.id,
+        originVersionId: historical.id,
+        promptVersionId: historical.promptVersionId,
+        references: historical.references.map((reference) => ({ ...reference })),
+        source: historical.source,
+        validation: historical.validation,
+        canvasTransform: historical.canvasTransform
+      })
+      expect(restoredBody.project.activeVersionId).toBe(restoredBody.artVersion.id)
+
+      const replay = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/art-versions/${historical.id}/restore`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${currentBody.project.rowVersion}"`,
+          'idempotency-key': 'av-restore-0001'
+        },
+        payload: {}
+      })
+      expect(replay.statusCode).toBe(201)
+      expect(replay.json()).toEqual(restoredBody)
+
+      const stale = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/art-versions/${historical.id}/restore`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${currentBody.project.rowVersion}"`,
+          'idempotency-key': 'av-restore-stale'
+        },
+        payload: {}
+      })
+      expect(stale.statusCode).toBe(409)
+      expect(stale.json()).toMatchObject({ error: { code: 'ROW_VERSION_CONFLICT' } })
+
+      const versions = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${project.id}/art-versions`,
+        headers: ctx.auth
+      })
+      expect(versions.json<{ items: Array<{ id: string }> }>().items.map((item) => item.id)).toEqual([
+        restoredBody.artVersion.id,
+        currentBody.artVersion.id,
+        historical.id,
+        firstBody.artVersion.id
+      ])
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('revises reference sets into immutable snapshots and copies auxiliaries on candidate acceptance', async () => {
     const ctx = await createTestApp()
     try {

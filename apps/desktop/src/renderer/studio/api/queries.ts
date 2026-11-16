@@ -436,6 +436,23 @@ export function activateArtVersion(
   )
 }
 
+export function restoreArtVersion(
+  projectId: string,
+  versionId: string,
+  expectedProjectRowVersion: number,
+  idempotencyKey = newIdempotencyKey()
+): Promise<ArtVersionMutationDto> {
+  return api.request<ArtVersionMutationDto>(
+    `/api/v1/art-projects/${encodeURIComponent(projectId)}/art-versions/${encodeURIComponent(versionId)}/restore`,
+    {
+      method: 'POST',
+      body: {},
+      ifMatch: expectedProjectRowVersion,
+      idempotencyKey
+    }
+  )
+}
+
 export function createForkFromPromptVersion(
   versionId: string,
   input: CreateForkInput,

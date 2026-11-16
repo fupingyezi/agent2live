@@ -315,6 +315,8 @@ export const activateArtVersionInputSchema = z
   })
   .strict()
 
+export const restoreArtVersionInputSchema = z.object({}).strict()
+
 export const artVersionListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(50)

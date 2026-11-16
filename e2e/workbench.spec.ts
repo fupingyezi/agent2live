@@ -400,6 +400,97 @@ test('switches version and edits full prompt', async () => {
   }
 })
 
+test('restore historical version creates a new active art version', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-workbench-restore-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const character = await api.createCharacter('岫', '在雪线附近巡山的年轻向导。')
+    const project = await api.createProject(character.id, '默认造型', '用于验证历史版本还原。')
+    const input = await api.uploadPromptInput(project.id, await makePng(), {
+      filename: 'restore-reference.png'
+    })
+    const state = {
+      ...goldenPromptState(input.submission.materials[0]!.assetId),
+      fullPrompt: '雪线向导岫，厚重披风，清冷山雾背景。'
+    }
+    const draft = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
+    const committed = await api.commitPromptDraft(project.id, draft.id, draft.rowVersion)
+    const firstAsset = await api.uploadAsset(
+      await makePng(512, 768, '#aec9d8'),
+      'image/png',
+      'restore-v1.png'
+    )
+    const first = await api.createManualArtVersion({
+      projectId: project.id,
+      assetId: firstAsset.id,
+      promptVersionId: committed.version.id,
+      expectedProjectRowVersion: committed.project.rowVersion
+    })
+    const secondAsset = await api.uploadAsset(
+      await makePng(512, 768, '#8fa9c1'),
+      'image/png',
+      'restore-v2.png'
+    )
+    const second = await api.createManualArtVersion({
+      projectId: project.id,
+      assetId: secondAsset.id,
+      promptVersionId: committed.version.id,
+      expectedProjectRowVersion: first.project.rowVersion
+    })
+
+    await studio.page.evaluate(
+      ({ characterId, projectId }) => {
+        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
+      },
+      { characterId: character.id, projectId: project.id }
+    )
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const firstNode = studio.page.locator(
+      `[data-testid="workbench-version-node"][data-version-id="${first.artVersion.id}"]`
+    )
+    await expect(firstNode).toBeVisible()
+    await firstNode.click()
+
+    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
+    await expect(inspector.getByRole('button', { name: '生成立绘', exact: true })).toBeDisabled()
+    await inspector.getByRole('button', { name: '还原此版本', exact: true }).click()
+    const restoreDialog = studio.page.getByRole('dialog', { name: '还原此版本？' })
+    await expect(restoreDialog).toBeVisible()
+    await expect(restoreDialog).toContainText('旧的 v1 不会被修改')
+
+    const restoreResponsePromise = studio.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname.endsWith(`/art-versions/${first.artVersion.id}/restore`)
+    )
+    await restoreDialog.getByRole('button', { name: '还原此版本', exact: true }).click()
+    const restoreResponse = await restoreResponsePromise
+    expect(restoreResponse.status()).toBe(201)
+    const restored = await restoreResponse.json()
+    expect(restored.artVersion).toMatchObject({
+      versionNumber: 3,
+      originVersionId: first.artVersion.id,
+      promptVersionId: second.artVersion.promptVersionId
+    })
+    expect(restored.project.activeVersionId).toBe(restored.artVersion.id)
+
+    const restoredNode = studio.page.locator(
+      `[data-testid="workbench-version-node"][data-version-id="${restored.artVersion.id}"]`
+    )
+    await expect(restoredNode).toBeVisible()
+    await expect(restoredNode).toHaveAttribute('data-active', 'true')
+    await expect(firstNode).toHaveAttribute('data-active', 'false')
+    await expect(inspector.getByRole('button', { name: '生成立绘', exact: true })).toBeEnabled()
+  } finally {
+    await studio.close()
+  }
+})
+
 test('queues a Zhipu vision reverse after creation without applying its result', async () => {
   test.setTimeout(120_000)
   const studio = await launchStudio('agent2live-creation-vision-')

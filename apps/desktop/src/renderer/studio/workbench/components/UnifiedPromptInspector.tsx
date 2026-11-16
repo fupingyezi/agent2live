@@ -8,7 +8,14 @@ import type {
   PromptSpecV2,
   PromptVersionDto
 } from '@studio/api'
-import { AsyncButton, Field, InlineNotice, StatusPill, Textarea } from '@agent2live/design-system'
+import {
+  AsyncButton,
+  ConfirmDialog,
+  Field,
+  InlineNotice,
+  StatusPill,
+  Textarea
+} from '@agent2live/design-system'
 import { useWorkbenchStore } from '../store'
 import { PromptBlockList } from './PromptBlockList'
 
@@ -23,6 +30,7 @@ export interface UnifiedPromptInspectorProps {
   dirty: boolean
   onSave(): Promise<void>
   onGenerate(): void
+  onRestore(): Promise<void>
 }
 
 function errorMessage(error: unknown): string {
@@ -39,10 +47,13 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
   materials,
   dirty,
   onSave,
-  onGenerate
+  onGenerate,
+  onRestore
 }) => {
   const updateFullPrompt = useWorkbenchStore((state) => state.updateFullPrompt)
   const [saving, setSaving] = useState(false)
+  const [confirmRestore, setConfirmRestore] = useState(false)
+  const [restoring, setRestoring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const historical = selectedArtVersion !== null && selectedArtVersion.id !== project.activeVersionId
   const canGenerate = !historical && !dirty && Boolean(draft || selectedPromptVersion)
@@ -59,102 +70,143 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
     }
   }
 
+  const restore = async (): Promise<void> => {
+    setRestoring(true)
+    setError(null)
+    try {
+      await onRestore()
+      setConfirmRestore(false)
+    } catch (reason) {
+      setError(errorMessage(reason))
+      setConfirmRestore(false)
+    } finally {
+      setRestoring(false)
+    }
+  }
+
   return (
-    <aside
-      className="workbench-design-inspector workbench-prompt-inspector"
-      data-testid="unified-prompt-inspector"
-    >
-      <header>
-        <div>
-          <h2>角色描述</h2>
-          <span>
-            {selectedArtVersion
-              ? `美术 v${selectedArtVersion.versionNumber}`
-              : selectedPromptVersion
-                ? `提示词 v${selectedPromptVersion.versionNumber}`
-                : '提示词草稿'}
-          </span>
-        </div>
-        <div className="workbench-prompt-status">
-          {historical ? <StatusPill label="历史版本" tone="neutral" /> : null}
-          <span className={dirty ? 'dirty-dot dirty' : 'dirty-dot'} aria-hidden="true" />
-          <small>{dirty ? '有未保存修改' : draft ? '草稿已保存' : '版本只读'}</small>
-        </div>
-      </header>
-
-      <div className="workbench-prompt-inspector-scroll">
-        {error ? (
-          <div role="alert">
-            <InlineNotice tone="danger">{error}</InlineNotice>
+    <>
+      <aside
+        className="workbench-design-inspector workbench-prompt-inspector"
+        data-testid="unified-prompt-inspector"
+      >
+        <header>
+          <div>
+            <h2>角色描述</h2>
+            <span>
+              {selectedArtVersion
+                ? `美术 v${selectedArtVersion.versionNumber}`
+                : selectedPromptVersion
+                  ? `提示词 v${selectedPromptVersion.versionNumber}`
+                  : '提示词草稿'}
+            </span>
           </div>
-        ) : null}
+          <div className="workbench-prompt-status">
+            {historical ? <StatusPill label="历史版本" tone="neutral" /> : null}
+            <span className={dirty ? 'dirty-dot dirty' : 'dirty-dot'} aria-hidden="true" />
+            <small>{dirty ? '有未保存修改' : draft ? '草稿已保存' : '版本只读'}</small>
+          </div>
+        </header>
 
-        {spec ? (
-          <>
-            <Field label="完整提示词">
-              <Textarea
-                aria-label="完整提示词"
-                rows={8}
-                maxLength={20_000}
-                value={spec.fullPrompt}
-                disabled={!draft}
-                onValueChange={updateFullPrompt}
-              />
-            </Field>
+        <div className="workbench-prompt-inspector-scroll">
+          {error ? (
+            <div role="alert">
+              <InlineNotice tone="danger">{error}</InlineNotice>
+            </div>
+          ) : null}
 
-            <details className="workbench-granular-editor" open>
-              <summary>
-                <span>颗粒化提示词</span>
-                <small>{spec.blocks.length + spec.negativeBlocks.length} 块</small>
-              </summary>
-              <PromptBlockList
-                spec={spec}
-                requirements={requirements}
-                materials={materials}
-                disabled={!draft}
-              />
-            </details>
-          </>
-        ) : (
-          <InlineNotice tone="info">正在载入当前版本的提示词…</InlineNotice>
-        )}
-      </div>
+          {spec ? (
+            <>
+              <Field label="完整提示词">
+                <Textarea
+                  aria-label="完整提示词"
+                  rows={8}
+                  maxLength={20_000}
+                  value={spec.fullPrompt}
+                  disabled={!draft}
+                  onValueChange={updateFullPrompt}
+                />
+              </Field>
 
-      <footer className="workbench-prompt-inspector-footer">
-        <AsyncButton
-          type="button"
-          variant="secondary"
-          busy={saving}
-          busyLabel="保存中…"
-          disabled={!draft || !dirty || saving}
-          onClick={() => {
-            void save()
-          }}
-        >
-          保存草稿
-        </AsyncButton>
-        <AsyncButton
-          type="button"
-          variant="secondary"
-          busy={saving}
-          busyLabel="优化中…"
-          disabled={!draft || !dirty || saving}
-          onClick={() => {
-            void save()
-          }}
-        >
-          AI 优化
-        </AsyncButton>
-        <button
-          type="button"
-          className="workbench-prompt-generate"
-          disabled={!canGenerate}
-          title={historical ? '历史版本需先还原为新的当前美术版本' : undefined}
-          onClick={onGenerate}
-        >
-          生成立绘
-        </button>
-      </footer>
-    </aside>
+              <details className="workbench-granular-editor" open>
+                <summary>
+                  <span>颗粒化提示词</span>
+                  <small>{spec.blocks.length + spec.negativeBlocks.length} 块</small>
+                </summary>
+                <PromptBlockList
+                  spec={spec}
+                  requirements={requirements}
+                  materials={materials}
+                  disabled={!draft}
+                />
+              </details>
+            </>
+          ) : (
+            <InlineNotice tone="info">正在载入当前版本的提示词…</InlineNotice>
+          )}
+        </div>
+
+        <footer className="workbench-prompt-inspector-footer">
+          <AsyncButton
+            type="button"
+            variant="secondary"
+            busy={saving}
+            busyLabel="保存中…"
+            disabled={!draft || !dirty || saving}
+            onClick={() => {
+              void save()
+            }}
+          >
+            保存草稿
+          </AsyncButton>
+          <AsyncButton
+            type="button"
+            variant="secondary"
+            busy={saving}
+            busyLabel="优化中…"
+            disabled={!draft || !dirty || saving}
+            onClick={() => {
+              void save()
+            }}
+          >
+            AI 优化
+          </AsyncButton>
+          {historical ? (
+            <button
+              type="button"
+              className="workbench-prompt-restore"
+              disabled={restoring || saving}
+              onClick={() => setConfirmRestore(true)}
+            >
+              还原此版本
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="workbench-prompt-generate"
+            disabled={!canGenerate}
+            title={historical ? '历史版本需先还原为新的当前美术版本' : undefined}
+            onClick={onGenerate}
+          >
+            生成立绘
+          </button>
+        </footer>
+      </aside>
+      <ConfirmDialog
+        open={confirmRestore}
+        title="还原此版本？"
+        confirmLabel="还原此版本"
+        busy={restoring}
+        onCancel={() => setConfirmRestore(false)}
+        onConfirm={() => {
+          void restore()
+        }}
+      >
+        <p>
+          会复制旧版本 v{selectedArtVersion?.versionNumber ?? ''} 的参考图、立绘和提示词来源，创建一个新的
+          active 美术版本。旧的 v{selectedArtVersion?.versionNumber ?? ''} 不会被修改。
+        </p>
+      </ConfirmDialog>
+    </>
   )
 }

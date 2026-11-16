@@ -7,10 +7,16 @@ import {
   promptInputMetadataSchema,
   promptInputMultipartMetadataSchema,
   providerProbeDtoSchema,
-  providerProbeInputSchema
+  providerProbeInputSchema,
+  restoreArtVersionInputSchema
 } from './api'
 
 describe('API schemas', () => {
+  it('accepts only an empty restore body', () => {
+    expect(restoreArtVersionInputSchema.parse({})).toEqual({})
+    expect(() => restoreArtVersionInputSchema.parse({ cloneActive: true })).toThrow()
+  })
+
   it('applies generation defaults and rejects count > 4', () => {
     const parsed = createGenerationInputSchema.parse({
       promptVersionId: 'pv_1',

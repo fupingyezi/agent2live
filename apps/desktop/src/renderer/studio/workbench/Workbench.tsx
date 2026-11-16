@@ -19,6 +19,7 @@ import {
   listProviders,
   queryKeys,
   requestPromptSync,
+  restoreArtVersion,
   savePromptDraft
 } from '@studio/api'
 import {
@@ -461,6 +462,29 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     await performSelection(target)
   }
 
+  const restoreSelectedVersion = async (): Promise<void> => {
+    if (!selectedArtVersion) throw new Error('请先选择一个历史美术版本。')
+    if (selectedArtVersion.id === project.activeVersionId) {
+      throw new Error('当前版本已经是 active，无需还原。')
+    }
+    const mutation = await restoreArtVersion(project.id, selectedArtVersion.id, project.rowVersion)
+    queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
+    const current = queryClient.getQueryData<ArtVersionDto[]>(
+      queryKeys.artVersions(project.id)
+    )
+    queryClient.setQueryData<ArtVersionDto[]>(queryKeys.artVersions(project.id), [
+      mutation.artVersion,
+      ...(current ?? artVersions).filter((version) => version.id !== mutation.artVersion.id)
+    ])
+    void queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
+    await showPromptVersion(mutation.artVersion.promptVersionId, false, {
+      kind: 'art',
+      versionId: mutation.artVersion.id
+    })
+  }
+
   const handleSubmitted = (result: { draft: PromptDraftDto; warnings: string[] }): void => {
     setDraftHint(result.draft)
     applyServerDraft(draftSnapshot(result.draft))
@@ -623,6 +647,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           materials={submission?.materials ?? []}
           dirty={dirty}
           onSave={saveUnifiedPrompt}
+          onRestore={restoreSelectedVersion}
           onGenerate={() => {
             setPanel('generate')
             setDesignView('candidates')

@@ -733,6 +733,90 @@ export class ArtVersionService {
     })
   }
 
+  restore(input: {
+    projectId: string
+    versionId: string
+    expectedProjectRowVersion: number
+    ctx: RequestIds
+  }): ArtVersionMutationDto {
+    return withEvents(this.deps.db, this.deps.events, (events) => {
+      const project = this.requireProjectRow(input.projectId, input.expectedProjectRowVersion)
+      const sourceRow = this.deps.db
+        .prepare('select * from art_versions where id = ? and art_project_id = ?')
+        .get(input.versionId, input.projectId) as ArtVersionRow | undefined
+      if (!sourceRow) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artVersion' })
+      const source = this.get(input.projectId, input.versionId)
+      this.deps.promptVersions.get(input.projectId, source.promptVersionId)
+      const references: ArtVersionReference[] = source.references.map((reference) => ({
+        assetId: reference.assetId,
+        role: reference.role,
+        note: reference.note,
+        weight: reference.weight,
+        sortOrder: reference.sortOrder,
+        isPrimary: reference.isPrimary,
+        locked: reference.locked
+      }))
+      for (const reference of references) this.requireImageAsset(reference.assetId)
+
+      const now = this.deps.clock.now()
+      const id = this.insertVersion({
+        projectId: input.projectId,
+        promptVersionId: source.promptVersionId,
+        references,
+        parent: sourceRow,
+        originVersionId: source.id,
+        source: parseObject(sourceRow.source_json, 'source_json') as ArtVersionSource,
+        validation: parseObject(sourceRow.validation_json, 'validation_json'),
+        canvasTransform: parseObject(sourceRow.canvas_transform_json, 'canvas_transform_json'),
+        ctx: input.ctx
+      })
+      const changed = this.deps.db
+        .prepare(
+          `update art_projects
+           set active_version_id = ?, stage = 'art_version_active',
+               updated_at = ?, row_version = row_version + 1
+           where id = ? and row_version = ?`
+        )
+        .run(id, now, input.projectId, input.expectedProjectRowVersion)
+      if (changed.changes !== 1) {
+        throw new AppError('ROW_VERSION_CONFLICT', {
+          expected: input.expectedProjectRowVersion
+        })
+      }
+      this.deps.audit.append({
+        actor: { kind: 'local-user' },
+        action: 'art_version.restored',
+        targetType: 'art_version',
+        targetId: id,
+        outcome: 'success',
+        requestId: input.ctx.requestId,
+        traceId: input.ctx.traceId,
+        metadata: {
+          sourceVersionId: source.id,
+          previousVersionId: project.active_version_id,
+          referenceCount: references.length
+        }
+      })
+      events.append({
+        type: 'artVersion.created',
+        scopeKind: 'project',
+        scopeId: input.projectId,
+        payload: {
+          versionId: id,
+          kind: 'restore',
+          sourceVersionId: source.id,
+          previousVersionId: project.active_version_id
+        },
+        requestId: input.ctx.requestId,
+        traceId: input.ctx.traceId
+      })
+      return {
+        artVersion: this.get(input.projectId, id),
+        project: this.deps.projects.get(input.projectId)
+      }
+    })
+  }
+
   activate(input: {
     projectId: string
     versionId: string
