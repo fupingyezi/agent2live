@@ -22,16 +22,26 @@ import {
   ApiError,
   createArtProject,
   createCharacter,
+  getJob,
+  isTerminalJobStatus,
   listProviders,
   requestPromptReverse,
+  requestPromptSync,
+  savePromptDraft,
   submitPromptInput
 } from '@studio/api'
 import { queryKeys } from '@studio/api'
-import type { ArtProjectDto, CharacterDto, CreateCharacterInput, MaterialRole } from '@studio/api'
+import type {
+  ArtProjectDto,
+  CharacterDto,
+  CreateCharacterInput,
+  MaterialRole,
+  PromptDraftDto
+} from '@studio/api'
 import deleteIcon from '@studio/assets/reference-actions/delete.png'
 import editIcon from '@studio/assets/reference-actions/edit.png'
 import previewIcon from '@studio/assets/reference-actions/preview.png'
-import { findDefaultVisionProvider } from '@studio/providers'
+import { findDefaultTextProvider, findDefaultVisionProvider } from '@studio/providers'
 import { CharacterReferenceEditor } from './new-character/CharacterReferenceEditor'
 import {
   normalizeCharacterReferences,
@@ -59,6 +69,7 @@ interface CharacterBootstrapResult {
   project: ArtProjectDto
   inputSubmissionId: string
   draftId: string
+  textWarning: PromptProvisionResult['textWarning']
   aiWarning: 'no-vision-provider' | 'vision-start-failed' | null
   initialReverseJobId: string | null
 }
@@ -66,11 +77,29 @@ interface CharacterBootstrapResult {
 interface PromptProvisionResult {
   inputSubmissionId: string
   draftId: string
+  draft: PromptDraftDto
+  textWarning: 'no-text-provider' | 'text-optimize-failed' | null
   aiWarning: CharacterBootstrapResult['aiWarning']
   initialReverseJobId: string | null
 }
 
 const EMPTY_DRAFT: CharacterDraft = { title: '', summary: '', supplement: '' }
+
+const PROMPT_SYNC_POLL_INTERVAL_MS = 250
+const PROMPT_SYNC_WAIT_MS = 135_000
+
+async function waitForPromptSync(jobId: string) {
+  const deadline = Date.now() + PROMPT_SYNC_WAIT_MS
+  while (Date.now() < deadline) {
+    const job = await getJob(jobId)
+    if (job.status === 'succeeded') return job
+    if (isTerminalJobStatus(job.status)) {
+      throw new Error(`提示词优化任务结束于 ${job.status}${job.errorCode ? ` (${job.errorCode})` : ''}`)
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, PROMPT_SYNC_POLL_INTERVAL_MS))
+  }
+  throw new Error('提示词优化超时')
+}
 
 const REFERENCE_ROLE_LABELS: Record<MaterialRole, string> = {
   identity_reference: '身份',
@@ -323,23 +352,77 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       files,
       null
     )
+    let provisionedDraft = submitted.draft
+    let textWarning: PromptProvisionResult['textWarning'] = null
     let aiWarning: PromptProvisionResult['aiWarning'] = null
     let initialReverseJobId: string | null = null
+    let providers: Awaited<ReturnType<typeof listProviders>> = []
+    let providersFailed = false
     try {
-      const providers = await listProviders()
-      const provider = findDefaultVisionProvider(providers)
-      if (!provider) {
-        aiWarning = 'no-vision-provider'
-      } else {
-        const reverse = await requestPromptReverse(projectId, provider.id)
-        initialReverseJobId = reverse.jobId
-      }
+      providers = await listProviders()
     } catch {
-      aiWarning = 'vision-start-failed'
+      providersFailed = true
+    }
+
+    const textProvider = findDefaultTextProvider(providers)
+    if (providersFailed) {
+      textWarning = 'text-optimize-failed'
+    } else if (!textProvider) {
+      textWarning = 'no-text-provider'
+    } else {
+      try {
+        const sync = await requestPromptSync(
+          projectId,
+          submitted.draft.id,
+          {
+            providerConnectionId: textProvider.id,
+            source: 'full',
+            mode: 'optimize',
+            state: submitted.draft.state
+          },
+          submitted.draft.rowVersion
+        )
+        const job = await waitForPromptSync(sync.jobId)
+        const result = job.result as {
+          state?: PromptDraftDto['state']
+          conflicts?: unknown[]
+        } | null
+        if (!result?.state || (result.conflicts?.length ?? 0) > 0) {
+          throw new Error('提示词优化结果不可用')
+        }
+        provisionedDraft = await savePromptDraft(
+          projectId,
+          submitted.draft.id,
+          result.state,
+          submitted.draft.rowVersion
+        )
+      } catch {
+        textWarning = 'text-optimize-failed'
+      }
+    }
+
+    if (references.length > 0) {
+      if (providersFailed) {
+        aiWarning = 'vision-start-failed'
+      } else {
+        const provider = findDefaultVisionProvider(providers)
+        if (!provider) {
+          aiWarning = 'no-vision-provider'
+        } else {
+          try {
+            const reverse = await requestPromptReverse(projectId, provider.id)
+            initialReverseJobId = reverse.jobId
+          } catch {
+            aiWarning = 'vision-start-failed'
+          }
+        }
+      }
     }
     return {
       inputSubmissionId: submitted.submission.id,
-      draftId: submitted.draft.id,
+      draftId: provisionedDraft.id,
+      draft: provisionedDraft,
+      textWarning,
       aiWarning,
       initialReverseJobId
     }
@@ -365,13 +448,14 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         throw new CharacterProvisioningError(message, character.id, project?.id ?? null, error)
       }
     },
-    onSuccess: ({ character, project, aiWarning, initialReverseJobId }) => {
+    onSuccess: ({ character, project, textWarning, aiWarning, initialReverseJobId }) => {
       clearDraft()
       void queryClient.invalidateQueries({ queryKey: queryKeys.characters })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lineage(character.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
       const query = new URLSearchParams({ project: project.id })
+      if (textWarning) query.set('textWarning', textWarning)
       if (aiWarning) query.set('aiWarning', aiWarning)
       if (initialReverseJobId) {
         query.set('aiKind', 'reverse')
@@ -395,6 +479,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(provisioning.projectId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(provisioning.projectId) })
       const query = new URLSearchParams({ project: provisioning.projectId })
+      if (submitted.textWarning) query.set('textWarning', submitted.textWarning)
       if (submitted.aiWarning) query.set('aiWarning', submitted.aiWarning)
       if (submitted.initialReverseJobId) {
         query.set('aiKind', 'reverse')

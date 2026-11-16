@@ -112,10 +112,16 @@ const DesignVersionCard: React.FC<DesignVersionCardProps> = ({ version, active }
 export interface WorkbenchProps {
   project: ArtProjectDto
   characterTitle: string
+  textWarning?: string | null
   aiWarning?: string | null
 }
 
-export const Workbench: React.FC<WorkbenchProps> = ({ project, characterTitle, aiWarning = null }) => {
+export const Workbench: React.FC<WorkbenchProps> = ({
+  project,
+  characterTitle,
+  textWarning = null,
+  aiWarning = null
+}) => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -462,6 +468,15 @@ export const Workbench: React.FC<WorkbenchProps> = ({ project, characterTitle, a
       </div>
 
       <div className="workbench-functional-dock">
+        {textWarning ? (
+          <div data-testid="text-warning">
+            <InlineNotice tone="warning">
+              {textWarning === 'no-text-provider'
+                ? '没有配置 DeepSeek 文本模型，已保留设定生成的草稿；可在角色描述中继续优化。'
+                : '文本优化未完成，已保留可编辑的角色设定和提示词草稿。'}
+            </InlineNotice>
+          </div>
+        ) : null}
         {aiWarning ? (
           <div data-testid="ai-warning">
             <InlineNotice tone="warning">

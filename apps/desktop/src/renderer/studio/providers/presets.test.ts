@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProviderConnectionDto } from '@studio/api'
 import {
   PROVIDER_PRESETS,
+  findDefaultTextProvider,
   findDefaultVisionProvider,
   getProviderPreset,
   initialProviderValues,
@@ -85,6 +86,38 @@ describe('provider presets', () => {
         connection({ id: 'conn_disabled', enabled: false }),
         connection({
           id: 'conn_no_vision',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+          }
+        })
+      ])
+    ).toBeNull()
+  })
+
+  it('selects only an enabled DeepSeek text connection', () => {
+    expect(
+      findDefaultTextProvider([
+        connection({
+          id: 'conn_deepseek',
+          baseUrl: 'https://api.deepseek.com/v1',
+          model: 'deepseek-chat',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+          }
+        })
+      ])?.id
+    ).toBe('conn_deepseek')
+
+    expect(
+      findDefaultTextProvider([
+        connection({ id: 'conn_zhipu' }),
+        connection({ id: 'conn_disabled', enabled: false }),
+        connection({
+          id: 'conn_openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-4.1-mini',
           capabilities: {
             schemaVersion: 'provider-capabilities/1',
             chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }

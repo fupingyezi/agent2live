@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { MaterialRole, PromptInputMaterialDto, PromptSpecV2 } from '@studio/api'
 import { getArtProject, getCharacter, getPromptWorkspace, queryKeys } from '@studio/api'
 import { StudioPageTopbar, StudioError, StudioLoading } from '@studio/components'
-import { Button, type EmptyProps } from '@agent2live/design-system'
+import { Button, InlineNotice, type EmptyProps } from '@agent2live/design-system'
 import characterEmptyArt from '@studio/assets/empty-states/character-empty.png'
 import { useAssetUrl } from '@studio/hooks'
 
@@ -68,9 +68,25 @@ const CreatedAvatar: React.FC<CreatedAvatarProps> = ({ characterId, assetId, tit
 }
 
 function promptText(state: PromptSpecV2 | undefined, globalNotes: string): string {
+  if (state?.fullPrompt.trim()) return state.fullPrompt
   const blocks =
     state?.blocks.map((block) => `${block.label}\n${block.text}`).filter((text) => text.trim()) ?? []
   return [globalNotes.trim(), ...blocks].filter(Boolean).join('\n\n')
+}
+
+function creationWarningMessage(warning: string | null): string | null {
+  switch (warning) {
+    case 'no-text-provider':
+      return '没有配置 DeepSeek 文本模型，已保留设定生成的草稿；可稍后在角色描述中继续优化。'
+    case 'text-optimize-failed':
+      return '文本优化未完成，已保留可编辑的角色设定和提示词草稿。'
+    case 'no-vision-provider':
+      return '没有配置智谱多模态连接，参考图反推没有启动；参考图仍已保存为草稿。'
+    case 'vision-start-failed':
+      return '参考图反推未能启动，参考图仍已保存，可在角色描述中重试。'
+    default:
+      return null
+  }
 }
 
 export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
@@ -138,6 +154,8 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
   const draftText = promptText(workspace.activeDraft?.state, submission?.globalNotes ?? '')
   const workbenchQuery = new URLSearchParams({ project: project.id })
   const aiWarning = searchParams.get('aiWarning')
+  const textWarning = searchParams.get('textWarning')
+  if (textWarning) workbenchQuery.set('textWarning', textWarning)
   if (aiWarning) workbenchQuery.set('aiWarning', aiWarning)
   const aiKind = searchParams.get('aiKind')
   const aiJob = searchParams.get('aiJob')
@@ -146,6 +164,8 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
     workbenchQuery.set('aiJob', aiJob)
   }
   const workbenchPath = `/characters/${encodeURIComponent(id)}/art?${workbenchQuery.toString()}`
+  const textWarningMessage = creationWarningMessage(textWarning)
+  const aiWarningMessage = creationWarningMessage(aiWarning)
 
   return (
     <div className="studio-page-frame" data-testid="character-created">
@@ -157,6 +177,20 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
 
       <main className="created-page">
         <h1>角色已创建</h1>
+        {textWarningMessage || aiWarningMessage ? (
+          <div className="created-ai-warning-stack">
+            {textWarningMessage ? (
+              <div data-testid="text-warning">
+                <InlineNotice tone="warning">{textWarningMessage}</InlineNotice>
+              </div>
+            ) : null}
+            {aiWarningMessage ? (
+              <div data-testid="ai-warning">
+                <InlineNotice tone="warning">{aiWarningMessage}</InlineNotice>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <section className="created-result-card">
           <header>
             <strong>创建结果</strong>

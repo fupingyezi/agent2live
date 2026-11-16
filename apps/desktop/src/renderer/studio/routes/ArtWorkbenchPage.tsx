@@ -15,6 +15,7 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
   const navigate = useNavigate()
   const projectId = searchParams.get('project')
   const aiWarning = searchParams.get('aiWarning')
+  const textWarning = searchParams.get('textWarning')
   const id = characterId ?? ''
 
   const projectQuery = useQuery({
@@ -124,6 +125,7 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
         key={project.id}
         project={project}
         characterTitle={characterQuery.data?.title ?? project.title}
+        textWarning={textWarning}
         aiWarning={aiWarning}
       />
     </div>

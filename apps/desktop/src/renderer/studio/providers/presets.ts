@@ -171,3 +171,19 @@ export function findDefaultVisionProvider(providers: ProviderConnectionDto[]): P
     }) ?? null
   )
 }
+
+export function findDefaultTextProvider(providers: ProviderConnectionDto[]): ProviderConnectionDto | null {
+  return (
+    providers.find((provider) => {
+      const capabilities = provider.capabilities as ProviderCapabilities | null
+      return (
+        provider.enabled &&
+        provider.kind === 'chat' &&
+        capabilities?.chat !== undefined &&
+        capabilities.chat.supportsVision !== true &&
+        provider.baseUrl?.includes('api.deepseek.com') === true &&
+        provider.model?.startsWith('deepseek-') === true
+      )
+    }) ?? null
+  )
+}

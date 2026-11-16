@@ -1,6 +1,7 @@
 /** 模型连接预设、表单默认值、连接类型识别及默认视觉连接选择。 */
 export {
   PROVIDER_PRESETS,
+  findDefaultTextProvider,
   findDefaultVisionProvider,
   getProviderPreset,
   initialProviderValues,

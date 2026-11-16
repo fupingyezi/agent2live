@@ -377,6 +377,10 @@ test('creates a default art project and prompt draft from text-only setup', asyn
     await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toContainText('霁')
     await expect(studio.page.locator('[data-testid="no-active-draft"]')).toHaveCount(0)
     await expect(studio.page.getByText('新建美术项目', { exact: true })).toHaveCount(0)
+    await expect(studio.page.locator('[data-testid="text-warning"]')).toContainText(
+      '没有配置 DeepSeek 文本模型'
+    )
+    await expect(studio.page.locator('[data-testid="ai-warning"]')).toHaveCount(0)
 
     const inputPanel = studio.page.locator('[data-testid="prompt-input-panel"]')
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
@@ -384,6 +388,165 @@ test('creates a default art project and prompt draft from text-only setup', asyn
     await expect(overallNotes).toHaveValue(
       '住在旧城钟楼里的年轻抄写员，说话轻，习惯把重要的事写进页边。\n\n围巾始终可见，画面保持低饱和。'
     )
+  } finally {
+    await studio.close()
+  }
+})
+
+test('optimizes creation prompts before starting reference reverse', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-optimize-bootstrap-')
+
+  try {
+    const textProvider = {
+      id: 'conn_deepseek_e2e',
+      label: 'DeepSeek',
+      kind: 'chat',
+      adapter: 'mock',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',
+      enabled: true,
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+      },
+      hasSecret: true,
+      createdAt: '2026-11-16T00:00:00.000Z',
+      updatedAt: '2026-11-16T00:00:00.000Z',
+      rowVersion: 1
+    }
+    const visionProvider = {
+      ...textProvider,
+      id: 'conn_zhipu_e2e',
+      label: '智谱',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      model: 'glm-5.3-flash',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
+      }
+    }
+    let submittedState: (Record<string, unknown> & { blocks: Array<Record<string, unknown>> }) | null = null
+
+    await studio.page.route('**/api/v1/providers', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue()
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [textProvider, visionProvider] })
+      })
+    })
+    await studio.page.route('**/api/v1/art-projects/*/prompt-drafts/*/sync', async (route) => {
+      const body = route.request().postDataJSON() as {
+        state: Record<string, unknown> & {
+          blocks: Array<Record<string, unknown>>
+        }
+      }
+      submittedState = body.state
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ jobId: 'job_sync_e2e' })
+      })
+    })
+    await studio.page.route('**/api/v1/jobs/job_sync_e2e', async (route) => {
+      expect(submittedState).not.toBeNull()
+      const source = submittedState!.blocks[0]!
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'job_sync_e2e',
+          type: 'prompt.sync',
+          status: 'succeeded',
+          attempts: 1,
+          maxAttempts: 2,
+          progress: 100,
+          errorCode: null,
+          result: {
+            state: {
+              ...submittedState,
+              fullPrompt: '钟楼抄写员霁，轻声道白，低饱和画面，围巾始终可见。',
+              blocks: [
+                ...submittedState!.blocks,
+                {
+                  ...source,
+                  id: 'ai.optimized.style',
+                  label: '优化画面',
+                  text: '低饱和画面，围巾始终可见',
+                  locked: false,
+                  source: 'ai-suggestion',
+                  requirementRefs: [],
+                  materialRefs: [],
+                  evidence: []
+                }
+              ]
+            },
+            conflicts: [],
+            warnings: []
+          },
+          cancelRequested: false,
+          createdAt: '2026-11-16T00:00:00.000Z',
+          updatedAt: '2026-11-16T00:00:00.000Z'
+        })
+      })
+    })
+    await studio.page.route('**/api/v1/art-projects/*/prompt-reverse', async (route) => {
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          jobId: 'job_reverse_e2e',
+          baseDraftRevision: 1,
+          baseDraftRowVersion: 2
+        })
+      })
+    })
+
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('霁')
+    await studio.page
+      .getByLabel('角色简介')
+      .fill('住在旧城钟楼里的年轻抄写员，说话轻，习惯把重要的事写进页边。')
+    await studio.page.getByLabel('补充说明').fill('围巾始终可见，画面保持低饱和。')
+    await studio.page.getByLabel('上传参考图').setInputFiles({
+      name: 'jii.png',
+      mimeType: 'image/png',
+      buffer: await makePng()
+    })
+    await expect(studio.page.locator('[data-testid="character-reference-card"]')).toHaveCount(1)
+    await studio.page.getByRole('button', { name: '创建并生成' }).click()
+
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    const routeQuery = new URLSearchParams(new URL(studio.page.url()).hash.split('?')[1] ?? '')
+    const projectId = routeQuery.get('project')
+    expect(projectId).toMatch(/^artp_/)
+    const workspace = await new ApiClient(studio.endpoint).json<{
+      latestSubmission: { materials: Array<{ role: string }> }
+      activeDraft: {
+        state: {
+          fullPrompt: string
+          blocks: Array<{ id: string; text: string }>
+        }
+      }
+    }>('GET', `/api/v1/art-projects/${projectId}/prompt`)
+    expect(workspace.body.latestSubmission.materials).toHaveLength(1)
+    expect(routeQuery.get('textWarning')).toBeNull()
+    expect(routeQuery.get('aiWarning')).toBeNull()
+    expect(routeQuery.get('aiKind')).toBe('reverse')
+    expect(routeQuery.get('aiJob')).toBe('job_reverse_e2e')
+
+    expect(workspace.body.activeDraft.state.fullPrompt).toBe(
+      '钟楼抄写员霁，轻声道白，低饱和画面，围巾始终可见。'
+    )
+    expect(
+      workspace.body.activeDraft.state.blocks.find((block) => block.id === 'ai.optimized.style')?.text
+    ).toContain('低饱和画面')
   } finally {
     await studio.close()
   }
