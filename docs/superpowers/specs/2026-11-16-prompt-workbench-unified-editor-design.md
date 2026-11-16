@@ -1,232 +1,183 @@
-# Prompt Workbench Unified Editor Design
+# 提示词工作台一体化编辑器设计
 
-## Intent
+## 目的
 
-The prompt workbench must treat the coherent full prompt and its granular prompt
-blocks as two synchronized representations of one PromptSpec version. They are
-not separate documents, drafts, or version histories.
+提示词工作台要把连贯的完整提示词与颗粒化提示词，视为同一个 PromptSpec 版本的两种同步表示。它们不是两份文档、两个草稿或两套版本历史。
 
-The selected version determines the complete editing surface: its full prompt,
-its granular blocks, its reference set, its artwork, and its generation history.
+用户在左侧选择版本后，右侧同时编辑该版本的完整提示词和颗粒化提示词；中间展示同一版本关联的参考图、立绘和生成状态。
 
-## Goals
+## 目标
 
-- Keep `PromptSpecV2` as the single persisted source for a prompt version.
-- Store a coherent natural-language `fullPrompt` in that same PromptSpec.
-- Keep existing `blocks` and `negativeBlocks` as the structured representation.
-- Synchronize full prompt edits into granular blocks through DeepSeek.
-- Synchronize granular block edits into a coherent full prompt through DeepSeek.
-- Preserve block IDs, locks, provenance, weights, requirements, and material
-  references across synchronization. Locked blocks are never silently replaced.
-- Use the right inspector for prompt editing, saving, AI optimization, and
-  generation entry.
-- Use the left version area to select the version whose prompts, references,
-  artwork, and generation state are shown together.
-- Keep generation settings, candidate acceptance, and other transient decisions
-  in modal dialogs rather than persistent cards in the canvas.
-- Support both initial inputs: image reversal and text brief optimization.
+- `PromptSpecV2` 继续作为提示词版本的唯一持久化主体。
+- 在同一个 PromptSpec 中保存连贯的自然语言 `fullPrompt`。
+- 保留现有 `blocks` 和 `negativeBlocks` 作为结构化表示。
+- 完整提示词被修改后，通过 DeepSeek 同步生成颗粒化提示词。
+- 颗粒化提示词被修改后，通过 DeepSeek 同步重写完整提示词。
+- 同步时保留块 ID、锁定状态、来源、权重、需求引用和素材引用。
+- 锁定块不能被 AI 静默替换。
+- 右侧角色描述栏负责提示词修改、保存、AI 优化和发起生成。
+- 左侧负责版本管理；点击版本后，完整提示词、颗粒块、参考图、立绘和操作同时切换。
+- 生成设置、候选接受和其他临时操作使用 Modal，不在画布里长期放置设置卡片。
+- 创建角色时同时支持图片反推和“设定 + 补充说明”文本优化。
 
-## Non-Goals
+## 非目标
 
-- Do not create a second full-prompt entity, table, version counter, or history.
-- Do not replace `PromptSpecV2` blocks with a plain string.
-- Do not place prompt editors, generation settings, or settings forms below the
-  main 1440x900 workbench frame.
-- Do not implement pixel editing, cropping, retouching, or PSD workflows in this
-  change.
-- Do not auto-apply an AI synchronization that contradicts a locked block.
+- 不创建第二套完整提示词实体、数据表、版本号或历史。
+- 不删除 PromptSpec 的颗粒块，也不把 PromptSpec 退化为单独字符串。
+- 不在 1440×900 工作台主框架下方追加提示词编辑器。
+- 本次不实现图片裁切、修改像素、提亮、去背景或 PSD 工作流。
+- 不允许 AI 同步静默覆盖锁定块。
 
-## Data Model
+## 数据模型
 
-`PromptSpecV2` gains one top-level field:
+`PromptSpecV2` 增加一个顶层字段：
 
 ```ts
 fullPrompt: string
 ```
 
-The field is part of the same PromptSpec and therefore participates in canonical
-content hashing, draft revisions, prompt versions, reverse results, suggestions,
-forks, generation provenance, and backups.
+`fullPrompt` 属于同一个 PromptSpec，因此参与统一的内容哈希、草稿修订、提示词版本、反推结果、AI 建议、Fork、生成溯源和备份。
 
-`fullPrompt` is the coherent, user-editable prose representation. `blocks` and
-`negativeBlocks` remain the structured representation used for locking,
-requirements, evidence, weights, references, and provider compilation.
+`fullPrompt` 是连贯、可直接阅读和修改的完整提示词。`blocks` 和 `negativeBlocks` 是同一提示词的结构化表示，用于分类、锁定、权重、需求、证据、素材引用和 Provider 编译。
 
-Existing persisted PromptSpecs may omit `fullPrompt`. Normalization fills missing
-values from the existing blocks without a database migration.
+已有 PromptSpec 可能没有 `fullPrompt`。读取时根据现有颗粒块补齐，不新增数据库迁移。
 
-## Synchronization Contract
+## 双向同步规则
 
-The editor tracks which representation the user edited last:
+编辑器记录用户最后修改的是哪一侧：
 
 ```ts
 type PromptEditSource = 'full' | 'blocks'
 ```
 
-Before save, only the last edited representation is authoritative:
+保存时，最后修改的一侧是权威输入：
 
-- `full`: save the user's exact fullPrompt text and ask DeepSeek to materialize
-  matching granular blocks.
-- `blocks`: save the exact block edits and ask DeepSeek to produce the coherent
-  fullPrompt text.
+- `full`：保存用户输入的完整提示词原文，并调用 DeepSeek 生成对应的颗粒化提示词。
+- `blocks`：保存用户修改后的颗粒块，并调用 DeepSeek 生成连贯的完整提示词。
 
-The synchronized pair is then written atomically as one PromptDraft revision and
-later one PromptVersion. The client does not persist either side independently.
+同步完成后，两侧作为同一个 PromptDraft Revision 原子保存，后续提交为同一个 PromptVersion。客户端不能单独保存任意一侧。
 
-### Full to blocks
+### 完整提示词同步到颗粒块
 
-DeepSeek returns candidate granular blocks derived from the edited fullPrompt.
-Existing locked blocks remain unchanged. Existing unlocked blocks retain their
-IDs and metadata when their meaning is still present. New content receives new
-block IDs. Removed content is removed only from unlocked blocks.
+DeepSeek 根据修改后的完整提示词生成颗粒块建议。现有锁定块保持不变；仍能对应上的未锁定块保留原 ID 和元数据；新增内容分配新块 ID；被删除的内容只能从未锁定块中移除。
 
-If the fullPrompt contradicts a locked block, synchronization does not silently
-alter the fullPrompt or the locked block. The right inspector shows the
-conflict and requires the user to revise the fullPrompt or explicitly unlock the
-block before saving.
+如果完整提示词与锁定块冲突，系统不能静默修改任意一侧。右侧角色描述栏需要显示冲突，用户必须修改完整提示词，或明确解锁对应块，才能继续保存。
 
-### Blocks to full
+### 颗粒块同步到完整提示词
 
-DeepSeek receives the complete granular spec, character brief, and locked
-constraints, then returns one coherent fullPrompt. This output must not introduce
-facts absent from the blocks or character brief. The exact block edits remain
-authoritative and are saved together with the generated fullPrompt.
+DeepSeek 读取完整颗粒化 PromptSpec、角色设定和锁定约束，生成一段连贯的完整提示词。生成结果不能加入颗粒块或角色设定中不存在的新事实。颗粒块仍是结构化权威内容，并与生成的完整提示词一起保存。
 
-### Save and generate
+### 保存与生成
 
-The right inspector exposes:
+右侧角色描述栏提供：
 
-- Save draft
-- AI optimize
-- Generate
+- 保存草稿
+- AI 优化
+- 生成
 
-Generate is disabled while the current editing session has unsynchronized
-changes. Saving performs synchronization first, then persists the pair. The
-generation modal always uses a committed PromptVersion, never a partially
-synchronized local state.
+存在尚未同步的修改时，“生成”不可用。点击保存后先完成双向同步，再持久化这对表示。生成 Modal 只能使用已经提交的 PromptVersion，不能使用仅存在于本地、尚未完成同步的草稿状态。
 
-## Right Inspector
+## 右侧角色描述栏
 
-The right `角色描述` inspector contains:
+右侧角色描述栏包含：
 
-1. The selected version label and linked art state.
-2. A multiline `完整提示词` editor.
-3. Expandable granular prompt sections using the existing block editor.
-4. Lock, category, weight, requirement, and material controls attached to their
-   corresponding blocks.
-5. Save, AI optimize, and Generate actions anchored at the bottom of the
-   inspector.
+1. 当前版本及关联立绘状态。
+2. 可编辑的多行“完整提示词”。
+3. 可展开的颗粒化提示词编辑区。
+4. 每个颗粒块对应的分类、锁定、权重、需求和素材引用控件。
+5. 固定在底部的保存、AI 优化和生成操作。
 
-The inspector scrolls independently. Editing either representation marks the
-other as pending synchronization; it does not create a page-level editor below
-the canvas.
+右侧区域独立滚动。修改任意一侧后，另一侧显示待同步状态。页面下方不再存在第二套编辑器。
 
-## Left Version Management
+## 左侧版本管理
 
-Each left-side node represents an immutable art version and its linked prompt
-version:
+左侧每个节点代表一个不可变 ArtVersion，并同时展示它绑定的 PromptVersion：
 
 ```text
-ArtVersion v3
-  artwork thumbnail
-  linked PromptVersion v5
-  active / historical / seeded
+美术版本 v3
+  立绘缩略图
+  关联提示词 v5
+  当前 / 历史 / 分支种子
 ```
 
-Selecting a node switches all of the following together:
+点击节点后，以下内容一起切换：
 
-- fullPrompt and granular blocks from the linked PromptVersion;
-- reference set and artwork from the ArtVersion;
-- selected-version actions such as activate, rollback, fork, and reference
-  revision.
+- 关联 PromptVersion 的 `fullPrompt` 和颗粒块；
+- ArtVersion 保存的参考图集合和立绘；
+- 当前版本可执行的操作，例如设为当前、回滚、Fork 和参考图修订。
 
-The current unsaved draft is shown as a separate draft node at the top. It is not
-an immutable version until committed. ArtVersion provenance remains governed by
-the existing technical design.
+当前未保存草稿作为顶部独立草稿节点显示，提交后才进入不可变版本历史。ArtVersion 的来源和 Fork 规则继续遵循现有技术方案。
 
-## Center Canvas and Modals
+## 中间画布与 Modal
 
-The center canvas only displays the selected version's visual content:
+中间画布只展示当前版本的视觉内容：
 
-- reference images;
-- artwork;
-- candidate comparison when explicitly requested;
-- read-only task status.
+- 参考图；
+- 立绘；
+- 用户明确打开后的候选比较；
+- 只读任务状态。
 
-It does not contain persistent prompt forms or generation settings.
+中间画布不承载长期存在的提示词表单或生成设置。
 
-The following interactions use modals:
+以下交互使用 Modal：
 
-- generation model, size, count, seed, and task confirmation;
-- candidate acceptance;
-- manual artwork upload;
-- version activation or rollback confirmation;
-- fork source and branch metadata;
-- locked-block synchronization conflicts.
+- 选择生成模型、尺寸、数量和 Seed，并确认生成任务；
+- 接受候选；
+- 手工上传立绘；
+- 激活、切换或回滚版本；
+- 选择 Fork 来源和填写分支信息；
+- 处理锁定块同步冲突。
 
-## Character Creation
+## 创建角色
 
-Character creation produces one initial PromptSpec pair.
+创建角色最终生成同一组“完整提示词 + 颗粒块”的初始 PromptSpec。
 
-### Image input
+### 图片输入
 
-The existing Zhipu reference-image reverse pipeline produces candidate blocks.
-The same synchronization pipeline generates the coherent fullPrompt.
+现有智谱参考图反推流程生成颗粒块，再由同一套同步流程生成连贯完整提示词。
 
-### Text input
+### 文本输入
 
-Character title, summary, and supplementary notes are sent to DeepSeek to create
-an initial fullPrompt and matching granular blocks. The character brief remains
-authoritative and is projected into locked blocks.
+角色名称、角色简介和补充说明发送给 DeepSeek，生成初始完整提示词和对应颗粒块。角色设定仍是权威数据，并投影为锁定块。
 
-### Both inputs
+### 同时提供图片和文本
 
-The text brief creates the base PromptSpec first. Image reverse then runs against
-that base, preserves locked brief blocks, and adds visual details supported by
-the references. After merge, the complete prompt pair is synchronized and shown
-on the creation confirmation page before entering the workbench.
+先用文本设定生成基础 PromptSpec，再让图片反推基于该草稿补充参考图中可确认的视觉信息。反推必须保留锁定的角色块。合并完成后同步完整提示词和颗粒块，并在创建完成页展示结果。
 
-If no text optimizer or vision provider is available, creation still succeeds:
+没有文本优化模型或视觉模型时，创建仍然成功：
 
-- the submitted brief remains a valid draft;
-- the workbench explains which optimization was skipped;
-- the user can retry from the right inspector.
+- 用户提交的角色设定和参考图仍然形成有效草稿；
+- 工作台明确说明哪项优化没有执行；
+- 用户可以在右侧角色描述栏重新发起。
 
-## Failure Handling
+## 失败处理
 
-- DeepSeek synchronization failure leaves the last saved draft unchanged.
-- A stale draft revision returns the existing conflict response and requires a
-  refresh.
-- A malformed AI response leaves both representations unchanged and reports the
-  provider/schema failure.
-- A locked-block conflict is actionable and visible in the inspector.
-- Switching versions with unsaved edits prompts for save, discard, or cancel.
+- DeepSeek 同步失败时，最后一次成功保存的草稿不变。
+- 草稿版本过期时返回现有并发冲突，要求刷新。
+- AI 返回格式错误时，两侧内容都不改变，并报告 Provider 或 Schema 错误。
+- 锁定块冲突必须显示为可操作的冲突状态。
+- 存在未保存修改时切换版本，必须提示保存、放弃或取消。
 
-## Approaches Considered
+## 已比较的方案
 
-### One PromptSpec with synchronized representations
+### 同一个 PromptSpec 保存两种同步表示
 
-Selected. It preserves one revision/version/hash and uses the existing block
-domain model for locks and references.
+采用。保留单一 Revision、Version 和 Hash，并继续使用现有块模型处理锁定和引用。
 
-### Separate full-prompt and block entities
+### 完整提示词与颗粒块分别存储
 
-Rejected because it creates two version histories and ambiguous generation
-authority.
+不采用。会产生两套版本历史，并导致生成时无法确定权威内容。
 
-### Granular blocks only, with fullPrompt generated per provider
+### 只保存颗粒块，按 Provider 动态生成完整提示词
 
-Rejected because provider compilation changes by model capability and therefore
-cannot be the stable, user-editable complete prompt.
+不采用。Provider 编译结果会随模型能力、长度限制和权重语法变化，不能作为稳定、可编辑的完整提示词。
 
-## Success Criteria
+## 成功标准
 
-- A prompt version round-trips as one fullPrompt plus one granular spec.
-- Editing either representation synchronizes the other before save.
-- Locked blocks are never silently changed.
-- Switching left-side versions updates prompts, references, artwork, and actions
-  together.
-- No prompt editor or generation settings remain below the workbench.
-- Text-only and image-based character creation both produce the same unified
-  PromptSpec shape.
-- Existing PromptSpecs remain readable after normalization.
+- 一个提示词版本同时包含一个 `fullPrompt` 和一份颗粒化 PromptSpec。
+- 修改任意一侧后，保存前能同步另一侧。
+- 锁定块不会被静默修改。
+- 左侧切换版本时，提示词、参考图、立绘和操作一起切换。
+- 工作台下方不再存在提示词编辑区或生成设置区。
+- 纯文本创建和带图片创建最终得到相同结构的 PromptSpec。
+- 已有 PromptSpec 在补齐 `fullPrompt` 后仍可正常读取。
