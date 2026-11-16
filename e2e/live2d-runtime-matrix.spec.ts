@@ -173,6 +173,7 @@ for (const model of models) {
           AGENT2LIVE_DATA_DIR: dataDir,
           AGENT2LIVE_E2E: '1',
           AGENT2LIVE_SKIP_SIDECAR: '1',
+          AGENT2LIVE_OPEN_PET: '1',
           AGENT2LIVE_MODEL_ROOT: model.root,
           AGENT2LIVE_MODEL_URL: model.modelUrl
         }

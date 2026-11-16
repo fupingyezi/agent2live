@@ -22,6 +22,10 @@ function modelRoot(): string | null {
   return process.env.AGENT2LIVE_MODEL_ROOT ?? null
 }
 
+function shouldOpenPet(): boolean {
+  return process.env.AGENT2LIVE_OPEN_PET === '1'
+}
+
 async function bootstrap(): Promise<void> {
   registerModelProtocol(modelRoot)
   registerWindowIpc()
@@ -37,12 +41,12 @@ async function bootstrap(): Promise<void> {
     }
   }
   createStudioWindow()
-  createPetWindow()
+  if (shouldOpenPet()) createPetWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createStudioWindow()
-      createPetWindow()
+      if (shouldOpenPet()) createPetWindow()
     }
   })
 }

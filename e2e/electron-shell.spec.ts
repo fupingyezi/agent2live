@@ -5,12 +5,36 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { petPage, studioPage } from './support/windows'
 
+test('starts with only the Studio window by default', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-shell-default-'))
+  const app = await electron.launch({
+    args: ['apps/desktop/out/main/index.js'],
+    env: { ...process.env, AGENT2LIVE_DATA_DIR: dataDir, AGENT2LIVE_SKIP_SIDECAR: '1' }
+  })
+  try {
+    const studio = await studioPage(app)
+    await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
+    const urls = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map((window) => window.webContents.getURL())
+    )
+    expect(urls).toHaveLength(1)
+    expect(urls[0]).toContain('/studio/')
+  } finally {
+    await app.close()
+  }
+})
+
 test('studio and pet are isolated windows; pet click-through is switchable', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-shell-'))
   mkdirSync(dataDir, { recursive: true })
   const app = await electron.launch({
     args: ['apps/desktop/out/main/index.js'],
-    env: { ...process.env, AGENT2LIVE_DATA_DIR: dataDir, AGENT2LIVE_SKIP_SIDECAR: '1' }
+    env: {
+      ...process.env,
+      AGENT2LIVE_DATA_DIR: dataDir,
+      AGENT2LIVE_SKIP_SIDECAR: '1',
+      AGENT2LIVE_OPEN_PET: '1'
+    }
   })
   try {
     const studio = await studioPage(app)

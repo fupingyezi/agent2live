@@ -48,6 +48,7 @@ test('studio and pet load the same Cubism 4 model, play Idle, and expose require
         AGENT2LIVE_DATA_DIR: dataDir,
         AGENT2LIVE_E2E: '1',
         AGENT2LIVE_SKIP_SIDECAR: '1',
+        AGENT2LIVE_OPEN_PET: '1',
         AGENT2LIVE_MODEL_ROOT: MODEL_ROOT,
         AGENT2LIVE_MODEL_URL: MODEL_URL
       }
