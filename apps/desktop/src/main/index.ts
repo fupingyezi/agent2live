@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createPetWindow, createStudioWindow } from './windows'
 import { registerSecretIpc, registerWindowIpc } from './ipc'
 import { registerModelProtocol, registerModelScheme } from './model-protocol'
-import { startSidecar, stopSidecar } from './sidecar'
+import { startSidecar, stopSidecar, watchSidecarForDev } from './sidecar'
 
 app.setName('agent2live')
 if (process.env.AGENT2LIVE_DATA_DIR) {
@@ -33,6 +33,7 @@ async function bootstrap(): Promise<void> {
   if (process.env.AGENT2LIVE_SKIP_SIDECAR !== '1') {
     try {
       await startSidecar()
+      watchSidecarForDev()
     } catch (error) {
       console.error('sidecar failed to start', error)
       if (!process.env.AGENT2LIVE_E2E) {

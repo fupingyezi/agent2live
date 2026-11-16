@@ -109,7 +109,7 @@ it('streams event_log with SSE and replay cursor', async () => {
   const controller = new AbortController()
   try {
     const res = await fetch(`${base}/api/v1/events?after=0`, {
-      headers: { authorization: 'Bearer t' },
+      headers: { authorization: 'Bearer t', origin: 'http://localhost:5173' },
       signal: controller.signal
     })
     expect(res.status).toBe(200)
@@ -117,6 +117,8 @@ it('streams event_log with SSE and replay cursor', async () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(res.headers.get('x-request-id')).toBeTruthy()
     expect(res.headers.get('x-trace-id')).toBeTruthy()
+    expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173')
+    expect(res.headers.get('vary')).toContain('Origin')
     const text = await readSse(
       res.body!.getReader(),
       '',

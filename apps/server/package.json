@@ -6,6 +6,7 @@
   "main": "./dist/index.cjs",
   "scripts": {
     "build": "tsup",
+    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/index.cjs",
     "bench:data": "tsx scripts/data-bench.ts"

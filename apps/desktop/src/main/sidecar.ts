@@ -1,13 +1,20 @@
 import { app, utilityProcess, type UtilityProcess } from 'electron'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, rmSync, watch, type FSWatcher } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseSidecarEndpoint, type SidecarInfo } from '@agent2live/contracts'
 import { getSecretVault } from './secrets'
 
+const ENTRY_WATCH_DEBOUNCE_MS = 200
+const SIDECAR_EXIT_TIMEOUT_MS = 2_000
+
 let child: UtilityProcess | null = null
 let info: SidecarInfo | null = null
 let lastError: Error | null = null
+let entryWatcher: FSWatcher | null = null
+let restartTimer: NodeJS.Timeout | null = null
+let restartInFlight = false
+let restartQueued = false
 
 function serverEntryCandidates(): string[] {
   if (process.env.AGENT2LIVE_SERVER_ENTRY) return [process.env.AGENT2LIVE_SERVER_ENTRY]
@@ -69,6 +76,8 @@ export async function startSidecar(): Promise<SidecarInfo> {
   proc.stderr?.on('data', (chunk: Buffer) => console.error(`[sidecar] ${chunk.toString().trimEnd()}`))
   proc.on('message', (message: unknown) => respondToSecretRequest(proc, message))
   proc.on('exit', (code) => {
+    // stopSidecar clears the reference before killing, so this exit is intentional.
+    if (child !== proc) return
     lastError = new Error(`sidecar exited with code ${code}`)
     info = null
     child = null
@@ -105,4 +114,78 @@ export function stopSidecar(): void {
     child = null
     info = null
   }
+}
+
+export function watchSidecarForDev(): void {
+  if (app.isPackaged || process.env.AGENT2LIVE_DEV_SIDECAR_WATCH !== '1' || entryWatcher) return
+  const entry = serverEntry()
+  const directory = dirname(entry)
+  const filename = basename(entry)
+  try {
+    entryWatcher = watch(directory, (_event, changed) => {
+      // Platforms may report a null filename; treat that as a change to the entry.
+      if (changed !== null && changed !== filename) return
+      scheduleSidecarRestart()
+    })
+  } catch (error) {
+    console.error('[sidecar] failed to watch server bundle', error)
+    return
+  }
+  entryWatcher.on('error', (error) => {
+    console.error('[sidecar] server bundle watcher failed', error)
+  })
+  console.log(`[sidecar] watching ${entry} for changes`)
+}
+
+function scheduleSidecarRestart(): void {
+  if (restartTimer) clearTimeout(restartTimer)
+  restartTimer = setTimeout(() => {
+    restartTimer = null
+    void restartSidecar()
+  }, ENTRY_WATCH_DEBOUNCE_MS)
+  restartTimer.unref()
+}
+
+async function restartSidecar(): Promise<void> {
+  if (restartInFlight) {
+    restartQueued = true
+    return
+  }
+  restartInFlight = true
+  try {
+    do {
+      restartQueued = false
+      await restartSidecarOnce()
+    } while (restartQueued)
+  } finally {
+    restartInFlight = false
+  }
+}
+
+async function restartSidecarOnce(): Promise<void> {
+  // Watch events also fire while tsup cleans dist; wait for the rebuilt bundle.
+  if (!existsSync(serverEntry())) return
+  console.log('[sidecar] server bundle changed, restarting')
+  await stopSidecarAndWait()
+  lastError = null
+  try {
+    await startSidecar()
+    console.log('[sidecar] restarted')
+  } catch (error) {
+    console.error('[sidecar] restart failed', error)
+  }
+}
+
+function stopSidecarAndWait(): Promise<void> {
+  const proc = child
+  if (!proc) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, SIDECAR_EXIT_TIMEOUT_MS)
+    timer.unref()
+    proc.once('exit', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+    stopSidecar()
+  })
 }

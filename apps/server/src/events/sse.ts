@@ -1,11 +1,13 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { buildProblem } from '@agent2live/contracts'
+import { corsHeadersFor } from '../http/origin'
 import type { EventStore } from './store'
 import { formatSseFrame } from './format'
 
 export function openEventStream(request: FastifyRequest, reply: FastifyReply, store: EventStore): void {
   reply.hijack()
   const raw = reply.raw
+  const corsHeaders = corsHeadersFor(request.headers.origin)
   const afterRaw = (request.query as { after?: string } | undefined)?.after ?? '0'
   const after = Number(afterRaw)
   if (!Number.isSafeInteger(after) || after < 0) {
@@ -17,6 +19,7 @@ export function openEventStream(request: FastifyRequest, reply: FastifyReply, st
       detail: 'after must be a non-negative integer'
     })
     raw.statusCode = 400
+    for (const [name, value] of Object.entries(corsHeaders)) raw.setHeader(name, value)
     raw.setHeader('content-type', 'application/problem+json')
     raw.setHeader('cache-control', 'no-store')
     raw.setHeader('x-request-id', request.id)
@@ -26,6 +29,7 @@ export function openEventStream(request: FastifyRequest, reply: FastifyReply, st
   }
 
   raw.writeHead(200, {
+    ...corsHeaders,
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-store',
     'x-request-id': request.id,

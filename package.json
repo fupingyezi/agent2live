@@ -17,6 +17,7 @@
     "test:e2e": "playwright test",
     "test:real-providers": "playwright test -c playwright.real.config.ts",
     "render:matrix": "tsx scripts/render-matrix.ts",
+    "dev": "pnpm build:server && pnpm -r --parallel --filter @agent2live/server --filter @agent2live/desktop dev",
     "build": "pnpm -r build",
     "build:server": "pnpm --filter @agent2live/server build",
     "build:desktop": "pnpm --filter @agent2live/desktop build",

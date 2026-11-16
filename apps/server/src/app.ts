@@ -10,6 +10,7 @@ import { openEventStream } from './events/sse'
 import { EventStore } from './events/store'
 import { apiJsonSerializer } from './http/api-json'
 import { toAppError } from './http/errors'
+import { isAllowedCorsOrigin } from './http/origin'
 import { registerArtVersionRoutes } from './routes/art-versions'
 import { registerAssetRoutes } from './routes/assets'
 import { registerBackupRoutes } from './routes/backups'
@@ -59,7 +60,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
 
   void app.register(cors, {
     origin: (origin, callback) => {
-      if (!origin || origin === 'null' || /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
+      if (isAllowedCorsOrigin(origin)) {
         callback(null, true)
       } else {
         callback(new Error('origin not allowed'), false)
