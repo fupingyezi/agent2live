@@ -123,7 +123,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
       }
       if (intent.trim().length === 0) throw new Error('请描述你希望 AI 改进的方向。')
       if (base === 'draft') {
-        if (!workspace.activeDraft) throw new Error('当前没有活动草稿。')
+        if (!workspace.activeDraft) throw new Error('当前版本暂不可编辑。')
         const created = await requestPromptSuggestionFromDraft(
           projectId,
           workspace.activeDraft.id,
@@ -214,7 +214,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
                       disabled={!workspace.activeDraft}
                       onClick={() => setBase('draft')}
                     >
-                      当前草稿
+                      当前编辑
                     </Button>
                     <Button
                       type="button"
@@ -253,7 +253,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
         {kind === 'reverse' ? '开始反推' : '生成建议'}
       </AsyncButton>
       {kind === 'reverse' && !workspace.activeDraft ? (
-        <p className="muted">反推需要活动草稿；先创建草稿或提交素材与要求。</p>
+        <p className="muted">当前版本暂不可编辑，反推结果无法应用。</p>
       ) : null}
 
       {activeJob ? (

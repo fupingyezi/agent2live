@@ -135,14 +135,14 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await block.getByLabel('块内容').fill('黑色短发，冷静的灰色眼睛，干净的面部轮廓')
 
     await expect(promptEditor).toContainText('有未保存修改')
-    await promptEditor.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(promptEditor).toContainText('草稿已保存', { timeout: 20_000 })
+    await promptEditor.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(promptEditor).toContainText('已创建 v2', { timeout: 20_000 })
 
     await createMockProvider(studio, 'chat')
     await createMockProvider(studio, 'image')
     await studio.reload()
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(promptEditor).toContainText('草稿已保存')
+    await expect(promptEditor).toContainText('当前 v2')
 
     await promptEditor.getByRole('button', { name: 'AI 助手', exact: true }).click()
     const aiPanel = studio.locator('[data-testid="prompt-ai-panel"]')
@@ -155,23 +155,15 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(aiPanel.getByTestId('ai-job')).toBeVisible()
     await expect(aiPanel.getByTestId('suggestion-diff')).toBeVisible({ timeout: 30_000 })
     await aiPanel.getByRole('button', { name: '接受建议', exact: true }).click()
-    await expect(promptEditor).toContainText('草稿已保存', {
-      timeout: 20_000
-    })
     await studio.keyboard.press('Escape')
     await expect(studio.getByRole('dialog', { name: 'AI 助手' })).toHaveCount(0)
 
-    await promptEditor.getByRole('button', { name: '提交版本', exact: true }).click()
-    const commitDialog = studio.getByRole('dialog')
-    await expect(commitDialog).toBeVisible()
-    await commitDialog.getByRole('button', { name: '提交版本', exact: true }).click()
-
-    await expect(promptEditor).toContainText('版本只读', { timeout: 20_000 })
-    await expect(promptEditor.getByRole('button', { name: '继续编辑此版本', exact: true })).toBeVisible()
+    await promptEditor.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(promptEditor).toContainText('已创建 v3', { timeout: 20_000 })
     await studio.getByRole('button', { name: '版本操作', exact: true }).click()
     const versionsDialog = studio.getByRole('dialog', { name: '版本操作' })
     await expect(studio.getByTestId('version-graph')).toContainText('v1')
-    await expect(studio.locator('[data-testid="reference-chain"]')).toContainText('提示词 v1')
+    await expect(studio.locator('[data-testid="reference-chain"]')).toContainText('提示词 v3')
     await studio.keyboard.press('Escape')
     await expect(versionsDialog).toHaveCount(0)
 
@@ -370,35 +362,105 @@ test('switches version and edits full prompt', async () => {
     )
     await expect(firstNode).toBeVisible()
     await expect(secondNode).toBeVisible()
-    await firstNode.click()
+    await secondNode.click()
 
     const fullPrompt = studio.page.getByLabel('完整提示词')
-    await expect(fullPrompt).toHaveValue(firstState.fullPrompt)
+    await expect(fullPrompt).toHaveValue(secondState.fullPrompt)
     const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
     const blockList = inspector.locator('[data-testid="prompt-block-list"]')
     await expect(blockList).toBeVisible()
     const generate = inspector.getByRole('button', { name: '生成立绘', exact: true })
-    await expect(generate).toBeDisabled()
-    await expect(studio.page.getByText('历史版本', { exact: true })).toBeVisible()
+    await expect(generate).toBeEnabled()
 
     await fullPrompt.fill('本地改写的完整提示词。')
     await expect(inspector).toContainText('有未保存修改')
-    await expect(generate).toBeDisabled()
+    await expect(generate).toBeEnabled()
 
-    await secondNode.click()
+    await firstNode.click()
     const switchDialog = studio.page.getByRole('dialog', { name: '切换版本' })
     await expect(switchDialog).toBeVisible()
     await switchDialog.getByRole('button', { name: '取消', exact: true }).click()
     await expect(fullPrompt).toHaveValue('本地改写的完整提示词。')
 
-    await inspector.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await inspector.getByRole('button', { name: '保存', exact: true }).click()
     await expect.poll(() => syncRequest?.source).toBe('full')
-    await expect(inspector).toContainText('草稿已保存')
+    await expect(inspector).toContainText('已创建 v3')
 
-    await secondNode.click()
+    await firstNode.click()
     await expect(studio.page.getByRole('dialog', { name: '切换版本' })).toHaveCount(0)
-    await expect(fullPrompt).toHaveValue(secondState.fullPrompt)
-    await expect(generate).toBeEnabled()
+    await expect(fullPrompt).toHaveValue(firstState.fullPrompt)
+    await expect(generate).toBeDisabled()
+  } finally {
+    await studio.close()
+  }
+})
+
+test('saves only when the current version changes', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-workbench-save-version-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const character = await api.createCharacter('序', '用于验证当前版本直接编辑。')
+    const project = await api.createProject(character.id, '默认造型', '默认只有一个版本。')
+    const input = await api.uploadPromptInput(project.id, await makePng(), {
+      filename: 'version-save.png'
+    })
+    const firstState = {
+      ...goldenPromptState(input.submission.materials[0]!.assetId),
+      fullPrompt: 'v1 当前版本可以直接编辑。'
+    }
+    const firstDraft = await api.savePromptDraft(
+      project.id,
+      input.draft.id,
+      firstState,
+      input.draft.rowVersion
+    )
+    const first = await api.commitPromptDraft(project.id, firstDraft.id, firstDraft.rowVersion)
+    await api.json('POST', `/api/v1/art-projects/${project.id}/prompt-drafts`, {
+      headers: { 'idempotency-key': uniqueKey('direct-edit-buffer') },
+      body: { from: 'active_version' }
+    })
+
+    await studio.page.evaluate(
+      ({ characterId, projectId }) => {
+        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
+      },
+      { characterId: character.id, projectId: project.id }
+    )
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
+    const fullPrompt = studio.page.getByLabel('完整提示词')
+    await expect(fullPrompt).toBeEnabled()
+    await expect(inspector).toContainText('提示词 v1')
+    await expect(studio.page.getByText('当前草稿', { exact: true })).toHaveCount(0)
+    await expect(studio.page.getByRole('button', { name: '保存草稿', exact: true })).toHaveCount(0)
+    await expect(studio.page.getByRole('button', { name: '提交版本', exact: true })).toHaveCount(0)
+
+    const promptNodes = studio.page.locator('[data-testid="workbench-prompt-version-node"]')
+    await expect(promptNodes).toHaveCount(1)
+    await inspector.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(inspector).toContainText('无变更')
+    await expect(promptNodes).toHaveCount(1)
+
+    await fullPrompt.fill('v2 当前版本修改后自动生成新版本。')
+    await inspector.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(promptNodes).toHaveCount(2, { timeout: 20_000 })
+    await expect(inspector).toContainText('提示词 v2')
+    const originalVersion = await api.json<{
+      versionNumber: number
+      state: { fullPrompt: string }
+    }>(
+      'GET',
+      `/api/v1/art-projects/${encodeURIComponent(project.id)}/prompt-versions/${encodeURIComponent(first.version.id)}`
+    )
+    expect(originalVersion.body).toMatchObject({
+      versionNumber: 1,
+      state: { fullPrompt: 'v1 当前版本可以直接编辑。' }
+    })
   } finally {
     await studio.close()
   }
@@ -442,14 +504,12 @@ test('generation modal keeps settings out of the canvas', async () => {
     const generate = inspector.getByRole('button', { name: '生成立绘', exact: true })
     const fullPrompt = studio.page.getByLabel('完整提示词')
     await fullPrompt.fill('旧琴谱乐师弦，浅灰长衫，安静坐在窗边，窗外有细雨。')
-    await expect(generate).toBeDisabled()
-    await inspector.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(inspector).toContainText('草稿已保存')
     await expect(generate).toBeEnabled()
 
     await generate.click()
     const dialog = studio.page.getByRole('dialog', { name: '生成立绘' })
     await expect(dialog).toBeVisible()
+    await expect(inspector).toContainText('已创建 v2')
     await expect(dialog.getByLabel('图像模型')).toBeVisible()
     await expect(dialog.getByLabel('数量')).toBeVisible()
     await expect(dialog.getByLabel('尺寸')).toBeVisible()

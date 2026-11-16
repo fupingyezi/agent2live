@@ -111,7 +111,7 @@ test('creates a character and art project, streams events, and survives reload',
 
     await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
     const projectCard = studio.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })
-    await expect(projectCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '0')
+    await expect(projectCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '50')
     await expect(projectCard.getByRole('link', { name: '打开工作台', exact: true })).toBeVisible()
     await expect(projectCard.getByRole('link', { name: 'Live2D', exact: true })).toBeVisible()
     await expect(studio.locator('[data-testid="backup-panel"]')).toBeVisible()
@@ -631,7 +631,7 @@ test('hands off from creation confirmation to the just-created character card', 
       'completion'
     )
     await expect(studio.page.locator('[data-testid="studio-page-topbar"]')).toContainText('角色新建完成')
-    await expect(studio.page.locator('[data-testid="studio-page-topbar"]')).toContainText('草稿已自动保存')
+    await expect(studio.page.locator('[data-testid="studio-page-topbar"]')).toContainText('版本 v1 已创建')
     await expect(studio.page.locator('[data-testid="character-created-summary"]')).toContainText('澜')
     await expect(
       studio.page.locator('[data-testid="character-created-references"] [data-testid="created-reference"]')

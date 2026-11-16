@@ -29,14 +29,10 @@ export interface UnifiedPromptInspectorProps {
   requirements: PromptRequirement[]
   materials: PromptInputMaterialDto[]
   dirty: boolean
-  onSave(): Promise<void>
-  onGenerate(): void
+  onSave(): Promise<{ versionNumber: number; created: boolean }>
+  onGenerate(): Promise<{ versionNumber: number; created: boolean }>
   onRestore(): Promise<void>
   onOpenAi(): void
-  onCommit(): void
-  onStartDraft(): void
-  canStartDraft: boolean
-  startingDraft: boolean
 }
 
 function errorMessage(error: unknown): string {
@@ -55,29 +51,42 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
   onSave,
   onGenerate,
   onRestore,
-  onOpenAi,
-  onCommit,
-  onStartDraft,
-  canStartDraft,
-  startingDraft
+  onOpenAi
 }) => {
   const updateFullPrompt = useWorkbenchStore((state) => state.updateFullPrompt)
   const [saving, setSaving] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [confirmRestore, setConfirmRestore] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const historical = selectedArtVersion !== null && selectedArtVersion.id !== project.activeVersionId
-  const canGenerate = !historical && !dirty && Boolean(draft || selectedPromptVersion)
+  const [saveResult, setSaveResult] = useState<{ versionNumber: number; created: boolean } | null>(null)
+  const historical =
+    (selectedArtVersion !== null && selectedArtVersion.id !== project.activeVersionId) ||
+    (selectedPromptVersion !== null && selectedPromptVersion.id !== project.activePromptVersionId)
+  const editable = !historical && draft !== null
+  const canGenerate = !historical && selectedPromptVersion !== null
 
   const save = async (): Promise<void> => {
     setSaving(true)
     setError(null)
     try {
-      await onSave()
+      setSaveResult(await onSave())
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const generate = async (): Promise<void> => {
+    setGenerating(true)
+    setError(null)
+    try {
+      setSaveResult(await onGenerate())
+    } catch (reason) {
+      setError(errorMessage(reason))
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -106,16 +115,26 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
             <h2>角色描述</h2>
             <span>
               {selectedArtVersion
-                ? `美术 v${selectedArtVersion.versionNumber}`
+                ? `美术 v${selectedArtVersion.versionNumber} · 提示词 v${selectedPromptVersion?.versionNumber ?? '—'}`
                 : selectedPromptVersion
                   ? `提示词 v${selectedPromptVersion.versionNumber}`
-                  : '提示词草稿'}
+                  : '提示词版本'}
             </span>
           </div>
           <div className="workbench-prompt-status">
             {historical ? <StatusPill label="历史版本" tone="neutral" /> : null}
             <span className={dirty ? 'dirty-dot dirty' : 'dirty-dot'} aria-hidden="true" />
-            <small>{dirty ? '有未保存修改' : draft ? '草稿已保存' : '版本只读'}</small>
+            <small>
+              {dirty
+                ? '有未保存修改'
+                : historical
+                  ? '历史版本只读'
+                  : saveResult
+                    ? saveResult.created
+                      ? `已创建 v${saveResult.versionNumber}`
+                      : `无变更 · v${saveResult.versionNumber}`
+                    : `当前 v${selectedPromptVersion?.versionNumber ?? '—'}`}
+            </small>
           </div>
         </header>
 
@@ -134,7 +153,7 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
                   rows={8}
                   maxLength={20_000}
                   value={spec.fullPrompt}
-                  disabled={!draft}
+                  disabled={!editable}
                   onValueChange={updateFullPrompt}
                 />
               </Field>
@@ -148,7 +167,7 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
                   spec={spec}
                   requirements={requirements}
                   materials={materials}
-                  disabled={!draft}
+                  disabled={!editable}
                 />
               </details>
             </>
@@ -168,39 +187,25 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
             >
               AI 助手
             </Button>
-            <Button type="button" variant="quiet" size="sm" disabled={!draft} onClick={onCommit}>
-              提交版本
-            </Button>
           </div>
-          {!draft && canStartDraft ? (
-            <AsyncButton
-              type="button"
-              variant="secondary"
-              busy={startingDraft}
-              busyLabel="创建中…"
-              onClick={onStartDraft}
-            >
-              继续编辑此版本
-            </AsyncButton>
-          ) : null}
           <AsyncButton
             type="button"
             variant="secondary"
             busy={saving}
             busyLabel="保存中…"
-            disabled={!draft || !dirty || saving}
+            disabled={!editable || saving || generating}
             onClick={() => {
               void save()
             }}
           >
-            保存草稿
+            保存
           </AsyncButton>
           <AsyncButton
             type="button"
             variant="secondary"
             busy={saving}
             busyLabel="优化中…"
-            disabled={!draft || !dirty || saving}
+            disabled={!editable || saving || generating}
             onClick={() => {
               void save()
             }}
@@ -220,11 +225,13 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
           <button
             type="button"
             className="workbench-prompt-generate"
-            disabled={!canGenerate}
-            title={historical ? '历史版本需先还原为新的当前美术版本' : undefined}
-            onClick={onGenerate}
+            disabled={!canGenerate || saving || generating}
+            title={historical ? '历史版本需先还原' : undefined}
+            onClick={() => {
+              void generate()
+            }}
           >
-            生成立绘
+            {generating ? '准备生成…' : '生成立绘'}
           </button>
         </footer>
       </aside>

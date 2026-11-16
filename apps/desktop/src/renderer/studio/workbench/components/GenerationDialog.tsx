@@ -1,11 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type {
-  ArtProjectDto,
-  CreateGenerationResultDto,
-  PromptWorkspaceDto,
-  ProviderConnectionDto
-} from '@studio/api'
+import type { ArtProjectDto, CreateGenerationResultDto, ProviderConnectionDto } from '@studio/api'
 import { ApiError, createGeneration, queryKeys } from '@studio/api'
 import {
   AsyncButton,
@@ -15,6 +10,7 @@ import {
   Field,
   InlineNotice,
   Select,
+  StatusPill,
   TextField
 } from '@agent2live/design-system'
 
@@ -42,7 +38,8 @@ function storeGeneration(projectId: string, generationId: string): void {
 export interface GenerationDialogProps {
   open: boolean
   project: ArtProjectDto
-  workspace: PromptWorkspaceDto
+  promptVersionId: string | null
+  promptVersionNumber: number | null
   providers: ProviderConnectionDto[]
   onClose(): void
   onCreated(created: CreateGenerationResultDto): void
@@ -51,7 +48,8 @@ export interface GenerationDialogProps {
 export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   open,
   project,
-  workspace,
+  promptVersionId,
+  promptVersionNumber,
   providers,
   onClose,
   onCreated
@@ -92,7 +90,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!workspace.activePromptVersion) throw new Error('先提交一个提示词版本。')
+      if (!promptVersionId) throw new Error('当前版本尚未保存。')
       if (!selectedProvider) throw new Error('没有可用的图像模型连接。')
       let parsedSeed: number | null | undefined
       if (seed.trim()) {
@@ -103,7 +101,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
         parsedSeed = value
       }
       return createGeneration(project.id, {
-        promptVersionId: workspace.activePromptVersion.id,
+        promptVersionId,
         providerConnectionId: selectedProvider.id,
         count,
         ...(size ? { size } : {}),
@@ -136,11 +134,8 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       }}
       className="generation-dialog"
     >
-      {!workspace.activePromptVersion ? (
-        <EmptyState
-          title="先生成提示词版本"
-          description="生成任务必须绑定不可变 PromptVersion；提交草稿后即可选择图像模型。"
-        />
+      {!promptVersionId ? (
+        <EmptyState title="先生成提示词版本" description="生成任务必须绑定当前不可变 PromptVersion。" />
       ) : imageProviders.length === 0 ? (
         <EmptyState
           title="没有可用的图像模型"
@@ -149,6 +144,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       ) : (
         <div className="generation-dialog-content" data-testid="generation-dialog">
           <div className="generation-form" data-testid="generation-settings">
+            <StatusPill label={`提示词 v${promptVersionNumber ?? '—'}`} tone="accent" />
             <Field label="图像模型">
               <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
                 {imageProviders.map((provider) => (

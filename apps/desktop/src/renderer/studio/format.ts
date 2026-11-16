@@ -3,7 +3,7 @@ import type { ArtProjectStage } from '@studio/api'
 
 const STAGE_LABELS: Record<ArtProjectStage, string> = {
   idea_draft: '构思草稿',
-  prompt_draft: '提示词草稿',
+  prompt_draft: '提示词已保存',
   prompt_ready: '提示词就绪',
   generating: '生成中',
   candidate_review: '候选评审',

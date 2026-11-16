@@ -77,11 +77,11 @@ function promptText(state: PromptSpecV2 | undefined, globalNotes: string): strin
 function creationWarningMessage(warning: string | null): string | null {
   switch (warning) {
     case 'no-text-provider':
-      return '没有配置 DeepSeek 文本模型，已保留设定生成的草稿；可稍后在角色描述中继续优化。'
+      return '没有配置 DeepSeek 文本模型，已保存设定生成的当前版本；可稍后在角色描述中继续优化。'
     case 'text-optimize-failed':
-      return '文本优化未完成，已保留可编辑的角色设定和提示词草稿。'
+      return '文本优化未完成，已保存可编辑的角色设定和提示词版本。'
     case 'no-vision-provider':
-      return '没有配置智谱多模态连接，参考图反推没有启动；参考图仍已保存为草稿。'
+      return '没有配置智谱多模态连接，参考图反推没有启动；参考图仍已保存。'
     case 'vision-start-failed':
       return '参考图反推未能启动，参考图仍已保存，可在角色描述中重试。'
     default:
@@ -151,7 +151,7 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
   const submission = workspace.latestSubmission
   const materials = [...(submission?.materials ?? [])].sort((left, right) => left.sortOrder - right.sortOrder)
   const primaryAssetId = materials[0]?.assetId ?? null
-  const draftText = promptText(workspace.activeDraft?.state, submission?.globalNotes ?? '')
+  const promptTextValue = promptText(workspace.activePromptVersion?.state, submission?.globalNotes ?? '')
   const workbenchQuery = new URLSearchParams({ project: project.id })
   const aiWarning = searchParams.get('aiWarning')
   const textWarning = searchParams.get('textWarning')
@@ -172,7 +172,11 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
       <StudioPageTopbar
         breadcrumb="角色新建完成"
         tone="completion"
-        status={<span className="created-topbar-status">草稿已自动保存</span>}
+        status={
+          <span className="created-topbar-status">
+            版本 v{workspace.activePromptVersion?.versionNumber ?? 1} 已创建
+          </span>
+        }
       />
 
       <main className="created-page">
@@ -194,7 +198,7 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
         <section className="created-result-card">
           <header>
             <strong>创建结果</strong>
-            <span>草稿</span>
+            <span>v{workspace.activePromptVersion?.versionNumber ?? 1}</span>
           </header>
 
           <div className="created-summary-card" data-testid="character-created-summary">
@@ -221,12 +225,12 @@ export const CharacterCreatedPage: React.FC<EmptyProps> = () => {
           <section className="created-prompt-panel" data-testid="created-prompt-panel">
             <h2>初始化提示词</h2>
             <div className="created-prompt" data-testid="character-created-prompt">
-              <pre>{draftText || '初始化提示词为空。'}</pre>
+              <pre>{promptTextValue || '初始化提示词为空。'}</pre>
             </div>
           </section>
 
           <div className="created-draft-note">
-            <span>设定与参考图已存成草稿，进入角色卡片后开始出立绘</span>
+            <span>设定与参考图已保存为当前版本，进入角色卡片后开始出立绘</span>
             <span>{materials.length} 张 · 用途已标注</span>
           </div>
 

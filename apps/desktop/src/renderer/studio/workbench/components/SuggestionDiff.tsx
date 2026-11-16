@@ -109,7 +109,7 @@ export const SuggestionDiff: React.FC<SuggestionDiffProps> = ({
       <p className="muted">
         基准：
         {suggestion.baseKind === 'prompt_draft'
-          ? `草稿 revision ${suggestion.baseDraftRevision}`
+          ? `当前编辑 revision ${suggestion.baseDraftRevision}`
           : '提示词版本'}{' '}
         · {formatDateTime(suggestion.createdAt)}
       </p>
@@ -173,7 +173,7 @@ export const SuggestionDiff: React.FC<SuggestionDiffProps> = ({
         </div>
       ) : null}
       {needsDraft && activeDraftRowVersion === null && suggestion.status === 'proposed' ? (
-        <p className="muted">这是基于草稿的建议；恢复活动草稿后才能接受。</p>
+        <p className="muted">当前版本暂不可编辑，暂时不能接受这条建议。</p>
       ) : null}
     </section>
   )

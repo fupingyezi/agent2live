@@ -92,10 +92,7 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
   if (!workspace.activePromptVersion) {
     return (
       <div className="sidebar-panel">
-        <EmptyState
-          title="先生成提示词版本"
-          description="生成任务必须绑定不可变 PromptVersion；提交草稿后即可生成立绘。"
-        />
+        <EmptyState title="先生成提示词版本" description="生成任务必须绑定不可变 PromptVersion。" />
       </div>
     )
   }

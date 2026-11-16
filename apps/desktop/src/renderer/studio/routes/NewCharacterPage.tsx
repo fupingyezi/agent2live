@@ -20,8 +20,10 @@ import {
 } from '@agent2live/contracts/character-brief'
 import {
   ApiError,
+  commitPromptDraft,
   createArtProject,
   createCharacter,
+  createPromptDraft,
   getJob,
   isTerminalJobStatus,
   listProviders,
@@ -402,6 +404,17 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       }
     }
 
+    const committed = await commitPromptDraft(
+      projectId,
+      provisionedDraft.id,
+      provisionedDraft.rowVersion,
+      true
+    )
+    provisionedDraft = await createPromptDraft(projectId, {
+      from: 'version',
+      versionId: committed.version.id
+    })
+
     if (references.length > 0) {
       if (providersFailed) {
         aiWarning = 'vision-start-failed'
@@ -681,7 +694,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         ) : null}
 
         <div className="new-character-footer">
-          <span className="studio-meta">设定会保存在本机；图片不会进入浏览器草稿存储</span>
+          <span className="studio-meta">设定会暂存在本机；图片不会进入浏览器输入缓存</span>
           <div className="studio-form-actions">
             <Button asChild variant="quiet">
               <Link to="/">取消</Link>

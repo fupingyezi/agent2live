@@ -123,9 +123,7 @@ export const ForkDialog: React.FC<ForkDialogProps> = ({ open, project, source, o
           <InlineNotice tone="danger">{error}</InlineNotice>
         </div>
       ) : null}
-      <InlineNotice tone="info">
-        Fork 只复制已提交版本，不复制草稿；之后的修改不会自动合并回父分支。
-      </InlineNotice>
+      <InlineNotice tone="info">Fork 只复制已保存版本；之后的修改不会自动合并回父分支。</InlineNotice>
     </ConfirmDialog>
   )
 }

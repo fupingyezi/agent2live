@@ -108,7 +108,7 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
       promptInput.draft.rowVersion
     )
     const committed = await api.commitPromptDraft(projectId!, savedDraft.id, savedDraft.rowVersion)
-    expect(committed.version.versionNumber).toBe(1)
+    expect(committed.version.versionNumber).toBe(2)
     expect(committed.version.artProjectId).toBe(projectId)
     expect(committed.project.activePromptVersionId).toBe(committed.version.id)
     expect(committed.project.activeVersionId).toBeNull()

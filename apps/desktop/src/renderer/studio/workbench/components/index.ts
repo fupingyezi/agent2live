@@ -2,10 +2,6 @@
 export { CandidateCompare } from './CandidateCompare'
 export type { CandidateCompareProps } from './CandidateCompare'
 
-/** Prompt 草稿的保存、提交和版本操作工具栏。 */
-export { DraftToolbar } from './DraftToolbar'
-export type { DraftToolbarProps } from './DraftToolbar'
-
 /** 从 Prompt 或立绘版本创建派生项目的对话框。 */
 export { ForkDialog } from './ForkDialog'
 export type { ForkDialogProps, ForkSource } from './ForkDialog'
@@ -62,7 +58,7 @@ export type { SuggestionDiffProps } from './SuggestionDiff'
 export { VersionGraph } from './VersionGraph'
 export type { VersionGraphProps } from './VersionGraph'
 
-/** 左侧联动显示当前草稿与不可变美术版本。 */
+/** 左侧显示提示词版本与不可变美术版本。 */
 export { WorkbenchVersionRail } from './WorkbenchVersionRail'
 export type { WorkbenchVersionRailProps } from './WorkbenchVersionRail'
 

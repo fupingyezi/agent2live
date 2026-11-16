@@ -40,7 +40,7 @@ export const VersionGraph: React.FC<VersionGraphProps> = ({
           actions={<CountBadge value={promptVersions.length} />}
         />
         {promptVersions.length === 0 ? (
-          <EmptyState title="还没有提示词版本" description="提交草稿后会出现在这里。" />
+          <EmptyState title="还没有提示词版本" description="保存当前修改后会出现在这里。" />
         ) : (
           <ol className="version-list">
             {promptVersions.map((version) => {

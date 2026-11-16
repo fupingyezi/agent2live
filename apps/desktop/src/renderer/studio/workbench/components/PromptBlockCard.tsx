@@ -242,7 +242,7 @@ export const PromptBlockCard: React.FC<PromptBlockCardProps> = ({
           setConfirmDelete(false)
         }}
       >
-        <p>删除只影响当前草稿；已提交的历史版本不会改变。</p>
+        <p>删除只影响当前编辑内容；保存后才生成新的提示词版本。</p>
       </ConfirmDialog>
     </article>
   )

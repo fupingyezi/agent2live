@@ -154,11 +154,11 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
     activeArtVersion?.references[0]?.assetId ??
     null
   const referenceCount = workspace?.latestSubmission?.materials.length ?? 0
-  const promptDraftCount = (workspace?.versions.length ?? 0) + (workspace?.activeDraft ? 1 : 0)
+  const promptVersionCount = workspace?.versions.length ?? 0
   const justCreated =
     primaryProject?.activeVersionId === null &&
     workspace?.latestSubmission !== null &&
-    workspace?.activeDraft !== null
+    workspace?.activePromptVersion !== null
   const progress = primaryProject ? computeProjectProgress(primaryProject) : null
   const workbenchPath = primaryProject
     ? `/characters/${encodeURIComponent(id)}/art?project=${encodeURIComponent(primaryProject.id)}`
@@ -214,7 +214,9 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
                 tone={justCreated ? 'warning' : activeArtVersion ? 'success' : 'neutral'}
               />
               <span>
-                {justCreated ? `提示词 ${promptDraftCount} 段，参考图 ${referenceCount} 张` : '最近编辑'}
+                {justCreated
+                  ? `提示词 v${workspace?.activePromptVersion?.versionNumber ?? 1}，参考图 ${referenceCount} 张`
+                  : '最近编辑'}
               </span>
             </div>
           </div>
@@ -246,7 +248,7 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
           </h2>
           <p {...(justCreated ? { 'data-testid': 'character-draft-status' } : {})}>
             {justCreated
-              ? `${referenceCount} 张参考图 · 草稿已自动保存`
+              ? `${referenceCount} 张参考图 · 提示词版本已保存`
               : progress
                 ? `${formatPercent(progress.percent)} · ${progress.nextLabel}`
                 : '继续完善提示词与参考图'}
@@ -304,20 +306,20 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
           <div className="role-history">
             <div>
               <time>{justCreated ? '刚刚' : formatDateTime(character.updatedAt)}</time>
-              <span>保存角色草稿</span>
-              <em>草稿</em>
+              <span>保存角色版本</span>
+              <em>版本</em>
             </div>
             <div>
               <time>
                 {justCreated ? '刚刚' : formatDateTime(primaryProject?.createdAt ?? character.updatedAt)}
               </time>
               <span>{`标好 ${referenceCount} 张参考图用途`}</span>
-              <em>草稿</em>
+              <em>版本</em>
             </div>
             <div>
               <time>{justCreated ? '刚刚' : formatDateTime(character.createdAt)}</time>
               <span>写完初始化提示词</span>
-              <em>草稿</em>
+              <em>版本</em>
             </div>
           </div>
           <div
@@ -366,7 +368,7 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
       <section className="role-qc-card">
         <header>
           <strong>{justCreated ? '还没有出图' : '待检查项'}</strong>
-          <span>{justCreated ? '零项' : `${promptDraftCount} 个草稿`}</span>
+          <span>{justCreated ? '零项' : `${promptVersionCount} 个版本`}</span>
         </header>
         {[
           [

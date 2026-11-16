@@ -4,7 +4,7 @@ export { CharactersPage } from './CharactersPage'
 /** 新建角色页，收集角色基础信息并创建角色。 */
 export { NewCharacterPage } from './NewCharacterPage'
 
-/** 创建结果页，展示初始化草稿并交接至角色卡片或工作台。 */
+/** 创建结果页，展示初始化版本并交接至角色卡片或工作台。 */
 export { CharacterCreatedPage } from './CharacterCreatedPage'
 
 /** 角色驾驶舱页，汇总项目进度、谱系和备份。 */

@@ -23,15 +23,7 @@ import {
   restoreArtVersion,
   savePromptDraft
 } from '@studio/api'
-import {
-  AsyncButton,
-  Button,
-  ConfirmDialog,
-  Dialog,
-  Field,
-  InlineNotice,
-  Switch
-} from '@agent2live/design-system'
+import { AsyncButton, Button, Dialog, InlineNotice } from '@agent2live/design-system'
 import { StudioError, StudioLoading, StudioPageTopbar } from '@studio/components'
 import { useAssetUrl } from '@studio/hooks'
 import { findDefaultTextProvider } from '@studio/providers'
@@ -53,7 +45,6 @@ import {
   type ForkSource,
   type InitialPromptJob
 } from './components'
-import { uncoveredRequirementIds } from './prompt-helpers'
 
 function draftSnapshot(draft: PromptDraftDto): {
   draftId: string
@@ -150,11 +141,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
 
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
   const [selectedPromptVersion, setSelectedPromptVersion] = useState<PromptVersionDto | null>(null)
-  const [selection, setSelection] = useState<{ kind: 'art'; versionId: string } | { kind: 'draft' } | null>(
-    null
-  )
+  const [selection, setSelection] = useState<
+    { kind: 'prompt'; versionId: string } | { kind: 'art'; versionId: string } | null
+  >(null)
   const [pendingSelection, setPendingSelection] = useState<
-    { kind: 'art'; version: ArtVersionDto } | { kind: 'draft' } | null
+    { kind: 'art'; version: ArtVersionDto } | { kind: 'prompt'; versionId: string } | null
   >(null)
   const [selectionBusy, setSelectionBusy] = useState(false)
   const [switchBusy, setSwitchBusy] = useState(false)
@@ -163,11 +154,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [designView, setDesignView] = useState<'references' | 'candidates' | 'parallel'>('references')
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   const [createdGenerationId, setCreatedGenerationId] = useState<string | null>(null)
+  const [generationPromptVersion, setGenerationPromptVersion] = useState<{
+    id: string
+    versionNumber: number
+  } | null>(null)
   const [candidateSaveRequest, setCandidateSaveRequest] = useState(0)
   const [workspaceDialog, setWorkspaceDialog] = useState<'materials' | 'ai' | 'versions' | null>(null)
-  const [commitDialogOpen, setCommitDialogOpen] = useState(false)
-  const [commitBusy, setCommitBusy] = useState(false)
-  const [acknowledgeUncovered, setAcknowledgeUncovered] = useState(false)
   const initializedJob = useRef<string | null>(null)
   const initializedSelection = useRef(false)
   const aiKind = searchParams.get('aiKind')
@@ -201,7 +193,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   )
 
   const showPromptVersion = useCallback(
-    async (versionId: string, createDraft: boolean, nextSelection: typeof selection): Promise<void> => {
+    async (versionId: string, nextSelection: typeof selection): Promise<void> => {
       setSelectionBusy(true)
       setSelectionError(null)
       try {
@@ -210,7 +202,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         const attached = matchingDraft(promptVersion.id)
         if (attached) {
           applyServerDraft(draftSnapshot(attached))
-        } else if (createDraft && !workspace?.activeDraft) {
+        } else if (project.activePromptVersionId === promptVersion.id && !workspace?.activeDraft) {
           const created = await createPromptDraft(project.id, {
             from: 'version',
             versionId: promptVersion.id
@@ -227,7 +219,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             draft: promptVersion.state
           })
           if (workspace?.activeDraft) {
-            setSelectionError('当前还有基于其它提示词版本的草稿。该版本暂为只读，请先提交或处理现有草稿。')
+            setSelectionError('当前还有基于其它提示词版本的活动编辑内容。该版本暂为只读。')
           }
         }
         setSelection(nextSelection)
@@ -237,29 +229,17 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         setSelectionBusy(false)
       }
     },
-    [applyServerDraft, draftSnapshot, hydrate, matchingDraft, project.id, queryClient, workspace?.activeDraft]
+    [
+      applyServerDraft,
+      draftSnapshot,
+      hydrate,
+      matchingDraft,
+      project.activePromptVersionId,
+      project.id,
+      queryClient,
+      workspace?.activeDraft
+    ]
   )
-
-  const showDraft = useCallback(async (): Promise<void> => {
-    const active = draftHint ?? workspace?.activeDraft ?? null
-    if (!active) return
-    setSelectionBusy(true)
-    setSelectionError(null)
-    try {
-      const versionId = active.baseVersionId ?? workspace?.activePromptVersion?.id ?? null
-      if (versionId) {
-        setSelectedPromptVersion(await getPromptVersion(project.id, versionId))
-      } else {
-        setSelectedPromptVersion(workspace?.activePromptVersion ?? null)
-      }
-      applyServerDraft(draftSnapshot(active))
-      setSelection({ kind: 'draft' })
-    } catch (reason) {
-      setSelectionError(errorMessage(reason))
-    } finally {
-      setSelectionBusy(false)
-    }
-  }, [applyServerDraft, draftHint, project.id, workspace?.activeDraft, workspace?.activePromptVersion])
 
   useEffect(() => {
     if (initializedSelection.current || !workspace || versionsQuery.isPending) return
@@ -267,41 +247,25 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     const activeArt =
       artVersions.find((version) => version.id === project.activeVersionId) ?? artVersions[0] ?? null
     if (activeArt) {
-      void showPromptVersion(activeArt.promptVersionId, false, {
+      void showPromptVersion(activeArt.promptVersionId, {
         kind: 'art',
         versionId: activeArt.id
       })
-    } else if (workspace.activeDraft) {
-      void showDraft()
     } else if (workspace.activePromptVersion) {
-      setSelectedPromptVersion(workspace.activePromptVersion)
-      hydrate({
-        draftId: null,
-        revision: null,
-        rowVersion: null,
-        draft: workspace.activePromptVersion.state
+      void showPromptVersion(workspace.activePromptVersion.id, {
+        kind: 'prompt',
+        versionId: workspace.activePromptVersion.id
       })
     }
-  }, [
-    artVersions,
-    hydrate,
-    project.activeVersionId,
-    showDraft,
-    showPromptVersion,
-    versionsQuery.isPending,
-    workspace
-  ])
+  }, [artVersions, project.activeVersionId, showPromptVersion, versionsQuery.isPending, workspace])
 
   useEffect(() => {
     if (selectedPromptVersion || !workspace?.activePromptVersion || dirty) return
-    setSelectedPromptVersion(workspace.activePromptVersion)
-    hydrate({
-      draftId: null,
-      revision: null,
-      rowVersion: null,
-      draft: workspace.activePromptVersion.state
+    void showPromptVersion(workspace.activePromptVersion.id, {
+      kind: 'prompt',
+      versionId: workspace.activePromptVersion.id
     })
-  }, [dirty, hydrate, selectedPromptVersion, workspace?.activePromptVersion])
+  }, [dirty, selectedPromptVersion, showPromptVersion, workspace?.activePromptVersion])
 
   useEffect(() => {
     if (!initialJob || initializedJob.current === initialJob.jobId) return
@@ -362,17 +326,17 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     selection?.kind === 'art'
       ? (artVersions.find((version) => version.id === selection.versionId) ?? null)
       : null
-  const commitSpec = spec ?? draft?.state ?? workspace.activePromptVersion?.state ?? null
-  const uncoveredRequirements = commitSpec ? uncoveredRequirementIds(commitSpec) : []
+  const currentVersionSelected =
+    selectedPromptVersion?.id === project.activePromptVersionId &&
+    (selectedArtVersion === null || selectedArtVersion.id === project.activeVersionId)
 
   const invalidateProjectWorkspace = (): void => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
   }
 
-  const saveUnifiedPrompt = async (): Promise<void> => {
-    if (!draft || !storeDraft) throw new Error('当前版本没有可保存的草稿。')
-    if (!dirty) return
+  const persistPromptEdit = async (): Promise<PromptDraftDto> => {
+    if (!draft || !storeDraft) throw new Error('当前版本没有可保存的提示词内容。')
     if (providersQuery.isPending) throw new Error('模型连接仍在加载，请稍后重试保存。')
     if (providersQuery.isError) throw new Error('模型连接加载失败，请重试后再保存。')
     const expectedRowVersion = storeRowVersion ?? draft.rowVersion
@@ -402,82 +366,115 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       nextState = result.state
     }
     const saved = await savePromptDraft(project.id, draft.id, nextState, expectedRowVersion)
-    useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
     setDraftHint(saved)
     invalidateProjectWorkspace()
+    return saved
   }
 
-  const startDraftForSelectedVersion = async (): Promise<void> => {
-    if (!selectedPromptVersion) throw new Error('请先选择一个提示词版本。')
-    if (activeDraft) {
-      throw new Error('当前还有其它草稿，请先提交或处理现有草稿。')
+  const saveCurrentVersion = async (): Promise<{
+    id: string
+    versionNumber: number
+    created: boolean
+  }> => {
+    if (!draft || !storeDraft || !selectedPromptVersion) {
+      throw new Error('当前没有可保存的提示词版本。')
     }
-    const created = await createPromptDraft(project.id, {
-      from: 'version',
-      versionId: selectedPromptVersion.id
-    })
-    setDraftHint(created)
-    applyServerDraft(draftSnapshot(created))
-    setSelection(selectedArtVersion ? { kind: 'art', versionId: selectedArtVersion.id } : null)
-    invalidateProjectWorkspace()
-  }
-
-  const commitCurrentVersion = async (): Promise<void> => {
-    if (!draft) throw new Error('当前没有可提交的草稿。')
-    setCommitBusy(true)
+    if (!dirty && draft.contentHash === selectedPromptVersion.contentHash) {
+      return {
+        id: selectedPromptVersion.id,
+        versionNumber: selectedPromptVersion.versionNumber,
+        created: false
+      }
+    }
     setSelectionError(null)
+    const saved = dirty ? await persistPromptEdit() : draft
+    if (dirty) {
+      useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
+    }
+    if (saved.contentHash === selectedPromptVersion.contentHash) {
+      return {
+        id: selectedPromptVersion.id,
+        versionNumber: selectedPromptVersion.versionNumber,
+        created: false
+      }
+    }
+
+    const committed = await commitPromptDraft(project.id, saved.id, saved.rowVersion, true)
+    queryClient.setQueryData(queryKeys.project(project.id), committed.project)
+    setSelectedPromptVersion(committed.version)
+    setSelection({ kind: 'prompt', versionId: committed.version.id })
     try {
-      if (dirty) await saveUnifiedPrompt()
-      const currentStore = useWorkbenchStore.getState()
-      if (!currentStore.draft) throw new Error('草稿内容为空。')
-      const result = await commitPromptDraft(
-        project.id,
-        draft.id,
-        currentStore.rowVersion ?? draft.rowVersion,
-        acknowledgeUncovered
-      )
-      queryClient.setQueryData(queryKeys.project(project.id), result.project)
+      const nextBuffer = await createPromptDraft(project.id, {
+        from: 'version',
+        versionId: committed.version.id
+      })
+      setDraftHint(nextBuffer)
+      applyServerDraft(draftSnapshot(nextBuffer))
+    } catch (reason) {
       setDraftHint(null)
-      setCommitDialogOpen(false)
-      setAcknowledgeUncovered(false)
-      setSelection(null)
-      setSelectedPromptVersion(result.version)
-      resetStore()
       hydrate({
         draftId: null,
         revision: null,
         rowVersion: null,
-        draft: result.version.state
+        draft: committed.version.state
       })
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.promptVersions(project.id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.characters })
-      ])
-    } catch (reason) {
       setSelectionError(errorMessage(reason))
-    } finally {
-      setCommitBusy(false)
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.promptVersions(project.id) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.characters })
+    ])
+    return {
+      id: committed.version.id,
+      versionNumber: committed.version.versionNumber,
+      created: true
     }
   }
 
+  const openGenerationDialog = async (): Promise<{
+    versionNumber: number
+    created: boolean
+  }> => {
+    if (!currentVersionSelected) throw new Error('历史版本需要先还原后才能生成。')
+    const version = await saveCurrentVersion()
+    setGenerationPromptVersion({
+      id: version.id,
+      versionNumber: version.versionNumber
+    })
+    setDesignView('candidates')
+    setGenerationDialogOpen(true)
+    return version
+  }
+
   const performSelection = async (
-    target: { kind: 'art'; version: ArtVersionDto } | { kind: 'draft' }
+    target: { kind: 'art'; version: ArtVersionDto } | { kind: 'prompt'; versionId: string }
   ): Promise<void> => {
-    if (target.kind === 'draft') {
-      await showDraft()
+    if (target.kind === 'prompt') {
+      await showPromptVersion(target.versionId, {
+        kind: 'prompt',
+        versionId: target.versionId
+      })
     } else {
-      await showPromptVersion(target.version.promptVersionId, true, {
+      await showPromptVersion(target.version.promptVersionId, {
         kind: 'art',
         versionId: target.version.id
       })
     }
   }
 
-  const requestSelection = (target: { kind: 'art'; version: ArtVersionDto } | { kind: 'draft' }): void => {
+  const requestSelection = (
+    target: { kind: 'art'; version: ArtVersionDto } | { kind: 'prompt'; versionId: string }
+  ): void => {
     if (selectionBusy) return
+    if (
+      (target.kind === 'art' && selection?.kind === 'art' && selection.versionId === target.version.id) ||
+      (target.kind === 'prompt' && selectedPromptVersion?.id === target.versionId)
+    ) {
+      return
+    }
     if (dirty) {
       setSelectionError(null)
       setPendingSelection(target)
@@ -491,7 +488,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     setSwitchBusy(true)
     setSelectionError(null)
     try {
-      await saveUnifiedPrompt()
+      await saveCurrentVersion()
       const target = pendingSelection
       setPendingSelection(null)
       await performSelection(target)
@@ -526,7 +523,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     void queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
-    await showPromptVersion(mutation.artVersion.promptVersionId, false, {
+    await showPromptVersion(mutation.artVersion.promptVersionId, {
       kind: 'art',
       versionId: mutation.artVersion.id
     })
@@ -559,13 +556,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         <WorkbenchVersionRail
           project={project}
           characterTitle={characterTitle}
-          draft={activeDraft}
           artVersions={artVersions}
           promptVersions={workspace.versions}
+          selectedPromptVersionId={selectedPromptVersion?.id ?? null}
           selectedArtVersionId={selection?.kind === 'art' ? selection.versionId : null}
-          selectedDraft={selection?.kind === 'draft'}
           busy={selectionBusy}
-          onSelectDraft={() => requestSelection({ kind: 'draft' })}
+          onSelectPromptVersion={(version) => requestSelection({ kind: 'prompt', versionId: version.id })}
           onSelectVersion={(version) => requestSelection({ kind: 'art', version })}
           onOpenMaterials={() => setWorkspaceDialog('materials')}
           onOpenVersions={() => setWorkspaceDialog('versions')}
@@ -620,8 +616,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 <div data-testid="text-warning">
                   <InlineNotice tone="warning">
                     {textWarning === 'no-text-provider'
-                      ? '没有配置 DeepSeek 文本模型，已保留设定生成的草稿；可在角色描述中继续优化。'
-                      : '文本优化未完成，已保留可编辑的角色设定和提示词草稿。'}
+                      ? '没有配置 DeepSeek 文本模型，已保留设定生成的当前版本；可在角色描述中继续优化。'
+                      : '文本优化未完成，已保留可编辑的角色设定和提示词版本。'}
                   </InlineNotice>
                 </div>
               ) : null}
@@ -629,8 +625,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 <div data-testid="ai-warning">
                   <InlineNotice tone="warning">
                     {aiWarning === 'no-vision-provider'
-                      ? '没有可用的智谱多模态连接，参考图反推未启动；创建和提示词草稿已完成。'
-                      : '参考图反推未能启动；创建和提示词草稿已完成，可以在 AI 助手中重试。'}
+                      ? '没有可用的智谱多模态连接，参考图反推未启动；创建和提示词版本已完成。'
+                      : '参考图反推未能启动；创建和提示词版本已完成，可以在 AI 助手中重试。'}
                   </InlineNotice>
                 </div>
               ) : null}
@@ -679,8 +675,9 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               <button
                 type="button"
                 className="workbench-design-secondary-action"
+                disabled={!currentVersionSelected}
                 onClick={() => {
-                  setGenerationDialogOpen(true)
+                  void openGenerationDialog()
                 }}
               >
                 重新生成
@@ -689,10 +686,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             <button
               type="button"
               className="workbench-design-primary-action"
+              disabled={designView === 'references' && !currentVersionSelected}
               onClick={() => {
                 if (designView === 'references') {
-                  setDesignView('candidates')
-                  setGenerationDialogOpen(true)
+                  void openGenerationDialog()
                 } else {
                   setCandidateSaveRequest((request) => request + 1)
                 }
@@ -712,22 +709,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           requirements={spec?.sourceRequirements ?? []}
           materials={submission?.materials ?? []}
           dirty={dirty}
-          onSave={saveUnifiedPrompt}
+          onSave={saveCurrentVersion}
           onRestore={restoreSelectedVersion}
           onOpenAi={() => setWorkspaceDialog('ai')}
-          onCommit={() => {
-            setAcknowledgeUncovered(false)
-            setCommitDialogOpen(true)
-          }}
-          onStartDraft={() => {
-            void startDraftForSelectedVersion()
-          }}
-          canStartDraft={!activeDraft && selectedPromptVersion !== null}
-          startingDraft={selectionBusy}
-          onGenerate={() => {
-            setDesignView('candidates')
-            setGenerationDialogOpen(true)
-          }}
+          onGenerate={openGenerationDialog}
         />
         {selectionError ? (
           <div className="workbench-selection-notice" role="alert">
@@ -739,12 +724,17 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       <GenerationDialog
         open={generationDialogOpen}
         project={project}
-        workspace={workspace}
+        promptVersionId={generationPromptVersion?.id ?? null}
+        promptVersionNumber={generationPromptVersion?.versionNumber ?? null}
         providers={providers}
-        onClose={() => setGenerationDialogOpen(false)}
+        onClose={() => {
+          setGenerationDialogOpen(false)
+          setGenerationPromptVersion(null)
+        }}
         onCreated={(created) => {
           setCreatedGenerationId(created.generationId)
           setGenerationDialogOpen(false)
+          setGenerationPromptVersion(null)
           setDesignView('candidates')
         }}
       />
@@ -880,32 +870,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           />
         </div>
       </Dialog>
-
-      <ConfirmDialog
-        open={commitDialogOpen}
-        title="提交为不可变提示词版本？"
-        confirmLabel="提交版本"
-        busy={commitBusy}
-        confirmDisabled={uncoveredRequirements.length > 0 && !acknowledgeUncovered}
-        onCancel={() => setCommitDialogOpen(false)}
-        onConfirm={() => {
-          void commitCurrentVersion()
-        }}
-      >
-        <p>提交后会生成新的 PromptVersion 并成为当前版本；草稿将关闭，历史版本不能被修改。</p>
-        {uncoveredRequirements.length > 0 ? (
-          <Field
-            label={`我知道有 ${uncoveredRequirements.length} 条必须/避免要求未被覆盖，仍要提交。`}
-            className="confirm-ack"
-          >
-            <Switch
-              checked={acknowledgeUncovered}
-              onCheckedChange={setAcknowledgeUncovered}
-              aria-label="确认提交未覆盖要求"
-            />
-          </Field>
-        ) : null}
-      </ConfirmDialog>
 
       {forkSource ? (
         <ForkDialog

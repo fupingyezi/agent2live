@@ -46,8 +46,8 @@ export const ReverseReview: React.FC<ReverseReviewProps> = ({
       />
 
       <p className="muted">
-        基准草稿 revision {result.baseDraftRevision}，生成于 {formatDateTime(result.createdAt)}。
-        应用时会替换当前草稿内容；已锁定块保持原样。
+        基准版本 revision {result.baseDraftRevision}，生成于 {formatDateTime(result.createdAt)}。
+        应用时会更新当前编辑内容；已锁定块保持原样。
       </p>
 
       {result.state ? (
@@ -94,16 +94,16 @@ export const ReverseReview: React.FC<ReverseReviewProps> = ({
           disabled={!canApply}
           onClick={() => setConfirmApply(true)}
         >
-          应用到草稿
+          应用修改
         </AsyncButton>
       </div>
       {!activeDraftRowVersion && result.status === 'ready' ? (
-        <p className="muted">先从当前版本创建一个可编辑草稿，才能应用反推结果。</p>
+        <p className="muted">当前版本暂不可编辑，无法应用反推结果。</p>
       ) : null}
 
       <ConfirmDialog
         open={confirmApply}
-        title="用反推结果替换当前草稿？"
+        title="应用反推结果？"
         confirmLabel="应用"
         busy={busy}
         onCancel={() => setConfirmApply(false)}
@@ -123,7 +123,7 @@ export const ReverseReview: React.FC<ReverseReviewProps> = ({
             .finally(() => setBusy(false))
         }}
       >
-        <p>当前草稿内容会被替换；未保存的本地修改必须先保存或撤销，应用后不能自动回滚。</p>
+        <p>当前编辑内容会被替换；未保存的本地修改必须先保存或撤销，应用后不能自动回滚。</p>
       </ConfirmDialog>
     </section>
   )
