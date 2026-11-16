@@ -157,6 +157,11 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await expect(page.locator('.workbench-design-topbar')).toHaveCSS('height', '48px')
     await expect(page.locator('[data-testid="workbench-reference-card"]')).toHaveCount(6)
     await expect(page.locator('[data-testid="workbench-reference-card"]').first()).toHaveCSS('width', '255px')
+    await expect(page.getByLabel('完整提示词')).toHaveValue(/UI 基线角色/)
+    const creationWorkspace = await api.json<{
+      activeDraft: { state: { fullPrompt: string } } | null
+    }>('GET', `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`)
+    expect(creationWorkspace.body.activeDraft?.state.fullPrompt).toContain('UI 基线角色')
     await capture('workbench-references')
 
     const workspace = (
@@ -194,10 +199,9 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
 
     await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('[data-testid="art-version-panel"]')).toHaveAttribute(
-      'data-active-version-id',
-      seeded.activeArtVersionId
-    )
+    await expect(
+      page.locator(`[data-testid="workbench-version-node"][data-version-id="${seeded.activeArtVersionId}"]`)
+    ).toHaveAttribute('data-active', 'true')
     await page.getByRole('button', { name: '候选', exact: true }).click()
     await expect(page.locator('[data-testid="generation-status"]')).toBeVisible({ timeout: 20_000 })
     await expect(page.locator('[data-testid="candidate-compare"]')).toBeVisible({ timeout: 20_000 })

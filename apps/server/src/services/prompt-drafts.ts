@@ -100,6 +100,13 @@ export function normalizeSpecForSubmission(
   }
   for (const requirement of next.sourceRequirements) requirement.text = normalizeText(requirement.text)
   for (const material of next.materialRefs) material.note = normalizeText(material.note)
+  const derivedFullPrompt = normalizeLegacyFullPrompt({ ...state, fullPrompt: '' }).fullPrompt.trim()
+  if (
+    submission.globalNotes.trim() &&
+    (!next.fullPrompt.trim() || next.fullPrompt.trim() === derivedFullPrompt)
+  ) {
+    next.fullPrompt = normalizeText(submission.globalNotes)
+  }
   if (brief) {
     next = mergeBriefProjection(next, brief.content)
   } else if (next.blocks.some((block) => block.source === 'character-brief')) {

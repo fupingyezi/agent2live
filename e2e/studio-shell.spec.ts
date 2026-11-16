@@ -252,8 +252,9 @@ test('initializes a character from reference images', async () => {
     await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
     await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({ timeout: 20_000 })
-    await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
-    await expect(studio.locator('[data-testid="material-tray"]')).toContainText('其他素材')
+    await expect(studio.locator('[data-testid="workbench-reference-card"]')).toHaveCount(2)
+    await expect(studio.locator('[data-testid="workbench-reference-card"]').first()).toContainText('身份')
+    await expect(studio.locator('[data-testid="workbench-reference-card"]').nth(1)).toContainText('参考')
   } finally {
     await app.close()
   }
@@ -375,14 +376,15 @@ test('creates a default art project and prompt draft from text-only setup', asyn
       timeout: 20_000
     })
     await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toContainText('霁')
-    await expect(studio.page.locator('[data-testid="no-active-draft"]')).toHaveCount(0)
     await expect(studio.page.getByText('新建美术项目', { exact: true })).toHaveCount(0)
     await expect(studio.page.locator('[data-testid="text-warning"]')).toContainText(
       '没有配置 DeepSeek 文本模型'
     )
     await expect(studio.page.locator('[data-testid="ai-warning"]')).toHaveCount(0)
 
-    const inputPanel = studio.page.locator('[data-testid="prompt-input-panel"]')
+    await studio.page.getByRole('button', { name: '素材与要求', exact: true }).click()
+    const inputDialog = studio.page.getByRole('dialog', { name: '素材与要求' })
+    const inputPanel = inputDialog.locator('[data-testid="prompt-input-panel"]')
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
     const overallNotes = inputPanel.getByLabel('整体说明')
     await expect(overallNotes).toHaveValue(

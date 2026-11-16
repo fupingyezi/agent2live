@@ -18,6 +18,7 @@ export type { ForkOriginBarProps } from './ForkOriginBar'
 export { GenerationPanel } from './GenerationPanel'
 export type { GenerationPanelProps } from './GenerationPanel'
 
+/** 以临时 Modal 配置图像模型、数量、尺寸和 Seed。 */
 export { GenerationDialog } from './GenerationDialog'
 export type { GenerationDialogProps } from './GenerationDialog'
 

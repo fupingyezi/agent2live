@@ -10,6 +10,7 @@ import type {
 } from '@studio/api'
 import {
   AsyncButton,
+  Button,
   ConfirmDialog,
   Field,
   InlineNotice,
@@ -31,6 +32,11 @@ export interface UnifiedPromptInspectorProps {
   onSave(): Promise<void>
   onGenerate(): void
   onRestore(): Promise<void>
+  onOpenAi(): void
+  onCommit(): void
+  onStartDraft(): void
+  canStartDraft: boolean
+  startingDraft: boolean
 }
 
 function errorMessage(error: unknown): string {
@@ -48,7 +54,12 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
   dirty,
   onSave,
   onGenerate,
-  onRestore
+  onRestore,
+  onOpenAi,
+  onCommit,
+  onStartDraft,
+  canStartDraft,
+  startingDraft
 }) => {
   const updateFullPrompt = useWorkbenchStore((state) => state.updateFullPrompt)
   const [saving, setSaving] = useState(false)
@@ -147,6 +158,31 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
         </div>
 
         <footer className="workbench-prompt-inspector-footer">
+          <div className="workbench-prompt-utility-actions">
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              disabled={!draft && !selectedPromptVersion}
+              onClick={onOpenAi}
+            >
+              AI 助手
+            </Button>
+            <Button type="button" variant="quiet" size="sm" disabled={!draft} onClick={onCommit}>
+              提交版本
+            </Button>
+          </div>
+          {!draft && canStartDraft ? (
+            <AsyncButton
+              type="button"
+              variant="secondary"
+              busy={startingDraft}
+              busyLabel="创建中…"
+              onClick={onStartDraft}
+            >
+              继续编辑此版本
+            </AsyncButton>
+          ) : null}
           <AsyncButton
             type="button"
             variant="secondary"

@@ -69,9 +69,15 @@ describe('prompt drafts and versions', () => {
         payload: { state: specWithAsset(assetId) }
       })
       expect(saved.statusCode).toBe(200)
-      const savedDraft = saved.json<{ rowVersion: number; revision: number; contentHash: string }>()
+      const savedDraft = saved.json<{
+        rowVersion: number
+        revision: number
+        contentHash: string
+        state: { fullPrompt: string }
+      }>()
       expect(savedDraft.revision).toBe(2)
       expect(savedDraft.contentHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(savedDraft.state.fullPrompt).toContain('保持清透')
 
       const commit = await ctx.app.inject({
         method: 'POST',

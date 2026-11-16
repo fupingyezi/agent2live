@@ -357,10 +357,9 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     await parentCard.getByRole('link', { name: '打开工作台', exact: true }).click()
     await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible()
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('[data-testid="art-version-panel"]')).toHaveAttribute(
-      'data-active-version-id',
-      firstArtVersion.id
-    )
+    await expect(
+      page.locator(`[data-testid="workbench-version-node"][data-version-id="${firstArtVersion.id}"]`)
+    ).toHaveAttribute('data-active', 'true')
 
     await page.getByRole('link', { name: /返回角色驾驶舱/ }).click()
     await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
@@ -369,10 +368,10 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
       .getByRole('link', { name: '打开工作台', exact: true })
       .click()
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('[data-testid="art-version-panel"]')).toHaveAttribute(
-      'data-active-version-id',
-      fork.seedArtVersion!.id
-    )
+    await expect(
+      page.locator(`[data-testid="workbench-version-node"][data-version-id="${fork.seedArtVersion!.id}"]`)
+    ).toHaveAttribute('data-active', 'true')
+    await page.getByRole('button', { name: '版本操作', exact: true }).click()
     const originBar = page.locator('[data-testid="fork-origin-bar"]')
     await expect(originBar).toBeVisible()
     await expect(originBar.locator(`code[title="${projectId}"]`)).toBeVisible()

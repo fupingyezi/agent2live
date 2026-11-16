@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { ApiClient, uniqueKey } from './helpers/api'
 import { launchStudio } from './helpers/app'
+import { resizeToBaseline } from './helpers/axe'
 import { goldenPromptState, makePng } from './helpers/seed'
 import { studioPage } from './support/windows'
 
@@ -114,16 +115,18 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
       timeout: 20_000
     })
 
-    const inputPanel = studio.locator('[data-testid="prompt-input-panel"]')
+    await studio.getByRole('button', { name: '素材与要求', exact: true }).click()
+    const inputDialog = studio.getByRole('dialog', { name: '素材与要求' })
+    const inputPanel = inputDialog.locator('[data-testid="prompt-input-panel"]')
     await expect(inputPanel).toBeVisible()
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
     await inputPanel.getByRole('button', { name: /(提交|更新)素材与要求/ }).click()
+    await expect(inputDialog).toHaveCount(0)
 
     await expect(promptEditor.getByTestId('prompt-block-list')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.locator('[data-testid="no-active-draft"]')).toHaveCount(0)
-    await expect(studio.locator('[data-testid="material-tray"]')).toContainText('身份参考')
+    await expect(studio.getByTestId('workbench-reference-card').first()).toContainText('身份')
 
     await promptEditor.getByRole('button', { name: '+ 添加块', exact: true }).click()
     const block = promptEditor.locator('[data-testid="prompt-block"]').last()
@@ -131,22 +134,17 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await block.getByLabel('块名称').fill('面部')
     await block.getByLabel('块内容').fill('黑色短发，冷静的灰色眼睛，干净的面部轮廓')
 
-    const toolbar = studio.locator('[data-testid="draft-toolbar"]')
-    await expect(toolbar).toContainText('有未保存修改')
-    await expect(studio.locator('[data-testid="unsaved-notice"]')).toBeVisible()
-    await expect(toolbar.getByRole('button', { name: 'AI 助手', exact: true })).toBeDisabled()
-    await toolbar.getByRole('button', { name: '保存草稿', exact: true }).click()
-    await expect(toolbar).toContainText('草稿已保存', { timeout: 20_000 })
-    await expect(studio.locator('[data-testid="unsaved-notice"]')).toHaveCount(0)
-    await expect(toolbar.getByRole('button', { name: 'AI 助手', exact: true })).toBeEnabled()
+    await expect(promptEditor).toContainText('有未保存修改')
+    await promptEditor.getByRole('button', { name: '保存草稿', exact: true }).click()
+    await expect(promptEditor).toContainText('草稿已保存', { timeout: 20_000 })
 
     await createMockProvider(studio, 'chat')
     await createMockProvider(studio, 'image')
     await studio.reload()
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(studio.locator('[data-testid="draft-toolbar"]')).toContainText('草稿已保存')
+    await expect(promptEditor).toContainText('草稿已保存')
 
-    await studio.locator('[data-testid="draft-toolbar"]').getByRole('button', { name: 'AI 助手' }).click()
+    await promptEditor.getByRole('button', { name: 'AI 助手', exact: true }).click()
     const aiPanel = studio.locator('[data-testid="prompt-ai-panel"]')
     await expect(aiPanel).toBeVisible()
     await aiPanel.getByRole('tab', { name: '改进建议' }).click()
@@ -157,20 +155,25 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await expect(aiPanel.getByTestId('ai-job')).toBeVisible()
     await expect(aiPanel.getByTestId('suggestion-diff')).toBeVisible({ timeout: 30_000 })
     await aiPanel.getByRole('button', { name: '接受建议', exact: true }).click()
-    await expect(studio.locator('[data-testid="draft-toolbar"]')).toContainText('草稿已保存', {
+    await expect(promptEditor).toContainText('草稿已保存', {
       timeout: 20_000
     })
+    await studio.keyboard.press('Escape')
+    await expect(studio.getByRole('dialog', { name: 'AI 助手' })).toHaveCount(0)
 
-    await toolbar.getByRole('button', { name: '提交版本', exact: true }).click()
+    await promptEditor.getByRole('button', { name: '提交版本', exact: true }).click()
     const commitDialog = studio.getByRole('dialog')
     await expect(commitDialog).toBeVisible()
     await commitDialog.getByRole('button', { name: '提交版本', exact: true }).click()
 
-    await expect(studio.locator('[data-testid="no-active-draft"]')).toBeVisible({
-      timeout: 20_000
-    })
+    await expect(promptEditor).toContainText('版本只读', { timeout: 20_000 })
+    await expect(promptEditor.getByRole('button', { name: '继续编辑此版本', exact: true })).toBeVisible()
+    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
+    const versionsDialog = studio.getByRole('dialog', { name: '版本操作' })
     await expect(studio.getByTestId('version-graph')).toContainText('v1')
     await expect(studio.locator('[data-testid="reference-chain"]')).toContainText('提示词 v1')
+    await studio.keyboard.press('Escape')
+    await expect(versionsDialog).toHaveCount(0)
 
     await promptEditor.getByRole('button', { name: '生成立绘', exact: true }).click()
     const generationDialog = studio.getByRole('dialog', { name: '生成立绘' })
@@ -192,14 +195,15 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     const candidateDialog = studio.getByRole('dialog')
     await expect(candidateDialog).toBeVisible()
     await candidateDialog.getByRole('button', { name: '接受', exact: true }).click()
-    await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v1', {
+    await expect(studio.locator('[data-testid="workbench-version-node"]')).toHaveCount(1, {
       timeout: 20_000
     })
 
+    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
     const artPanel = studio.locator('[data-testid="art-version-panel"]')
     await expect(artPanel).toBeVisible()
     await artPanel.getByRole('button', { name: '手工上传立绘', exact: true }).click()
-    const manualDialog = studio.getByRole('dialog')
+    const manualDialog = studio.getByRole('dialog', { name: '手工上传立绘' })
     await expect(manualDialog).toBeVisible()
     await manualDialog.getByLabel('选择手工美术图片').setInputFiles(imagePath)
     await manualDialog.getByRole('button', { name: '创建并激活', exact: true }).click()
@@ -222,8 +226,8 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await studio.reload()
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
+    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
     await expect(studio.getByTestId('version-graph')).toContainText('v1')
-    await expect(studio.locator('[data-testid="no-active-draft"]')).toBeVisible()
     await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v3')
     await expect(
       studio.locator('[data-testid="reference-set-editor"]').getByTestId('reference-row')
@@ -465,6 +469,52 @@ test('generation modal keeps settings out of the canvas', async () => {
   }
 })
 
+test('no page tail keeps the workbench in one frame', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-workbench-single-frame-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const character = await api.createCharacter('砚', '用于验证单屏工作台结构。')
+    const project = await api.createProject(character.id, '默认造型', '单屏结构。')
+    const input = await api.uploadPromptInput(project.id, await makePng(), {
+      filename: 'single-frame.png'
+    })
+    const state = {
+      ...goldenPromptState(input.submission.materials[0]!.assetId),
+      fullPrompt: '单屏工作台中的完整提示词。'
+    }
+    const saved = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
+    await api.commitPromptDraft(project.id, saved.id, saved.rowVersion)
+    await resizeToBaseline(studio.app, studio.page)
+
+    await studio.page.evaluate(
+      ({ characterId, projectId }) => {
+        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
+      },
+      { characterId: character.id, projectId: project.id }
+    )
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    await expect(studio.page.locator('.workbench-functional-dock')).toHaveCount(0)
+    await expect(studio.page.getByLabel('完整提示词')).toBeVisible()
+    await expect(
+      studio.page.locator('[data-testid="unified-prompt-inspector"]').getByTestId('prompt-block-list')
+    ).toBeVisible()
+    await expect(studio.page.locator('[data-testid="generation-controls"]')).toHaveCount(0)
+    expect(
+      await studio.page.evaluate(() => ({
+        documentHeight: document.documentElement.scrollHeight,
+        viewportHeight: window.innerHeight
+      }))
+    ).toEqual({ documentHeight: 900, viewportHeight: 900 })
+  } finally {
+    await studio.close()
+  }
+})
+
 test('restore historical version creates a new active art version', async () => {
   test.setTimeout(120_000)
   const studio = await launchStudio('agent2live-workbench-restore-')
@@ -621,10 +671,15 @@ test('queues a Zhipu vision reverse after creation without applying its result',
     const aiPanel = studio.page.getByTestId('prompt-ai-panel')
     await expect(aiPanel.getByTestId('ai-job')).toContainText(reverseRequest.jobId)
     await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
-    const inputPanel = studio.page.getByTestId('prompt-input-panel')
+    await studio.page.keyboard.press('Escape')
+    await studio.page.getByRole('button', { name: '素材与要求', exact: true }).click()
+    const inputDialog = studio.page.getByRole('dialog', { name: '素材与要求' })
+    const inputPanel = inputDialog.getByTestId('prompt-input-panel')
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
     await expect(inputPanel.getByLabel('上传素材图片')).toHaveCount(0)
     await expect(inputPanel).toContainText('参考图通过独立参考图编辑入口维护')
+    await studio.page.keyboard.press('Escape')
+    await expect(inputDialog).toHaveCount(0)
     await studio.page.reload()
     await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
       timeout: 20_000

@@ -86,6 +86,7 @@ interface PromptProvisionResult {
 const EMPTY_DRAFT: CharacterDraft = { title: '', summary: '', supplement: '' }
 
 const PROMPT_SYNC_POLL_INTERVAL_MS = 250
+
 const PROMPT_SYNC_WAIT_MS = 135_000
 
 async function waitForPromptSync(jobId: string) {

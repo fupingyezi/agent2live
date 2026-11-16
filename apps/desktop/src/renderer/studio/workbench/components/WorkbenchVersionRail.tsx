@@ -1,6 +1,7 @@
 import React from 'react'
 import type { ArtProjectDto, ArtVersionDto, PromptDraftDto, PromptVersionSummaryDto } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
+import { Button } from '@agent2live/design-system'
 
 interface ArtVersionNodeProps {
   project: ArtProjectDto
@@ -60,6 +61,8 @@ export interface WorkbenchVersionRailProps {
   busy: boolean
   onSelectDraft: () => void
   onSelectVersion: (version: ArtVersionDto) => void
+  onOpenMaterials: () => void
+  onOpenVersions: () => void
 }
 
 export const WorkbenchVersionRail: React.FC<WorkbenchVersionRailProps> = ({
@@ -72,7 +75,9 @@ export const WorkbenchVersionRail: React.FC<WorkbenchVersionRailProps> = ({
   selectedDraft,
   busy,
   onSelectDraft,
-  onSelectVersion
+  onSelectVersion,
+  onOpenMaterials,
+  onOpenVersions
 }) => {
   const promptById = new Map(promptVersions.map((version) => [version.id, version]))
   const draftPrompt = draft?.baseVersionId ? promptById.get(draft.baseVersionId) : null
@@ -122,6 +127,14 @@ export const WorkbenchVersionRail: React.FC<WorkbenchVersionRailProps> = ({
             onSelect={() => onSelectVersion(version)}
           />
         ))}
+      </div>
+      <div className="workbench-version-rail-actions">
+        <Button type="button" variant="quiet" size="sm" onClick={onOpenMaterials}>
+          素材与要求
+        </Button>
+        <Button type="button" variant="quiet" size="sm" onClick={onOpenVersions}>
+          版本操作
+        </Button>
       </div>
     </aside>
   )
