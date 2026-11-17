@@ -47,6 +47,8 @@ export function buildReverseState(
   })
   const next: PromptSpecV2 = {
     ...base,
+    // The accepted blocks are authoritative after a reverse; the base prose no longer describes them.
+    fullPrompt: '',
     characterBriefVersionId: submission.characterBriefVersionId,
     sourceRequirements: submission.requirements,
     materialRefs: submission.materials.map((material) => ({

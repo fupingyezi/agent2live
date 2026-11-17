@@ -31,6 +31,7 @@ import type { ProviderConnectionService } from './provider-connections'
 import type { ProviderInvocationService } from './provider-invocations'
 import type { ProviderRegistry } from './provider-registry'
 import type { RequestIds } from './request-ids'
+import { providerFailureAppError, providerFailureDetail } from './provider-diagnostics'
 
 export type { PromptReverseResultDto, PromptReverseResultStatus }
 
@@ -199,9 +200,10 @@ export class PromptReverseService {
       this.deps.invocations.fail(
         invocationId,
         (error as { code?: string }).code ?? 'SYS_INTERNAL',
-        this.deps.clock.now() - startedAt
+        this.deps.clock.now() - startedAt,
+        providerFailureDetail(error)
       )
-      throw error
+      throw providerFailureAppError(error) ?? error
     }
     const output = parseReverseOutput(outputText)
     context.progress(70, 'validating output')

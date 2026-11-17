@@ -4,11 +4,17 @@ import {
   getErrorDefinition,
   newId,
   providerCapabilitiesSchema,
+  type ArtProjectStage,
   type CreateGenerationInput,
   type GenerationCandidateDto,
   type GenerationDto as ContractGenerationDto
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
+import {
+  providerFailureAppError,
+  providerFailureDetail,
+  providerFailureMessage
+} from './provider-diagnostics'
 import { withEvents } from './events-buffer'
 import { compilePrompt } from '../prompt/compile'
 import { foldedReferenceInstruction, generationRequestSchema, planReferences } from '../generation/request'
@@ -25,7 +31,7 @@ import type { ProjectService } from './projects'
 import type { PromptVersionService } from './prompt-versions'
 import type { RequestIds } from './request-ids'
 import type { ArtVersionService } from './art-versions'
-import type { JobHandlerContext, JobStatus } from '../jobs/types'
+import type { JobHandlerContext, JobStatus, JobTerminalOutcome } from '../jobs/types'
 
 export interface GenerationServiceDeps {
   db: Database.Database
@@ -51,6 +57,7 @@ interface GenerationRow {
   request_json: string
   request_hash: string
   job_id: string
+  stage_before: string | null
   created_at: number
 }
 
@@ -98,6 +105,27 @@ function parseErrorCode(json: string | null): string | null {
     return null
   }
 }
+
+function parseErrorMessage(json: string | null): string | null {
+  if (!json) return null
+  try {
+    const value = JSON.parse(json) as { message?: unknown }
+    return typeof value.message === 'string' ? value.message : null
+  } catch {
+    return null
+  }
+}
+
+const STAGES: ReadonlySet<string> = new Set([
+  'idea_draft',
+  'prompt_draft',
+  'prompt_ready',
+  'generating',
+  'candidate_review',
+  'art_version_active',
+  'live2d_pending',
+  'blocked'
+])
 
 function parseStoredObject(json: string, field: string): Record<string, unknown> {
   let value: unknown
@@ -228,12 +256,17 @@ export class GenerationService {
   createRecord(request: GenerationRequest, jobId: string, ids: RequestIds): GenerationDto {
     const now = this.deps.clock.now()
     return withEvents(this.deps.db, this.deps.events, (events) => {
+      const project = this.deps.db
+        .prepare('select stage from art_projects where id = ?')
+        .get(request.artProjectId) as { stage: string } | undefined
+      if (!project) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'art_project' })
+      const stageBefore = project.stage === 'generating' ? null : project.stage
       this.deps.db
         .prepare(
           `insert into generation_jobs
            (id, art_project_id, prompt_version_id, base_art_version_id, provider_connection_id,
-            request_json, request_hash, job_id, created_at)
-           values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            request_json, request_hash, job_id, stage_before, created_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           request.generationJobId,
@@ -244,6 +277,7 @@ export class GenerationService {
           JSON.stringify(request),
           request.requestHash,
           jobId,
+          stageBefore,
           now
         )
       this.deps.db
@@ -311,6 +345,7 @@ export class GenerationService {
       status: job.status as JobStatus,
       attempts: job.attempts,
       errorCode: parseErrorCode(job.error_json),
+      errorMessage: parseErrorMessage(job.error_json),
       progress: checkpoint.progress,
       request,
       requestHash: row.request_hash,
@@ -393,9 +428,14 @@ export class GenerationService {
       })
     } catch (error) {
       const code = invocationErrorCode(error)
-      this.deps.invocations.fail(invocationId, code, this.deps.clock.now() - startedAt)
-      // Rethrow a code-only error so provider response bodies never reach error_json or logs.
-      throw new AppError(code)
+      this.deps.invocations.fail(
+        invocationId,
+        code,
+        this.deps.clock.now() - startedAt,
+        providerFailureDetail(error)
+      )
+      // Rethrow a diagnostic-only error so provider response bodies never reach error_json or logs.
+      throw providerFailureAppError(error) ?? new AppError(code, {}, providerFailureMessage(error, code))
     }
     const images = providerResult.images.slice(0, request.count)
     if (images.length === 0) {
@@ -495,5 +535,85 @@ export class GenerationService {
       generationId: request.generationJobId,
       candidateIds: ingested.map((candidate) => candidate.candidateId)
     }
+  }
+
+  /**
+   * Restores a truthful project stage when a generation ends without candidates.
+   * Runs as a best-effort observer after job settlement; it must never throw.
+   */
+  onTerminal(outcome: JobTerminalOutcome): void {
+    const generation = this.deps.db
+      .prepare('select * from generation_jobs where job_id = ?')
+      .get(outcome.jobId) as GenerationRow | undefined
+    if (!generation) return
+    const now = this.deps.clock.now()
+    if (outcome.status === 'succeeded') {
+      this.deps.db
+        .prepare(
+          `update art_projects set stage = 'candidate_review', updated_at = ?, row_version = row_version + 1
+           where id = ? and stage = 'generating'`
+        )
+        .run(now, generation.art_project_id)
+      return
+    }
+    const project = this.deps.db
+      .prepare('select id, stage, active_version_id, active_prompt_version_id from art_projects where id = ?')
+      .get(generation.art_project_id) as
+      | {
+          id: string
+          stage: string
+          active_version_id: string | null
+          active_prompt_version_id: string | null
+        }
+      | undefined
+    if (!project || project.stage !== 'generating') return
+    const stillActive = this.deps.db
+      .prepare(
+        `select 1
+         from generation_jobs gj
+         join jobs j on j.id = gj.job_id
+         where gj.art_project_id = ? and gj.id <> ?
+           and j.status in ('queued', 'leased', 'running', 'waiting_user', 'retrying')
+         limit 1`
+      )
+      .get(project.id, generation.id)
+    if (stillActive) return
+    const stage = this.rollbackStage(generation, project)
+    this.deps.db
+      .prepare(
+        `update art_projects set stage = ?, updated_at = ?, row_version = row_version + 1
+         where id = ? and stage = 'generating'`
+      )
+      .run(stage, now, project.id)
+  }
+
+  private rollbackStage(
+    generation: GenerationRow,
+    project: {
+      id: string
+      active_version_id: string | null
+      active_prompt_version_id: string | null
+    }
+  ): ArtProjectStage {
+    if (
+      generation.stage_before !== null &&
+      generation.stage_before !== 'generating' &&
+      STAGES.has(generation.stage_before)
+    ) {
+      return generation.stage_before as ArtProjectStage
+    }
+    if (project.active_version_id !== null) return 'art_version_active'
+    const candidate = this.deps.db
+      .prepare(
+        `select 1
+         from generation_candidates gc
+         join generation_jobs gj on gj.id = gc.generation_job_id
+         where gj.art_project_id = ?
+         limit 1`
+      )
+      .get(project.id)
+    if (candidate) return 'candidate_review'
+    if (project.active_prompt_version_id !== null) return 'prompt_ready'
+    return 'prompt_draft'
   }
 }

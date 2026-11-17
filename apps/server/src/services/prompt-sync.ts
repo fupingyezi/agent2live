@@ -18,6 +18,7 @@ import type { ProviderConnectionService } from './provider-connections'
 import type { ProviderInvocationService } from './provider-invocations'
 import type { ProviderRegistry } from './provider-registry'
 import type { ProjectService } from './projects'
+import { providerFailureAppError, providerFailureDetail } from './provider-diagnostics'
 
 export interface PromptSyncDeps {
   db: Database.Database
@@ -132,9 +133,10 @@ export class PromptSyncService {
       this.deps.invocations.fail(
         invocationId,
         (error as { code?: string }).code ?? 'SYS_INTERNAL',
-        this.deps.clock.now() - startedAt
+        this.deps.clock.now() - startedAt,
+        providerFailureDetail(error)
       )
-      throw error
+      throw providerFailureAppError(error) ?? error
     }
     context.progress(70, 'validating output')
     const output = parsePromptSyncOutput(responseText)

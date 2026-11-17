@@ -77,6 +77,7 @@ export class ProviderConnectionService {
 
   create(input: CreateProviderConnectionInput, ids: RequestIds): ProviderConnectionDto {
     validateAdapter(input)
+    const baseUrl = normalizeProviderBaseUrl(input.adapter, input.baseUrl)
     const now = this.deps.clock.now()
     return withEvents(this.deps.db, this.deps.events, (events) => {
       const id = newId('providerConnection')
@@ -91,7 +92,7 @@ export class ProviderConnectionService {
           input.label,
           input.kind,
           input.adapter,
-          input.baseUrl ?? null,
+          baseUrl ?? null,
           input.model ?? null,
           input.secretRef ?? null,
           JSON.stringify(input.capabilities),
@@ -148,6 +149,7 @@ export class ProviderConnectionService {
         patch.capabilities === undefined ? JSON.parse(current.capabilities_json) : patch.capabilities
     }
     validateAdapter({ ...merged, adapter: current.adapter, kind: current.kind })
+    merged.baseUrl = normalizeProviderBaseUrl(current.adapter, merged.baseUrl)
     return withEvents(this.deps.db, this.deps.events, (events) => {
       const result = this.deps.db
         .prepare(
@@ -253,4 +255,29 @@ function validateAdapter(input: {
   if (input.adapter !== 'mock' && input.enabled && !input.secretRef) {
     throw new AppError('PROVIDER_NOT_CONFIGURED', {})
   }
+}
+
+const SEEDREAM_IMAGE_ENDPOINT = '/images/generations'
+
+/**
+ * Seedream treats baseUrl as the API root and appends /images/generations itself.
+ * Provider docs show the full endpoint, so accept that shape by stripping the
+ * endpoint users copy, and reject URLs that embed it somewhere we cannot cleanly
+ * normalize rather than storing a connection that doubles the path at runtime.
+ */
+export function normalizeProviderBaseUrl(
+  adapter: ProviderConnectionDto['adapter'],
+  baseUrl: string | null | undefined
+): string | null | undefined {
+  if (adapter !== 'seedream' || !baseUrl) return baseUrl
+  let normalized = baseUrl.replace(/\/+$/, '')
+  while (normalized.endsWith(SEEDREAM_IMAGE_ENDPOINT)) {
+    normalized = normalized.slice(0, -SEEDREAM_IMAGE_ENDPOINT.length).replace(/\/+$/, '')
+  }
+  if (normalized.includes(SEEDREAM_IMAGE_ENDPOINT)) {
+    throw new AppError('REQUEST_INVALID', {
+      reason: 'seedream baseUrl must be the API root, not an /images/generations endpoint'
+    })
+  }
+  return normalized
 }

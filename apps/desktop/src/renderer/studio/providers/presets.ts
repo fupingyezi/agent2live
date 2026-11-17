@@ -157,19 +157,18 @@ export function presetIdForConnection(connection: {
   return 'openai-chat'
 }
 
-export function findDefaultVisionProvider(providers: ProviderConnectionDto[]): ProviderConnectionDto | null {
+function isZhipuVisionProvider(provider: ProviderConnectionDto): boolean {
   return (
-    providers.find((provider) => {
-      const capabilities = provider.capabilities as ProviderCapabilities | null
-      return (
-        provider.enabled &&
-        provider.kind === 'chat' &&
-        capabilities?.chat?.supportsVision === true &&
-        provider.baseUrl?.includes('open.bigmodel.cn') === true &&
-        provider.model?.startsWith('glm-') === true
-      )
-    }) ?? null
+    provider.baseUrl?.includes('open.bigmodel.cn') === true && provider.model?.startsWith('glm-') === true
   )
+}
+
+export function findDefaultVisionProvider(providers: ProviderConnectionDto[]): ProviderConnectionDto | null {
+  const visionProviders = providers.filter((provider) => {
+    const capabilities = provider.capabilities as ProviderCapabilities | null
+    return provider.enabled && provider.kind === 'chat' && capabilities?.chat?.supportsVision === true
+  })
+  return visionProviders.find(isZhipuVisionProvider) ?? visionProviders[0] ?? null
 }
 
 export function findDefaultTextProvider(providers: ProviderConnectionDto[]): ProviderConnectionDto | null {

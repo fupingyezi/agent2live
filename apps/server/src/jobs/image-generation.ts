@@ -11,6 +11,7 @@ export function createImageGenerationJob(service: GenerationService): JobDefinit
     sideEffect: 'non_idempotent',
     maxAttempts: 1,
     timeoutMs: 180_000,
-    run: (context) => service.run(context)
+    run: (context) => service.run(context),
+    onTerminal: (outcome) => service.onTerminal(outcome)
   }
 }

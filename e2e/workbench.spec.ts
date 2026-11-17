@@ -780,6 +780,61 @@ test('queues a Zhipu vision reverse after creation without applying its result',
   }
 })
 
+test('queues a vision reverse after creation with any enabled vision provider', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-creation-openai-vision-')
+
+  try {
+    const api = new ApiClient(studio.endpoint)
+    await api.json('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': uniqueKey('provider-openai-vision') },
+      body: {
+        label: 'Creation OpenAI Vision',
+        kind: 'chat',
+        adapter: 'mock',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o-mini',
+        enabled: true,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
+        }
+      }
+    })
+
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('澜')
+    await studio.page.getByLabel('角色简介').fill('守在潮汐图前的少女。')
+    await studio.page.getByLabel('上传参考图').setInputFiles({
+      name: 'identity.png',
+      mimeType: 'image/png',
+      buffer: await makePng(240, 320, '#9ec9bb')
+    })
+
+    const reverseResponsePromise = studio.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
+    )
+    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    const reverseResponse = await reverseResponsePromise
+    expect(reverseResponse.status()).toBe(202)
+    const reverseRequest = (await reverseResponse.json()) as { jobId: string }
+
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await studio.page.getByTestId('open-art-workbench').click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+    const workbenchParams = hashSearch(studio.page.url())
+    expect(workbenchParams.get('aiKind')).toBe('reverse')
+    expect(workbenchParams.get('aiJob')).toBe(reverseRequest.jobId)
+  } finally {
+    await studio.close()
+  }
+})
+
 test('keeps creation successful and explains when no vision provider is available', async () => {
   test.setTimeout(120_000)
   const studio = await launchStudio('agent2live-creation-no-vision-')
@@ -805,6 +860,140 @@ test('keeps creation successful and explains when no vision provider is availabl
     })
     expect(hashSearch(studio.page.url()).get('aiWarning')).toBe('no-vision-provider')
     await expect(studio.page.getByTestId('ai-warning')).toContainText('参考图反推未启动')
+  } finally {
+    await studio.close()
+  }
+})
+
+test('keeps a manually started reverse job available after closing the panel and reloading', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-manual-reverse-')
+
+  try {
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('潮')
+    await studio.page.getByLabel('角色简介').fill('在海雾里巡灯的白发少女。')
+    await studio.page.getByLabel('上传参考图').setInputFiles({
+      name: 'identity.png',
+      mimeType: 'image/png',
+      buffer: await makePng(240, 320, '#9ec9bb')
+    })
+    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const api = new ApiClient(studio.endpoint)
+    await api.json('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': uniqueKey('provider-manual-vision') },
+      body: {
+        label: 'Manual Vision',
+        kind: 'chat',
+        adapter: 'mock',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o-mini',
+        enabled: true,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
+        }
+      }
+    })
+
+    await studio.page.getByTestId('open-art-workbench').click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    await studio.page.getByRole('button', { name: 'AI 助手', exact: true }).click()
+    const aiPanel = studio.page.getByTestId('prompt-ai-panel')
+    await expect(aiPanel).toBeVisible()
+    const reverseResponsePromise = studio.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
+    )
+    await aiPanel.getByRole('button', { name: '开始反推', exact: true }).click()
+    const reverseResponse = await reverseResponsePromise
+    expect(reverseResponse.status()).toBe(202)
+    const { jobId } = (await reverseResponse.json()) as { jobId: string }
+    expect(jobId).toMatch(/^job_/)
+    await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+
+    await studio.page.keyboard.press('Escape')
+    await expect(aiPanel).toHaveCount(0)
+    await studio.page.getByRole('button', { name: 'AI 助手', exact: true }).click()
+    const reopenedPanel = studio.page.getByTestId('prompt-ai-panel')
+    await expect(reopenedPanel.getByTestId('ai-job')).toContainText(jobId)
+    await expect(reopenedPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+
+    await studio.page.reload()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 20_000
+    })
+    const reloadedPanel = studio.page.getByTestId('prompt-ai-panel')
+    await expect(reloadedPanel.getByTestId('ai-job')).toContainText(jobId)
+    await expect(reloadedPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+  } finally {
+    await studio.close()
+  }
+})
+
+test('starts a manual text-only reverse when there are no reference materials', async () => {
+  test.setTimeout(120_000)
+  const studio = await launchStudio('agent2live-text-reverse-')
+
+  try {
+    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
+    await studio.page.getByLabel('角色名称').fill('笺')
+    await studio.page.getByLabel('角色简介').fill('在市集收集旧信件的少女。')
+    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const api = new ApiClient(studio.endpoint)
+    await api.json('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': uniqueKey('provider-manual-text') },
+      body: {
+        label: 'Manual Text',
+        kind: 'chat',
+        adapter: 'mock',
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-flash',
+        enabled: true,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+        }
+      }
+    })
+
+    await studio.page.getByTestId('open-art-workbench').click()
+    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+      timeout: 30_000
+    })
+
+    const projectId = hashSearch(studio.page.url()).get('project')
+    expect(projectId).toMatch(/^artp_/)
+    const workspace = await api.json<{ latestSubmission: { materials: unknown[] } }>(
+      'GET',
+      `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`
+    )
+    expect(workspace.body.latestSubmission.materials).toHaveLength(0)
+
+    await studio.page.getByRole('button', { name: 'AI 助手', exact: true }).click()
+    const aiPanel = studio.page.getByTestId('prompt-ai-panel')
+    await expect(aiPanel).toBeVisible()
+    const start = aiPanel.getByRole('button', { name: '开始反推', exact: true })
+    await expect(start).toBeEnabled()
+    const reverseResponsePromise = studio.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
+    )
+    await start.click()
+    const reverseResponse = await reverseResponsePromise
+    expect(reverseResponse.status()).toBe(202)
+    await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
   } finally {
     await studio.close()
   }

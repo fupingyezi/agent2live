@@ -32,6 +32,7 @@ import { specContentHash } from '../prompt/compile'
 import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import { applyPromptOperations } from '../prompt/apply-operations'
 import { buildSuggestionPrompt, parseSuggestionOutput, validateSuggestionOutput } from '../prompt/suggestion'
+import { providerFailureAppError, providerFailureDetail } from './provider-diagnostics'
 
 export interface PromptSuggestionInput {
   providerConnectionId: string
@@ -190,8 +191,13 @@ export class PromptSuggestionService {
         outputUnits: response.usage?.outputTokens ?? null
       })
     } catch (error) {
-      this.deps.invocations.fail(invocationId, invocationErrorCode(error), this.deps.clock.now() - startedAt)
-      throw error
+      this.deps.invocations.fail(
+        invocationId,
+        invocationErrorCode(error),
+        this.deps.clock.now() - startedAt,
+        providerFailureDetail(error)
+      )
+      throw providerFailureAppError(error) ?? error
     }
     context.progress(70, 'validating output')
     const output = parseSuggestionOutput(responseText)

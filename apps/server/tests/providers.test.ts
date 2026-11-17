@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ProviderCapabilities } from '@agent2live/contracts'
+import { SEEDREAM_CAPABILITIES, type ProviderCapabilities } from '@agent2live/contracts'
+import { normalizeProviderBaseUrl } from '../src/services/provider-connections'
 import { StaticSecretResolver } from '../src/services/secret-resolver'
 import { createTestApp } from './helpers/app'
 
@@ -258,7 +259,10 @@ describe('provider connections', () => {
         requestHash: hash,
         model: 'mock-art'
       })
-      invocations.fail(failed, 'PROVIDER_TIMEOUT', 30)
+      invocations.fail(failed, 'PROVIDER_TIMEOUT', 30, {
+        status: 504,
+        providerCode: 'Timeout'
+      })
       const cancelled = invocations.start({
         connectionId: chatConnection.id,
         purpose: 'prompt.suggestion',
@@ -268,7 +272,8 @@ describe('provider connections', () => {
       invocations.cancel(cancelled, 5)
       const rows = ctx.db
         .prepare(
-          'select status, latency_ms, input_units, output_units, error_code from provider_invocations order by id'
+          `select status, latency_ms, input_units, output_units, error_code, error_detail_json
+           from provider_invocations order by id`
         )
         .all()
       expect(rows).toEqual(
@@ -278,16 +283,25 @@ describe('provider connections', () => {
             latency_ms: 12,
             input_units: null,
             output_units: 1,
-            error_code: null
+            error_code: null,
+            error_detail_json: null
           },
           {
             status: 'failed',
             latency_ms: 30,
             input_units: null,
             output_units: null,
-            error_code: 'PROVIDER_TIMEOUT'
+            error_code: 'PROVIDER_TIMEOUT',
+            error_detail_json: '{"status":504,"providerCode":"Timeout"}'
           },
-          { status: 'cancelled', latency_ms: 5, input_units: null, output_units: null, error_code: null }
+          {
+            status: 'cancelled',
+            latency_ms: 5,
+            input_units: null,
+            output_units: null,
+            error_code: null,
+            error_detail_json: null
+          }
         ])
       )
       expect(JSON.stringify(rows)).not.toContain('a prompt')
@@ -371,6 +385,87 @@ describe('provider connections', () => {
       expect(disabledProbe.json()).toMatchObject({
         error: { code: 'PROVIDER_NOT_CONFIGURED' }
       })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('normalizes seedream endpoint URLs to the API root they are built from', () => {
+    expect(
+      normalizeProviderBaseUrl('seedream', 'https://ark.cn-beijing.volces.com/api/v3/images/generations')
+    ).toBe('https://ark.cn-beijing.volces.com/api/v3')
+    expect(
+      normalizeProviderBaseUrl('seedream', 'https://ark.cn-beijing.volces.com/api/v3/images/generations/')
+    ).toBe('https://ark.cn-beijing.volces.com/api/v3')
+    expect(
+      normalizeProviderBaseUrl(
+        'seedream',
+        'https://ark.cn-beijing.volces.com/api/v3/images/generations/images/generations'
+      )
+    ).toBe('https://ark.cn-beijing.volces.com/api/v3')
+    expect(normalizeProviderBaseUrl('seedream', 'https://ark.cn-beijing.volces.com/api/v3')).toBe(
+      'https://ark.cn-beijing.volces.com/api/v3'
+    )
+    expect(
+      normalizeProviderBaseUrl('openai-compatible', 'https://api.example.com/v1/images/generations')
+    ).toBe('https://api.example.com/v1/images/generations')
+    expect(normalizeProviderBaseUrl('seedream', null)).toBeNull()
+    expect(normalizeProviderBaseUrl('seedream', undefined)).toBeUndefined()
+  })
+
+  it('rejects a seedream base URL that embeds the image endpoint mid-path', () => {
+    expect(() =>
+      normalizeProviderBaseUrl('seedream', 'https://proxy.example.com/api/v3/images/generations/extra')
+    ).toThrow(expect.objectContaining({ code: 'REQUEST_INVALID' }))
+  })
+
+  it('stores a normalized seedream base URL on create and update', async () => {
+    const ctx = await createTestApp({
+      secrets: new StaticSecretResolver(new Map([['sec_01J00000000000000000000000', 'sk-test-value']]))
+    })
+    try {
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-create-seedream-endpoint' },
+        payload: {
+          label: 'Seedream',
+          kind: 'image',
+          adapter: 'seedream',
+          baseUrl: 'https://ark.cn-beijing.volces.com/api/v3/images/generations',
+          model: 'doubao-seedream-5-0-pro-260628',
+          secretRef: 'sec_01J00000000000000000000000',
+          capabilities: SEEDREAM_CAPABILITIES
+        }
+      })
+      expect(created.statusCode).toBe(201)
+      expect(created.json()).toMatchObject({
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3'
+      })
+      const provider = created.json<{ id: string; rowVersion: number }>()
+
+      const rejected = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/providers/${provider.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${provider.rowVersion}"` },
+        payload: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3/images/generations/extra' }
+      })
+      expect(rejected.statusCode).toBe(400)
+      expect(rejected.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+
+      const updated = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/providers/${provider.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${provider.rowVersion}"` },
+        payload: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3/images/generations/' }
+      })
+      expect(updated.statusCode).toBe(200)
+      expect(updated.json()).toMatchObject({
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3'
+      })
+      expect(
+        ctx.db.prepare('select base_url from provider_connections where id = ?').get(provider.id)
+      ).toEqual({ base_url: 'https://ark.cn-beijing.volces.com/api/v3' })
     } finally {
       await ctx.close()
     }

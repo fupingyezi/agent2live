@@ -1,4 +1,4 @@
-import { ProviderError, providerHttpError } from './errors'
+import { ProviderError, providerHttpError, safeProviderCode } from './errors'
 import type { ProviderRequestContext } from './types'
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
@@ -56,9 +56,15 @@ async function fetchChecked(
     if (timed.didTimeout()) {
       throw new ProviderError('PROVIDER_TIMEOUT', 'provider request timed out')
     }
+    const cause = typeof error === 'object' && error !== null ? (error as { cause?: unknown }).cause : null
+    const causeCode =
+      typeof cause === 'object' && cause !== null
+        ? safeProviderCode((cause as { code?: unknown }).code)
+        : null
     throw new ProviderError(
       'PROVIDER_UNAVAILABLE',
-      error instanceof Error ? `provider request failed: ${error.name}` : 'provider request failed'
+      error instanceof Error ? `provider request failed: ${error.name}` : 'provider request failed',
+      { providerCode: causeCode }
     )
   } finally {
     timed.cleanup()

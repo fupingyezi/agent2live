@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,6 +52,140 @@ describe('database bootstrap', () => {
       expect(() => migrate(db, dir)).toThrow(/syntax/i)
       expect(db.prepare('select version from schema_migrations row').get()).toBeUndefined()
       expect(db.prepare("select name from sqlite_master where name = 'ok'").get()).toBeUndefined()
+    } finally {
+      db.close()
+    }
+  })
+
+  it('adds failure-diagnostic columns used by generation recovery', () => {
+    const { db } = tempDb()
+    try {
+      migrate(db, migrations)
+      expect(columnNames(db, 'generation_jobs')).toContain('stage_before')
+      expect(columnNames(db, 'provider_invocations')).toContain('error_detail_json')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('repairs generating projects only when no generation job is still active', () => {
+    const { db } = tempDb()
+    try {
+      db.exec(`
+        create table art_projects (
+          id text primary key,
+          stage text not null,
+          active_version_id text,
+          active_prompt_version_id text,
+          updated_at integer not null,
+          row_version integer not null
+        );
+        create table generation_jobs (
+          id text primary key,
+          art_project_id text not null,
+          job_id text not null
+        );
+        create table generation_candidates (
+          id text primary key,
+          generation_job_id text not null
+        );
+        create table jobs (
+          id text primary key,
+          status text not null
+        );
+      `)
+      const insertProject = db.prepare(
+        `insert into art_projects
+         (id, stage, active_version_id, active_prompt_version_id, updated_at, row_version)
+         values (?, 'generating', ?, ?, 0, 1)`
+      )
+      insertProject.run('p_active', 'av_1', null)
+      insertProject.run('p_candidates', null, 'pv_1')
+      insertProject.run('p_prompt', null, 'pv_1')
+      insertProject.run('p_draft', null, null)
+      insertProject.run('p_running', null, 'pv_1')
+      insertProject.run('p_done', null, 'pv_1')
+
+      const insertGeneration = db.prepare(
+        'insert into generation_jobs (id, art_project_id, job_id) values (?, ?, ?)'
+      )
+      insertGeneration.run('gj_candidates', 'p_candidates', 'job_candidates')
+      insertGeneration.run('gj_running', 'p_running', 'job_running')
+      insertGeneration.run('gj_done', 'p_done', 'job_done')
+      db.prepare('insert into generation_candidates (id, generation_job_id) values (?, ?)').run(
+        'gc_1',
+        'gj_candidates'
+      )
+      const insertJob = db.prepare('insert into jobs (id, status) values (?, ?)')
+      insertJob.run('job_candidates', 'failed')
+      insertJob.run('job_running', 'retrying')
+      insertJob.run('job_done', 'failed')
+
+      db.exec(readFileSync(join(migrations, '0007_repair_stuck_generating_projects.sql'), 'utf8'))
+      const rows = db.prepare('select id, stage, row_version from art_projects order by id').all()
+      expect(rows).toEqual([
+        { id: 'p_active', stage: 'art_version_active', row_version: 2 },
+        { id: 'p_candidates', stage: 'candidate_review', row_version: 2 },
+        { id: 'p_done', stage: 'prompt_ready', row_version: 2 },
+        { id: 'p_draft', stage: 'prompt_draft', row_version: 2 },
+        { id: 'p_prompt', stage: 'prompt_ready', row_version: 2 },
+        { id: 'p_running', stage: 'generating', row_version: 1 }
+      ])
+    } finally {
+      db.close()
+    }
+  })
+
+  it('normalizes legacy seedream endpoint base URLs to their API root', () => {
+    const { db } = tempDb()
+    try {
+      migrate(db, migrations)
+      const insert = db.prepare(
+        `insert into provider_connections
+         (id, label, kind, adapter, base_url, model, capabilities_json, enabled, created_at, updated_at)
+         values (?, ?, ?, ?, ?, 'model', '{}', 0, 0, 0)`
+      )
+      insert.run(
+        'conn_doubled',
+        'doubled',
+        'image',
+        'seedream',
+        'https://ark.cn-beijing.volces.com/api/v3/images/generations'
+      )
+      insert.run(
+        'conn_trailing',
+        'trailing',
+        'image',
+        'seedream',
+        'https://ark.cn-beijing.volces.com/api/v3/images/generations/'
+      )
+      insert.run(
+        'conn_repeated',
+        'repeated',
+        'image',
+        'seedream',
+        'https://ark.cn-beijing.volces.com/api/v3/images/generations/images/generations'
+      )
+      insert.run('conn_root', 'root', 'image', 'seedream', 'https://ark.cn-beijing.volces.com/api/v3')
+      insert.run(
+        'conn_chat',
+        'chat',
+        'chat',
+        'openai-compatible',
+        'https://api.example.com/images/generations'
+      )
+      db.exec(readFileSync(join(migrations, '0005_normalize_seedream_base_url.sql'), 'utf8'))
+      const rows = db.prepare('select id, base_url from provider_connections order by id').all() as Array<{
+        id: string
+        base_url: string
+      }>
+      expect(rows).toEqual([
+        { id: 'conn_chat', base_url: 'https://api.example.com/images/generations' },
+        { id: 'conn_doubled', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
+        { id: 'conn_repeated', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
+        { id: 'conn_root', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
+        { id: 'conn_trailing', base_url: 'https://ark.cn-beijing.volces.com/api/v3' }
+      ])
     } finally {
       db.close()
     }
@@ -123,4 +257,10 @@ function sqliteVecVersion(db: ReturnType<typeof openDatabase>): string {
   const row = db.prepare('select vec_version() as version').get() as { version: string }
   // sqlite-vec 0.1.9 prefixes the semantic version with "v".
   return row.version.replace(/^v/, '')
+}
+
+function columnNames(db: ReturnType<typeof openDatabase>, table: string): string[] {
+  return (db.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>).map(
+    (column) => column.name
+  )
 }

@@ -97,7 +97,11 @@ async function waitForPromptSync(jobId: string) {
     const job = await getJob(jobId)
     if (job.status === 'succeeded') return job
     if (isTerminalJobStatus(job.status)) {
-      throw new Error(`提示词优化任务结束于 ${job.status}${job.errorCode ? ` (${job.errorCode})` : ''}`)
+      throw new Error(
+        `提示词优化任务结束于 ${job.status}${job.errorMessage ? `：${job.errorMessage}` : ''}${
+          job.errorCode ? ` (${job.errorCode})` : ''
+        }`
+      )
     }
     await new Promise((resolve) => window.setTimeout(resolve, PROMPT_SYNC_POLL_INTERVAL_MS))
   }

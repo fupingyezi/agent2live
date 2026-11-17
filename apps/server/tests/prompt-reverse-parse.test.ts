@@ -161,6 +161,13 @@ describe('prompt reverse parsing', () => {
     expect(state.characterBriefVersionId).toBeNull()
   })
 
+  it('syncs the full prompt with the merged blocks', () => {
+    const base = { ...specFixture(), fullPrompt: '旧版完整提示词，不含白裙。' }
+    const state = buildReverseState(base, submission, parseReverseOutput(JSON.stringify(output())))
+    expect(state.fullPrompt).toContain('白色连衣裙')
+    expect(state.fullPrompt).not.toContain('不含白裙')
+  })
+
   it('rejects output that leaves a must or avoid requirement uncovered', () => {
     const extra = {
       ...submission,

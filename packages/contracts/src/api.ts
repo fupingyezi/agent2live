@@ -500,6 +500,7 @@ export interface JobDto {
   maxAttempts: number
   progress: number | null
   errorCode: string | null
+  errorMessage: string | null
   result: unknown
   cancelRequested: boolean
   createdAt: number
@@ -689,6 +690,7 @@ export interface GenerationDto {
   status: JobStatus
   attempts: number
   errorCode: string | null
+  errorMessage: string | null
   progress: number | null
   request: unknown
   requestHash: string

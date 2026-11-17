@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { hashCanonical, newId } from '@agent2live/contracts'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { hashCanonical, newId, SEEDREAM_CAPABILITIES } from '@agent2live/contracts'
 import { createTestApp } from './helpers/app'
+import { StaticSecretResolver } from '../src/services/secret-resolver'
 import { multipartPayload, seedProject, specWithAsset } from './helpers/seed-prompt'
 import { png } from './helpers/files'
 
@@ -202,6 +205,9 @@ describe('generation jobs', () => {
       }>()
       expect(body.status).toBe('succeeded')
       expect(body.baseArtVersionId).toBeNull()
+      expect(ctx.db.prepare('select stage from art_projects where id = ?').get(project.id)).toEqual({
+        stage: 'candidate_review'
+      })
       expect(body.candidates).toHaveLength(2)
       for (const candidate of body.candidates) {
         expect(candidate.status).toBe('ready')
@@ -423,6 +429,194 @@ describe('generation jobs', () => {
         headers: ctx.auth
       })
       expect(finished.json<{ status: string }>().status).toBe('succeeded')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('records safe provider diagnostics and restores the previous stage when generation fails', async () => {
+    const upstream = createServer((_request, response) => {
+      response.writeHead(503, { 'content-type': 'application/json' })
+      response.end(
+        JSON.stringify({
+          error: { code: 'InternalServiceError', message: 'upstream body must not leak' }
+        })
+      )
+    })
+    await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
+    const port = (upstream.address() as AddressInfo).port
+    const ctx = await createTestApp({
+      secrets: new StaticSecretResolver(new Map([['sec_01J00000000000000000000000', 'sk-test-value']]))
+    })
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const provider = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-seedream-failure' },
+        payload: {
+          label: 'Seedream',
+          kind: 'image',
+          adapter: 'seedream',
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          model: 'test-seedream-model',
+          secretRef: 'sec_01J00000000000000000000000',
+          enabled: true,
+          capabilities: SEEDREAM_CAPABILITIES
+        }
+      })
+      expect(provider.statusCode).toBe(201)
+      const connection = provider.json<{ id: string }>()
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-failure' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '1024x1024'
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const createdBody = created.json<{ generationId: string; jobId: string }>()
+      expect(ctx.db.prepare('select stage from art_projects where id = ?').get(project.id)).toEqual({
+        stage: 'generating'
+      })
+      expect(
+        ctx.db.prepare('select stage_before from generation_jobs where id = ?').get(createdBody.generationId)
+      ).toEqual({ stage_before: 'prompt_ready' })
+
+      await ctx.services.jobs.tick()
+
+      const generation = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${createdBody.generationId}`,
+        headers: ctx.auth
+      })
+      const body = generation.json<{
+        status: string
+        errorCode: string | null
+        errorMessage: string | null
+      }>()
+      expect(body.status).toBe('failed')
+      expect(body.errorCode).toBe('PROVIDER_UNAVAILABLE')
+      expect(body.errorMessage).toContain('模型服务暂时不可用')
+      expect(body.errorMessage).toContain('HTTP 503')
+      expect(body.errorMessage).toContain('InternalServiceError')
+      expect(JSON.stringify(body)).not.toContain('upstream body must not leak')
+
+      const job = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/jobs/${createdBody.jobId}`,
+        headers: ctx.auth
+      })
+      expect(job.json()).toMatchObject({
+        status: 'failed',
+        errorCode: 'PROVIDER_UNAVAILABLE',
+        errorMessage: expect.stringContaining('HTTP 503')
+      })
+      const jobRow = ctx.db.prepare('select error_json from jobs where id = ?').get(createdBody.jobId) as {
+        error_json: string
+      }
+      expect(jobRow.error_json).toContain('InternalServiceError')
+      expect(jobRow.error_json).not.toContain('upstream body must not leak')
+
+      const invocation = ctx.db
+        .prepare(
+          `select status, error_code, error_detail_json from provider_invocations
+           where purpose = 'image.generate'`
+        )
+        .get() as { status: string; error_code: string; error_detail_json: string | null }
+      expect(invocation.status).toBe('failed')
+      expect(invocation.error_code).toBe('PROVIDER_UNAVAILABLE')
+      expect(JSON.parse(invocation.error_detail_json!)).toEqual({
+        status: 503,
+        providerCode: 'InternalServiceError'
+      })
+      expect(invocation.error_detail_json).not.toContain('upstream body must not leak')
+
+      expect(ctx.db.prepare('select stage from art_projects where id = ?').get(project.id)).toEqual({
+        stage: 'prompt_ready'
+      })
+    } finally {
+      await ctx.close()
+      await new Promise<void>((resolve, reject) =>
+        upstream.close((error) => (error ? reject(error) : resolve()))
+      )
+    }
+  })
+
+  it('restores the previous stage when a queued generation is cancelled', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const connection = await mockImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-cancel' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896'
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const createdBody = created.json<{ jobId: string }>()
+      expect(ctx.db.prepare('select stage from art_projects where id = ?').get(project.id)).toEqual({
+        stage: 'generating'
+      })
+
+      const cancelled = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/jobs/${createdBody.jobId}/cancel`,
+        headers: ctx.auth
+      })
+      expect(cancelled.statusCode).toBe(200)
+      expect(cancelled.json()).toMatchObject({ status: 'cancelled' })
+      expect(ctx.db.prepare('select stage from art_projects where id = ?').get(project.id)).toEqual({
+        stage: 'prompt_ready'
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('restores the previous stage when lease recovery marks a generation unknown', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const connection = await mockImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-key-unknown' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896'
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const createdBody = created.json<{ jobId: string }>()
+      ctx.db
+        .prepare(
+          `update jobs set status = 'running', lease_owner = 'dead', lease_until = 1, attempts = 1
+           where id = ?`
+        )
+        .run(createdBody.jobId)
+
+      expect(ctx.services.jobs.recoverExpiredLeases()).toBe(1)
+      expect(ctx.services.jobs.get(createdBody.jobId)).toMatchObject({
+        status: 'unknown_outcome',
+        errorCode: 'UNKNOWN_OUTCOME'
+      })
+      expect(ctx.db.prepare('select stage from art_projects where id = ?').get(project.id)).toEqual({
+        stage: 'prompt_ready'
+      })
     } finally {
       await ctx.close()
     }

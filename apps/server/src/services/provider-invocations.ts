@@ -37,12 +37,20 @@ export class ProviderInvocationService {
       .run(usage.latencyMs, usage.inputUnits ?? null, usage.outputUnits ?? null, this.clock.now(), id)
   }
 
-  fail(id: string, errorCode: string, latencyMs: number): void {
+  fail(
+    id: string,
+    errorCode: string,
+    latencyMs: number,
+    detail: { status: number | null; providerCode: string | null } | null = null
+  ): void {
+    const detailJson = detail
+      ? JSON.stringify({ status: detail.status, providerCode: detail.providerCode })
+      : null
     this.db
       .prepare(
-        `update provider_invocations set status = 'failed', error_code = ?, latency_ms = ?, finished_at = ? where id = ?`
+        `update provider_invocations set status = 'failed', error_code = ?, error_detail_json = ?, latency_ms = ?, finished_at = ? where id = ?`
       )
-      .run(errorCode, latencyMs, this.clock.now(), id)
+      .run(errorCode, detailJson, latencyMs, this.clock.now(), id)
   }
 
   cancel(id: string, latencyMs: number): void {

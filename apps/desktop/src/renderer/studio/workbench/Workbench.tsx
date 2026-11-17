@@ -42,6 +42,7 @@ import {
   UnifiedPromptInspector,
   VersionGraph,
   WorkbenchVersionRail,
+  type ActiveAiJob,
   type ForkSource,
   type InitialPromptJob
 } from './components'
@@ -75,7 +76,11 @@ async function waitForPromptSync(jobId: string) {
     const job = await getJob(jobId)
     if (job.status === 'succeeded') return job
     if (isTerminalJobStatus(job.status)) {
-      throw new Error(`提示词同步结束于 ${job.status}${job.errorCode ? ` (${job.errorCode})` : ''}`)
+      throw new Error(
+        `提示词同步结束于 ${job.status}${job.errorMessage ? `：${job.errorMessage}` : ''}${
+          job.errorCode ? ` (${job.errorCode})` : ''
+        }`
+      )
     }
     await new Promise((resolve) => window.setTimeout(resolve, PROMPT_SYNC_POLL_MS))
   }
@@ -128,7 +133,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const hydrate = useWorkbenchStore((state) => state.hydrate)
   const applyServerDraft = useWorkbenchStore((state) => state.applyServerDraft)
   const resetStore = useWorkbenchStore((state) => state.reset)
@@ -165,7 +170,28 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const aiKind = searchParams.get('aiKind')
   const aiJob = searchParams.get('aiJob')
   const initialJob: InitialPromptJob | null =
-    aiKind === 'reverse' && aiJob?.startsWith('job_') ? { kind: 'reverse', jobId: aiJob } : null
+    (aiKind === 'reverse' || aiKind === 'suggest') && aiJob?.startsWith('job_')
+      ? { kind: aiKind, jobId: aiJob }
+      : null
+  const setActiveAiJob = useCallback(
+    (job: ActiveAiJob | null): void => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (job) {
+            next.set('aiKind', job.kind)
+            next.set('aiJob', job.jobId)
+          } else {
+            next.delete('aiKind')
+            next.delete('aiJob')
+          }
+          return next
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
 
   const workspaceQuery = useQuery({
     queryKey: queryKeys.workspace(project.id),
@@ -625,7 +651,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 <div data-testid="ai-warning">
                   <InlineNotice tone="warning">
                     {aiWarning === 'no-vision-provider'
-                      ? '没有可用的智谱多模态连接，参考图反推未启动；创建和提示词版本已完成。'
+                      ? '没有可用的支持视觉输入的聊天连接，参考图反推未启动；创建和提示词版本已完成。'
                       : '参考图反推未能启动；创建和提示词版本已完成，可以在 AI 助手中重试。'}
                   </InlineNotice>
                 </div>
@@ -833,6 +859,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             dirty={dirty}
             initialJob={initialJob}
             onDraftUpdated={handleDraftUpdated}
+            onJobStarted={setActiveAiJob}
+            onJobResolved={() => setActiveAiJob(null)}
           />
         )}
       </Dialog>

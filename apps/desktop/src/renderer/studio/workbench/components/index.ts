@@ -24,7 +24,7 @@ export type { MaterialTrayProps } from './MaterialTray'
 
 /** 请求、查看、接受或撤销 AI Prompt 建议。 */
 export { PromptAiPanel } from './PromptAiPanel'
-export type { InitialPromptJob, PromptAiPanelProps } from './PromptAiPanel'
+export type { ActiveAiJob, InitialPromptJob, PromptAiPanelProps } from './PromptAiPanel'
 
 /** 编辑单个 Prompt Block 的类别、内容与状态。 */
 export { PromptBlockCard } from './PromptBlockCard'

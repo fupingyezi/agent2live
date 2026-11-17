@@ -30,11 +30,11 @@ import { StudioError } from '@studio/components'
 type AiKind = 'reverse' | 'suggest'
 
 export interface InitialPromptJob {
-  kind: 'reverse'
+  kind: AiKind
   jobId: string
 }
 
-interface ActiveAiJob {
+export interface ActiveAiJob {
   kind: AiKind
   jobId: string
 }
@@ -52,6 +52,8 @@ export interface PromptAiPanelProps {
   dirty: boolean
   initialJob: InitialPromptJob | null
   onDraftUpdated: (draft: PromptDraftDto) => void
+  onJobStarted?: (job: ActiveAiJob) => void
+  onJobResolved?: () => void
 }
 
 export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
@@ -60,7 +62,9 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   providers,
   dirty,
   initialJob,
-  onDraftUpdated
+  onDraftUpdated,
+  onJobStarted,
+  onJobResolved
 }) => {
   const queryClient = useQueryClient()
   const chatProviders = useMemo(
@@ -73,16 +77,18 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   const [base, setBase] = useState<'draft' | 'version'>(workspace.activeDraft ? 'draft' : 'version')
   const [activeJob, setActiveJob] = useState<ActiveAiJob | null>(initialJob)
   const [localError, setLocalError] = useState<string | null>(null)
+  const hasMaterials = (workspace.latestSubmission?.materials.length ?? 0) > 0
+  const reverseNeedsVision = kind === 'reverse' && hasMaterials
   const availableChatProviders = useMemo(
     () =>
-      kind === 'reverse'
+      reverseNeedsVision
         ? chatProviders.filter((provider) => {
             if (!provider.capabilities || typeof provider.capabilities !== 'object') return false
             const chat = (provider.capabilities as { chat?: { supportsVision?: unknown } }).chat
             return chat?.supportsVision === true
           })
         : chatProviders,
-    [chatProviders, kind]
+    [chatProviders, reverseNeedsVision]
   )
 
   useEffect(() => {
@@ -93,7 +99,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
 
   useEffect(() => {
     setActiveJob(initialJob)
-  }, [initialJob?.jobId])
+  }, [initialJob?.jobId, initialJob?.kind])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
   const job = jobQuery.data ?? null
@@ -144,12 +150,14 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
     onSuccess: (created) => {
       setActiveJob(created)
       setLocalError(null)
+      onJobStarted?.(created)
     },
     onError: (error) => setLocalError(error instanceof Error ? error.message : String(error))
   })
 
   const resolve = (draft: PromptDraftDto | null): void => {
     setActiveJob(null)
+    onJobResolved?.()
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(projectId) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.lineages })
@@ -182,7 +190,9 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
 
       {availableChatProviders.length === 0 ? (
         <InlineNotice tone="warning">
-          素材反推需要启用支持视觉输入的聊天连接；DeepSeek Flash 文本能力可用于“改进建议”。
+          {reverseNeedsVision
+            ? '带参考图的素材反推需要启用支持视觉输入的聊天连接；也可在“素材与要求”中移除参考图，按文字设定反推。'
+            : '没有可用的聊天模型连接，请在设置中启用。'}
         </InlineNotice>
       ) : (
         <details className="ai-request-settings">
@@ -268,7 +278,14 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
           ) : null}
           {job?.status === 'failed' ? (
             <div role="alert">
-              <InlineNotice tone="danger">任务失败：{job.errorCode ?? 'UNKNOWN'}</InlineNotice>
+              <InlineNotice tone="danger">
+                任务失败：{job.errorMessage ?? job.errorCode ?? 'UNKNOWN'}
+                {job.errorMessage && job.errorCode ? (
+                  <>
+                    （<code>{job.errorCode}</code>）
+                  </>
+                ) : null}
+              </InlineNotice>
             </div>
           ) : null}
           {terminal && !reverseResultId && activeJob.kind === 'reverse' ? (

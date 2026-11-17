@@ -24,14 +24,22 @@ function fresh() {
 }
 
 describe('Phase 1 migrations', () => {
-  it('applies 0002 and 0003 after 0001', () => {
+  it('applies migrations in version order', () => {
     const database = fresh()
     const names = (
       database.prepare('select version from schema_migrations order by version').all() as Array<{
         version: string
       }>
     ).map((row) => row.version)
-    expect(names).toEqual(['0001_init', '0002_core_domain', '0003_prompt_art', '0004_backups'])
+    expect(names).toEqual([
+      '0001_init',
+      '0002_core_domain',
+      '0003_prompt_art',
+      '0004_backups',
+      '0005_normalize_seedream_base_url',
+      '0006_generation_failure_diagnostics',
+      '0007_repair_stuck_generating_projects'
+    ])
     expect(database.pragma('foreign_keys', { simple: true })).toBe(1)
     expect(migrate(database, migrations).applied).toEqual([])
   })

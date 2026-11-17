@@ -81,7 +81,7 @@ function creationWarningMessage(warning: string | null): string | null {
     case 'text-optimize-failed':
       return '文本优化未完成，已保存可编辑的角色设定和提示词版本。'
     case 'no-vision-provider':
-      return '没有配置智谱多模态连接，参考图反推没有启动；参考图仍已保存。'
+      return '没有配置支持视觉输入的聊天连接，参考图反推没有启动；参考图仍已保存。'
     case 'vision-start-failed':
       return '参考图反推未能启动，参考图仍已保存，可在角色描述中重试。'
     default:

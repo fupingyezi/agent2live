@@ -24,8 +24,18 @@ export interface JobHandler<P = unknown> {
   run(context: JobHandlerContext<P>): Promise<unknown>
 }
 
+export type TerminalJobStatus = Extract<JobStatus, 'succeeded' | 'failed' | 'cancelled' | 'unknown_outcome'>
+
+export interface JobTerminalOutcome {
+  jobId: string
+  status: TerminalJobStatus
+  errorCode: string | null
+}
+
 export interface JobDefinition<P = unknown> extends JobHandler<P> {
   type: string
+  /** Called once after a job reaches a terminal state. Observers must not throw. */
+  onTerminal?(outcome: JobTerminalOutcome): void
 }
 
 /** Registry keys must equal definition.type; the engine validates this at construction. */

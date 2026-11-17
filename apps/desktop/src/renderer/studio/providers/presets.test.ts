@@ -76,13 +76,29 @@ describe('provider presets', () => {
     expect(getProviderPreset('mock-image').capabilities.image?.sizes).toEqual(['512x896', '1024x1792'])
   })
 
-  it('selects only an enabled Zhipu GLM vision connection', () => {
-    expect(findDefaultVisionProvider([connection({ id: 'conn_zhipu' })])?.id).toBe('conn_zhipu')
+  it('selects any enabled vision chat connection, preferring Zhipu GLM', () => {
+    const zhipu = connection({ id: 'conn_zhipu' })
+    const openai = connection({
+      id: 'conn_openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4.1-mini'
+    })
+    expect(findDefaultVisionProvider([zhipu])?.id).toBe('conn_zhipu')
+    expect(findDefaultVisionProvider([openai])?.id).toBe('conn_openai')
+    expect(findDefaultVisionProvider([openai, zhipu])?.id).toBe('conn_zhipu')
+    expect(findDefaultVisionProvider([zhipu, openai])?.id).toBe('conn_zhipu')
 
     expect(
       findDefaultVisionProvider([
-        connection({ id: 'conn_openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini' }),
-        connection({ id: 'conn_glm_text', baseUrl: 'https://api.zhipu.test/v4', model: 'glm-5.3-flash' }),
+        connection({
+          id: 'conn_glm_text',
+          baseUrl: 'https://api.zhipu.test/v4',
+          model: 'glm-5.3-flash',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+          }
+        }),
         connection({ id: 'conn_disabled', enabled: false }),
         connection({
           id: 'conn_no_vision',
@@ -90,7 +106,8 @@ describe('provider presets', () => {
             schemaVersion: 'provider-capabilities/1',
             chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
           }
-        })
+        }),
+        connection({ id: 'conn_image', kind: 'image' })
       ])
     ).toBeNull()
   })

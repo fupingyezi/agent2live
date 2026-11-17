@@ -5,7 +5,15 @@ import type { EventInput, EventStore } from '../events/store'
 import type { Clock } from '../services/clock'
 import { withEvents } from '../services/events-buffer'
 import { normalizeJobError, safeErrorMessage } from './errors'
-import type { EnqueueInput, JobDefinition, JobDto, JobEventDto, JobStatus, JobTypeRegistry } from './types'
+import type {
+  EnqueueInput,
+  JobDefinition,
+  JobDto,
+  JobEventDto,
+  JobStatus,
+  JobTypeRegistry,
+  TerminalJobStatus
+} from './types'
 
 interface JobRow {
   id: string
@@ -74,7 +82,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 
 function toDto(row: JobRow): JobDto {
   const checkpoint = parseJson<{ progress?: unknown }>(row.checkpoint_json, {})
-  const error = parseJson<{ code?: unknown }>(row.error_json, {})
+  const error = parseJson<{ code?: unknown; message?: unknown }>(row.error_json, {})
   return {
     id: row.id,
     type: row.type,
@@ -83,6 +91,7 @@ function toDto(row: JobRow): JobDto {
     maxAttempts: row.max_attempts,
     progress: typeof checkpoint.progress === 'number' ? checkpoint.progress : null,
     errorCode: typeof error.code === 'string' ? error.code : null,
+    errorMessage: typeof error.message === 'string' ? error.message : null,
     result: parseJson<unknown>(row.result_json, null),
     cancelRequested: row.cancel_requested_at !== null,
     createdAt: row.created_at,
@@ -93,6 +102,7 @@ function toDto(row: JobRow): JobDto {
 export class JobEngine {
   private timer: NodeJS.Timeout | null = null
   private readonly running = new Set<Promise<void>>()
+  private readonly activeJobIds = new Set<string>()
   private stopped = false
   private readonly pollIntervalMs: number
   private readonly leaseMs: number
@@ -204,9 +214,14 @@ export class JobEngine {
 
   async tick(): Promise<void> {
     if (this.stopped) return
+    this.recoverExpiredLeases()
     const claimed = this.claim()
     if (!claimed) return
-    const task = this.run(claimed).finally(() => this.running.delete(task))
+    this.activeJobIds.add(claimed.id)
+    const task = this.run(claimed).finally(() => {
+      this.activeJobIds.delete(claimed.id)
+      this.running.delete(task)
+    })
     this.running.add(task)
     await task
   }
@@ -221,6 +236,8 @@ export class JobEngine {
         .all(now) as JobRow[]
       let changed = 0
       for (const row of expired) {
+        // A handler may outlive its lease (e.g. a slow provider call); never recover a job this process still runs.
+        if (this.activeJobIds.has(row.id)) continue
         if (row.cancel_requested_at !== null) {
           this.deps.db
             .prepare(
@@ -229,30 +246,55 @@ export class JobEngine {
             .run(now, row.id)
           this.appendJobEvent(row.id, 'log', { message: 'cancelled' })
           events.append(this.globalEvent('job.cancelled', row, {}))
+          this.notifyTerminal(row, 'cancelled', null)
         } else if (row.side_effect === 'non_idempotent') {
           this.deps.db
             .prepare(
-              `update jobs set status = 'unknown_outcome', lease_owner = null, lease_until = null, updated_at = ? where id = ?`
+              `update jobs set status = 'unknown_outcome', error_json = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?`
             )
-            .run(now, row.id)
+            .run(
+              JSON.stringify({
+                code: 'UNKNOWN_OUTCOME',
+                message: 'job lease expired before the outcome was recorded'
+              }),
+              now,
+              row.id
+            )
           this.appendJobEvent(row.id, 'error', { code: 'UNKNOWN_OUTCOME', retryable: false })
           events.append(this.globalEvent('job.failed', row, { code: 'UNKNOWN_OUTCOME' }))
+          this.notifyTerminal(row, 'unknown_outcome', 'UNKNOWN_OUTCOME')
         } else if (row.attempts < row.max_attempts) {
           this.deps.db
             .prepare(
-              `update jobs set status = 'retrying', next_attempt_at = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?`
+              `update jobs set status = 'retrying', next_attempt_at = ?, error_json = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?`
             )
-            .run(now, now, row.id)
+            .run(
+              now,
+              JSON.stringify({
+                code: 'JOB_LEASE_EXPIRED',
+                message: 'job lease expired while the owner was running'
+              }),
+              now,
+              row.id
+            )
           this.appendJobEvent(row.id, 'error', { code: 'JOB_LEASE_EXPIRED', retryable: true })
           events.append(this.globalEvent('job.retrying', row, { attempt: row.attempts, retryInMs: 0 }))
         } else {
           this.deps.db
             .prepare(
-              `update jobs set status = 'failed', lease_owner = null, lease_until = null, updated_at = ? where id = ?`
+              `update jobs set status = 'failed', error_json = ?, lease_owner = null, lease_until = null, updated_at = ? where id = ?`
             )
-            .run(now, row.id)
+            .run(
+              JSON.stringify({
+                code: 'JOB_LEASE_EXPIRED',
+                message: 'job lease expired while the owner was running'
+              }),
+              now,
+              row.id
+            )
           this.appendJobEvent(row.id, 'error', { code: 'JOB_LEASE_EXPIRED', retryable: false })
           events.append(this.globalEvent('job.failed', row, { code: 'JOB_LEASE_EXPIRED' }))
+          this.notifyTerminal(row, 'failed', 'JOB_LEASE_EXPIRED')
         }
         changed += 1
       }
@@ -282,6 +324,7 @@ export class JobEngine {
           scopeId: id,
           payload: { jobId: id }
         })
+        this.notifyTerminal(job, 'cancelled', null)
       } else {
         // Running/leased jobs record the request; the run settles it when the handler returns.
         this.deps.db
@@ -386,6 +429,7 @@ export class JobEngine {
       if (updated.changes === 1) {
         this.appendJobEvent(row.id, 'done', { result: result ?? null })
         this.appendGlobal('job.succeeded', row, {})
+        this.notifyTerminal(row, 'succeeded', null)
       }
     } catch (error) {
       if (this.isCancelRequested(row.id)) {
@@ -432,6 +476,7 @@ export class JobEngine {
     if (updated.changes === 1) {
       this.appendJobEvent(row.id, 'log', { message: 'cancelled' })
       this.appendGlobal('job.cancelled', row, {})
+      this.notifyTerminal(row, 'cancelled', null)
     }
   }
 
@@ -446,6 +491,7 @@ export class JobEngine {
     if (updated.changes !== 1) return
     this.appendJobEvent(row.id, 'error', { code, retryable })
     this.appendGlobal('job.failed', row, { code })
+    this.notifyTerminal(row, 'failed', code)
   }
 
   private isCancelRequested(id: string): boolean {
@@ -461,6 +507,25 @@ export class JobEngine {
       throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: `job:${type}` })
     }
     return handler
+  }
+
+  private notifyTerminal(
+    job: Pick<JobRow, 'id' | 'type'>,
+    status: TerminalJobStatus,
+    errorCode: string | null
+  ): void {
+    const definition = this.deps.handlers.get(job.type)
+    if (!definition?.onTerminal) return
+    try {
+      definition.onTerminal({ jobId: job.id, status, errorCode })
+    } catch {
+      // Observation is best-effort: settlement is already committed.
+      try {
+        this.appendJobEvent(job.id, 'log', { message: 'terminal hook failed' })
+      } catch {
+        // Ignore observation failures entirely.
+      }
+    }
   }
 
   private appendJobEvent(jobId: string, type: JobEventDto['type'], payload: unknown): void {

@@ -64,10 +64,12 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
   const job = jobQuery.data ?? null
 
   useEffect(() => {
-    if (job && (job.status === 'succeeded' || job.status === 'failed')) {
-      void generationQuery.refetch()
-    }
-  }, [generationQuery.refetch, job?.status])
+    if (!job || !isTerminalJobStatus(job.status)) return
+    void generationQuery.refetch()
+    // Generation settle changes the project stage outside SSE project invalidation.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
+  }, [generationQuery.refetch, job?.status, project.id, queryClient])
 
   const acceptMutation = useMutation({
     mutationFn: (candidate: GenerationCandidateDto) =>
@@ -109,6 +111,8 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
   }
 
   const queryError = generationQuery.error ?? jobQuery.error ?? acceptMutation.error
+  const failureCode = generation?.errorCode ?? job?.errorCode ?? null
+  const failureMessage = generation?.errorMessage ?? job?.errorMessage ?? null
 
   return (
     <div className="sidebar-panel generation-panel" data-testid="generation-panel">
@@ -145,9 +149,16 @@ export const GenerationPanel: React.FC<GenerationPanelProps> = ({
           <p className="muted">
             提交于 {formatDateTime(generation.createdAt)} · job {generation.jobId}
           </p>
-          {(generation.errorCode ?? job?.errorCode) ? (
+          {failureCode || failureMessage ? (
             <div role="alert">
-              <InlineNotice tone="danger">生成失败：{generation.errorCode ?? job?.errorCode}</InlineNotice>
+              <InlineNotice tone="danger">
+                生成失败：{failureMessage ?? failureCode}
+                {failureMessage && failureCode ? (
+                  <>
+                    （<code>{failureCode}</code>）
+                  </>
+                ) : null}
+              </InlineNotice>
             </div>
           ) : null}
           {job?.status === 'succeeded' || generation.status === 'succeeded' ? (

@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { AppError } from '../src/errors'
 import { JobEngine } from '../src/jobs/engine'
@@ -162,6 +162,91 @@ describe('JobEngine', () => {
     expect(() => engine.cancel(running.id, { allowTerminal: false })).toThrow()
   })
 
+  it('notifies terminal hooks for success, failure, cancellation, and lease recovery', async () => {
+    const terminals: Array<{ jobId: string; status: string; errorCode: string | null }> = []
+    const terminalSchema = z.object({ fail: z.boolean().optional() })
+    const terminal: JobDefinition<z.infer<typeof terminalSchema>> = {
+      type: 'test.terminal',
+      payloadSchema: terminalSchema,
+      sideEffect: 'non_idempotent',
+      maxAttempts: 1,
+      timeoutMs: 5_000,
+      async run(context) {
+        if (context.payload.fail) throw new AppError('PROVIDER_CONTENT_REJECTED', {})
+        return { ok: true }
+      },
+      onTerminal(outcome) {
+        terminals.push(outcome)
+      }
+    }
+    engine = new JobEngine({
+      db: fixture.db,
+      events: fixture.eventStore,
+      clock: fixture.clock,
+      workerId: 'w',
+      handlers: new Map<string, JobDefinition>([[terminal.type, terminal]]),
+      pollIntervalMs: 10,
+      leaseMs: 30_000
+    })
+
+    const succeeded = engine.enqueue({ type: 'test.terminal', payload: { fail: false } })
+    await engine.tick()
+    const failed = engine.enqueue({ type: 'test.terminal', payload: { fail: true } })
+    await engine.tick()
+    const cancelled = engine.enqueue({ type: 'test.terminal', payload: { fail: false } })
+    engine.cancel(cancelled.id)
+    const lost = engine.enqueue({ type: 'test.terminal', payload: { fail: false } })
+    fixture.db
+      .prepare(
+        `update jobs set status = 'running', lease_owner = 'dead', lease_until = 1, attempts = 1
+         where id = ?`
+      )
+      .run(lost.id)
+    expect(engine.recoverExpiredLeases()).toBe(1)
+
+    expect(terminals).toEqual([
+      { jobId: succeeded.id, status: 'succeeded', errorCode: null },
+      { jobId: failed.id, status: 'failed', errorCode: 'PROVIDER_CONTENT_REJECTED' },
+      { jobId: cancelled.id, status: 'cancelled', errorCode: null },
+      { jobId: lost.id, status: 'unknown_outcome', errorCode: 'UNKNOWN_OUTCOME' }
+    ])
+  })
+
+  it('does not let a throwing terminal hook break job settlement', async () => {
+    const broken: JobDefinition = {
+      type: 'test.broken-terminal',
+      payloadSchema: z.object({}),
+      sideEffect: 'idempotent',
+      maxAttempts: 1,
+      timeoutMs: 5_000,
+      async run() {
+        return {}
+      },
+      onTerminal() {
+        throw new Error('observer boom')
+      }
+    }
+    engine = new JobEngine({
+      db: fixture.db,
+      events: fixture.eventStore,
+      clock: fixture.clock,
+      workerId: 'w',
+      handlers: new Map<string, JobDefinition>([[broken.type, broken]]),
+      pollIntervalMs: 10,
+      leaseMs: 30_000
+    })
+
+    const job = engine.enqueue({ type: 'test.broken-terminal', payload: {} })
+    await engine.tick()
+    expect(engine.get(job.id).status).toBe('succeeded')
+    const events = fixture.db
+      .prepare('select payload_json from job_events where job_id = ? order by seq')
+      .all(job.id) as Array<{ payload_json: string }>
+    expect(events.map((event) => JSON.parse(event.payload_json))).toContainEqual({
+      message: 'terminal hook failed'
+    })
+  })
+
   it('returns 404 for unknown jobs and serves per-job events after a cursor', async () => {
     const ctx = await createTestApp()
     try {
@@ -307,6 +392,71 @@ describe('JobEngine', () => {
     } finally {
       await engine.stop()
       fixture.db.close()
+    }
+  })
+
+  it('recovers expired leases on later polls without a restart', async () => {
+    const job = engine.enqueue({ type: 'test.echo', payload: {} })
+    fixture.db
+      .prepare(
+        `update jobs set status = 'running', lease_owner = 'sidecar', lease_until = 1, attempts = 1 where id = ?`
+      )
+      .run(job.id)
+    // The process that owned this lease died; a plain poll must recover it.
+    await engine.tick()
+    expect(engine.get(job.id)).toMatchObject({
+      status: 'failed',
+      errorCode: 'JOB_LEASE_EXPIRED'
+    })
+    const jobEvent = fixture.db
+      .prepare(
+        `select payload_json from job_events where job_id = ? and type = 'error' order by seq desc limit 1`
+      )
+      .get(job.id) as { payload_json: string }
+    expect(JSON.parse(jobEvent.payload_json)).toMatchObject({
+      code: 'JOB_LEASE_EXPIRED',
+      retryable: false
+    })
+  })
+
+  it('does not reclaim a lease held by a job still running in this process', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const slow: JobDefinition = {
+      type: 'test.slow',
+      payloadSchema: z.object({}),
+      sideEffect: 'idempotent',
+      maxAttempts: 1,
+      timeoutMs: 60_000,
+      async run() {
+        await gate
+        return { ok: true }
+      }
+    }
+    engine = new JobEngine({
+      db: fixture.db,
+      events: fixture.eventStore,
+      clock: fixture.clock,
+      workerId: 'sidecar',
+      handlers: new Map<string, JobDefinition>([[slow.type, slow]]),
+      pollIntervalMs: 10,
+      leaseMs: 1_000
+    })
+    const job = engine.enqueue({ type: 'test.slow', payload: {} })
+    const first = engine.tick()
+    try {
+      await vi.waitFor(() => expect(engine.get(job.id).status).toBe('running'))
+      fixture.clock.advance(2_000)
+      await engine.tick()
+      expect(engine.get(job.id).status).toBe('running')
+      release()
+      await first
+      expect(engine.get(job.id).status).toBe('succeeded')
+    } finally {
+      release()
+      await first
     }
   })
 

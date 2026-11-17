@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { promptSyncOutputSchema, type PromptSyncInput } from '@agent2live/contracts'
+import {
+  PROMPT_CATEGORIES,
+  PROMPT_SOURCES,
+  promptSyncOutputSchema,
+  type PromptSyncInput
+} from '@agent2live/contracts'
+import { AppError } from '../errors'
 import { specFixture } from '../../tests/fixtures/spec'
-import { applyPromptSyncOutput, buildPromptSyncMessages } from './sync'
+import { applyPromptSyncOutput, buildPromptSyncMessages, parsePromptSyncOutput } from './sync'
 
 function input(overrides: Partial<PromptSyncInput> = {}): PromptSyncInput {
   return {
@@ -21,6 +27,16 @@ function output(overrides: Record<string, unknown> = {}) {
     warnings: [],
     ...overrides
   })
+}
+
+function promptText(syncInput: PromptSyncInput): string {
+  return buildPromptSyncMessages(syncInput)
+    .messages.map((message) =>
+      typeof message.content === 'string'
+        ? message.content
+        : message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
+    )
+    .join('\n')
 }
 
 describe('prompt sync pure functions', () => {
@@ -138,5 +154,64 @@ describe('prompt sync pure functions', () => {
     expect(text).toContain('fullPrompt')
     expect(text).toContain('locked')
     expect(text).toContain('operations')
+  })
+
+  it('spells out the strict operation, block, and conflict contract for the model', () => {
+    const text = promptText(input())
+    expect(text).toContain(
+      'Return ONLY one JSON object with EXACTLY these keys: fullPrompt, operations, conflicts, warnings.'
+    )
+    expect(text).toContain('Every operations entry MUST use the key "op" (NOT "type")')
+    expect(text).toContain('{"op":"add","block":BLOCK}')
+    expect(text).toContain(
+      '{"op":"replace","blockId":"<existing-id>","before":"<exact current text>","after":"<new text>"}'
+    )
+    expect(text).toContain('{"op":"setWeight","blockId":"<existing-id>","before":1.2,"after":1.5}')
+    expect(text).toContain('{"op":"remove","blockId":"<existing-id>","before":"<exact current text>"}')
+    expect(text).toContain(
+      'BLOCK MUST have EXACTLY these keys: id, source, locked, category, label, text, weight, confidence, evidence, priority, requirementRefs, materialRefs.'
+    )
+    expect(text).toContain('conflicts MUST be an array of objects {"blockId":"<id>","message":"<text>"}')
+    expect(text).toContain('evidence MUST be an array of objects')
+    for (const source of PROMPT_SOURCES) expect(text).toContain(source)
+    for (const category of PROMPT_CATEGORIES) expect(text).toContain(category)
+  })
+
+  it('reports invalid JSON with a stable reason', () => {
+    let caught: unknown
+    try {
+      parsePromptSyncOutput('not json')
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(AppError)
+    expect((caught as AppError).details).toMatchObject({ reason: 'invalid_json' })
+    expect((caught as AppError).message).toContain('invalid_json')
+  })
+
+  it('reports schema failures with the reason and rejected issue paths', () => {
+    const invalid = JSON.stringify({
+      fullPrompt: '有效提示词',
+      operations: [{ type: 'add', block: { id: 'subject.age' } }],
+      conflicts: ['not an object'],
+      warnings: []
+    })
+    let caught: unknown
+    try {
+      parsePromptSyncOutput(invalid)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(AppError)
+    const appError = caught as AppError
+    expect(appError.code).toBe('PROMPT_SYNC_INVALID_OUTPUT')
+    expect(appError.details).toMatchObject({ reason: 'schema_invalid' })
+    expect(appError.message).toContain('schema_invalid')
+    expect(appError.message).toContain('operations.0.op')
+    expect((appError.details as { issues?: Array<{ path: string; code: string }> }).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'operations.0.op', code: 'invalid_union_discriminator' })
+      ])
+    )
   })
 })
