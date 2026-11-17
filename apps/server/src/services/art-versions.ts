@@ -1,17 +1,8 @@
 import type Database from 'better-sqlite3'
-import {
-  artVersionReferenceSetSchema,
-  hashCanonical,
-  newId,
-  type ArtVersionDto,
-  type ArtVersionMutationDto,
-  type ArtVersionReference,
-  type ArtVersionReferenceDto,
-  type ReviseArtVersionReferencesInput
-} from '@agent2live/contracts'
+import { hashCanonical, newId, type ArtVersionDto, type ArtVersionMutationDto } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { withEvents } from './events-buffer'
-import type { ArtProjectDto, ProjectService } from './projects'
+import type { ProjectService } from './projects'
 import type { PromptVersionService } from './prompt-versions'
 import type { AssetDto, AssetService } from './assets'
 import type { AuditService } from './audit'
@@ -19,7 +10,7 @@ import type { EventStore } from '../events/store'
 import type { Clock } from './clock'
 import type { RequestIds } from './request-ids'
 
-export type { ArtVersionDto, ArtVersionMutationDto, ArtVersionReferenceDto }
+export type { ArtVersionDto, ArtVersionMutationDto }
 
 export interface ArtVersionRow {
   id: string
@@ -28,22 +19,14 @@ export interface ArtVersionRow {
   parent_version_id: string | null
   origin_version_id: string | null
   prompt_version_id: string
+  artwork_asset_id: string
+  generation_job_id: string | null
+  source_kind: 'generated' | 'manual_upload' | 'fork_seed'
   source_json: string
   validation_json: string
   canvas_transform_json: string
   content_hash: string
   created_at: number
-}
-
-interface AssetLinkRow {
-  id: string
-  asset_id: string
-  role: string
-  note: string | null
-  weight: number
-  sort_order: number
-  is_primary: number
-  locked: number
 }
 
 export function parseObject(json: string, field: string): Record<string, unknown> {
@@ -59,43 +42,17 @@ export function parseObject(json: string, field: string): Record<string, unknown
   return value as Record<string, unknown>
 }
 
-export function assertReferenceSet(references: ArtVersionReference[]): void {
-  const parsed = artVersionReferenceSetSchema.safeParse(
-    references.map((reference) => ({
-      assetId: reference.assetId,
-      role: reference.role,
-      note: reference.note,
-      weight: reference.weight,
-      sortOrder: reference.sortOrder,
-      isPrimary: reference.isPrimary,
-      locked: reference.locked
-    }))
-  )
-  if (!parsed.success) {
-    throw new AppError('SYS_INTERNAL', { reason: 'art version reference set is invalid' })
-  }
-}
-
-export function toArtVersionDto(row: ArtVersionRow, links: AssetLinkRow[]): ArtVersionDto {
-  const references: ArtVersionReferenceDto[] = links.map((link) => ({
-    id: link.id,
-    assetId: link.asset_id,
-    role: link.role as ArtVersionReferenceDto['role'],
-    note: link.note ?? '',
-    weight: link.weight,
-    sortOrder: link.sort_order,
-    isPrimary: link.is_primary === 1,
-    locked: link.locked === 1
-  }))
-  assertReferenceSet(references)
+export function toArtVersionDto(row: ArtVersionRow): ArtVersionDto {
   return {
     id: row.id,
     artProjectId: row.art_project_id,
     versionNumber: row.version_number,
+    artworkAssetId: row.artwork_asset_id,
+    promptVersionId: row.prompt_version_id,
+    generationJobId: row.generation_job_id,
     parentVersionId: row.parent_version_id,
     originVersionId: row.origin_version_id,
-    promptVersionId: row.prompt_version_id,
-    references,
+    sourceKind: row.source_kind,
     source: parseObject(row.source_json, 'source_json'),
     validation: parseObject(row.validation_json, 'validation_json'),
     canvasTransform: parseObject(row.canvas_transform_json, 'canvas_transform_json'),
@@ -114,11 +71,6 @@ export interface ArtVersionServiceDeps {
   events: EventStore
 }
 
-export interface ArtVersionReferencesDto {
-  artVersionId: string
-  references: ArtVersionReferenceDto[]
-}
-
 export type ArtVersionSource =
   | { schemaVersion: 'art-source/1'; kind: 'manual_upload'; assetId: string }
   | {
@@ -127,13 +79,6 @@ export type ArtVersionSource =
       candidateId: string
       generationJobId: string
       generationRequestHash: string
-    }
-  | {
-      schemaVersion: 'art-source/1'
-      kind: 'reference_revision'
-      sourceVersionId: string
-      sourceContentHash: string
-      reason: ReviseArtVersionReferencesInput['reason']
     }
   | {
       schemaVersion: 'art-source/1'
@@ -167,17 +112,6 @@ interface CandidateJoinRow {
 export class ArtVersionService {
   constructor(private readonly deps: ArtVersionServiceDeps) {}
 
-  private readReferences(versionId: string): AssetLinkRow[] {
-    return this.deps.db
-      .prepare(
-        `select id, asset_id, role, note, weight, sort_order, is_primary, locked
-         from asset_links
-         where owner_type = 'art_version' and owner_id = ?
-         order by sort_order, id`
-      )
-      .all(versionId) as AssetLinkRow[]
-  }
-
   active(projectId: string): ArtVersionDto | null {
     const row = this.deps.db
       .prepare(
@@ -186,7 +120,7 @@ export class ArtVersionService {
          where p.id = ? and p.deleted_at is null`
       )
       .get(projectId) as ArtVersionRow | undefined
-    return row ? toArtVersionDto(row, this.readReferences(row.id)) : null
+    return row ? toArtVersionDto(row) : null
   }
 
   get(projectId: string, versionId: string): ArtVersionDto {
@@ -194,7 +128,7 @@ export class ArtVersionService {
       .prepare('select * from art_versions where id = ? and art_project_id = ?')
       .get(versionId, projectId) as ArtVersionRow | undefined
     if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artVersion' })
-    return toArtVersionDto(row, this.readReferences(row.id))
+    return toArtVersionDto(row)
   }
 
   list(projectId: string, limit = 50): { items: ArtVersionDto[]; activeVersionId: string | null } {
@@ -207,26 +141,9 @@ export class ArtVersionService {
       )
       .all(projectId, safeLimit) as ArtVersionRow[]
     return {
-      items: rows.map((row) => toArtVersionDto(row, this.readReferences(row.id))),
+      items: rows.map((row) => toArtVersionDto(row)),
       activeVersionId: project.activeVersionId
     }
-  }
-
-  getReferences(versionId: string): ArtVersionReferencesDto {
-    const row = this.deps.db
-      .prepare(
-        `select v.*, p.deleted_at as project_deleted_at
-         from art_versions v
-         join art_projects p on p.id = v.art_project_id
-         where v.id = ?`
-      )
-      .get(versionId) as (ArtVersionRow & { project_deleted_at: number | null }) | undefined
-    if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artVersion' })
-    if (row.project_deleted_at !== null) {
-      throw new AppError('RESOURCE_DELETED', { resource: 'artProject' })
-    }
-    const dto = toArtVersionDto(row, this.readReferences(row.id))
-    return { artVersionId: dto.id, references: dto.references }
   }
 
   private requireProjectRow(projectId: string, expectedRowVersion?: number): ProjectRow {
@@ -272,47 +189,12 @@ export class ArtVersionService {
     return asset
   }
 
-  private primaryReference(assetId: string): ArtVersionReference {
-    return {
-      assetId,
-      role: 'identity_reference',
-      note: '',
-      weight: 1,
-      sortOrder: 0,
-      isPrimary: true,
-      locked: false
-    }
-  }
-
-  private versionReferences(
-    projectId: string,
-    primaryAssetId: string,
-    parentVersionId: string | null
-  ): ArtVersionReference[] {
-    const auxiliary =
-      parentVersionId === null
-        ? []
-        : this.get(projectId, parentVersionId)
-            .references.filter((reference) => !reference.isPrimary && reference.assetId !== primaryAssetId)
-            .sort((left, right) => left.sortOrder - right.sortOrder)
-    return [
-      this.primaryReference(primaryAssetId),
-      ...auxiliary.map((reference, index) => ({
-        assetId: reference.assetId,
-        role: reference.role,
-        note: reference.note,
-        weight: reference.weight,
-        sortOrder: index + 1,
-        isPrimary: false,
-        locked: reference.locked
-      }))
-    ]
-  }
-
   private insertVersion(input: {
     projectId: string
     promptVersionId: string
-    references: ArtVersionReference[]
+    artworkAssetId: string
+    generationJobId: string | null
+    sourceKind: ArtVersionDto['sourceKind']
     parent: ArtVersionRow | null
     originVersionId?: string
     source: ArtVersionSource
@@ -320,26 +202,29 @@ export class ArtVersionService {
     canvasTransform?: Record<string, unknown>
     ctx: RequestIds
   }): string {
-    const references = [...input.references].sort((left, right) => left.sortOrder - right.sortOrder)
-    assertReferenceSet(references)
+    const asset = this.requireImageAsset(input.artworkAssetId)
     const id = newId('artVersion')
     const now = this.deps.clock.now()
     const canvasTransform = input.canvasTransform ?? { scale: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 }
     const versionNumber = this.nextVersionNumber(input.projectId)
     const originVersionId =
       input.originVersionId ?? (input.parent ? (input.parent.origin_version_id ?? input.parent.id) : id)
+    const generationRequestHash = input.generationJobId
+      ? ((
+          this.deps.db
+            .prepare('select request_hash from generation_jobs where id = ?')
+            .get(input.generationJobId) as { request_hash: string } | undefined
+        )?.request_hash ?? null)
+      : null
     const contentHash = hashCanonical({
-      schemaVersion: 'art-version/1',
+      schemaVersion: 'art-version/2',
+      artwork: { assetId: asset.id, sha256: asset.sha256 },
       promptVersionId: input.promptVersionId,
-      references: references.map((reference) => ({
-        assetId: reference.assetId,
-        role: reference.role,
-        note: reference.note,
-        weight: reference.weight,
-        sortOrder: reference.sortOrder,
-        isPrimary: reference.isPrimary,
-        locked: reference.locked
-      })),
+      generationJobId: input.generationJobId,
+      generationRequestHash,
+      parentVersionId: input.parent?.id ?? null,
+      originVersionId,
+      sourceKind: input.sourceKind,
       source: input.source,
       validation: input.validation,
       canvasTransform
@@ -348,9 +233,10 @@ export class ArtVersionService {
       .prepare(
         `insert into art_versions
          (id, art_project_id, parent_version_id, origin_version_id, prompt_version_id,
+          artwork_asset_id, generation_job_id, source_kind,
           source_json, validation_json, canvas_transform_json,
           content_hash, version_number, created_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -358,6 +244,9 @@ export class ArtVersionService {
         input.parent?.id ?? null,
         originVersionId,
         input.promptVersionId,
+        asset.id,
+        input.generationJobId,
+        input.sourceKind,
         JSON.stringify(input.source),
         JSON.stringify(input.validation),
         JSON.stringify(canvasTransform),
@@ -365,27 +254,6 @@ export class ArtVersionService {
         versionNumber,
         now
       )
-    for (const reference of references) {
-      this.deps.db
-        .prepare(
-          `insert into asset_links
-           (id, asset_id, owner_type, owner_id, role, note, weight, sort_order,
-            is_primary, locked, created_at)
-           values (?, ?, 'art_version', ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          newId('assetLink'),
-          reference.assetId,
-          id,
-          reference.role,
-          reference.note,
-          reference.weight,
-          reference.sortOrder,
-          reference.isPrimary ? 1 : 0,
-          reference.locked ? 1 : 0,
-          now
-        )
-    }
     return id
   }
 
@@ -393,7 +261,7 @@ export class ArtVersionService {
     projectId: string
     promptVersionId: string
     originVersionId: string
-    references: ArtVersionReference[]
+    artworkAssetId: string
     source: ArtVersionSource
     validation: Record<string, unknown>
     canvasTransform: Record<string, unknown>
@@ -403,7 +271,9 @@ export class ArtVersionService {
       const id = this.insertVersion({
         projectId: input.projectId,
         promptVersionId: input.promptVersionId,
-        references: input.references,
+        artworkAssetId: input.artworkAssetId,
+        generationJobId: null,
+        sourceKind: 'fork_seed',
         parent: null,
         originVersionId: input.originVersionId,
         source: input.source,
@@ -419,9 +289,6 @@ export class ArtVersionService {
     projectId: string
     assetId: string
     promptVersionId?: string
-    role?: ArtVersionReference['role']
-    note?: string
-    weight?: number
     expectedProjectRowVersion: number
     ctx: RequestIds
   }): ArtVersionMutationDto {
@@ -434,16 +301,13 @@ export class ArtVersionService {
       const promptVersion = this.deps.promptVersions.get(input.projectId, promptVersionId)
       const asset = this.requireImageAsset(input.assetId)
       const parent = this.activeRow(input.projectId)
-      const references = this.versionReferences(input.projectId, asset.id, parent?.id ?? null)
-      const primary = references[0]!
-      if (input.role !== undefined) primary.role = input.role
-      if (input.note !== undefined) primary.note = input.note
-      if (input.weight !== undefined) primary.weight = input.weight
       const now = this.deps.clock.now()
       const id = this.insertVersion({
         projectId: input.projectId,
         promptVersionId: promptVersion.id,
-        references,
+        artworkAssetId: asset.id,
+        generationJobId: null,
+        sourceKind: 'manual_upload',
         parent,
         source: {
           schemaVersion: 'art-source/1',
@@ -531,12 +395,13 @@ export class ArtVersionService {
       this.deps.promptVersions.get(candidate.art_project_id, candidate.prompt_version_id)
       const asset = this.requireImageAsset(candidate.asset_id)
       const candidateValidation = parseObject(candidate.validation_json, 'validation_json')
-      const references = this.versionReferences(candidate.art_project_id, asset.id, active?.id ?? null)
       const now = this.deps.clock.now()
       const id = this.insertVersion({
         projectId: candidate.art_project_id,
         promptVersionId: candidate.prompt_version_id,
-        references,
+        artworkAssetId: asset.id,
+        generationJobId: candidate.generation_job_id,
+        sourceKind: 'generated',
         parent: active,
         source: {
           schemaVersion: 'art-source/1',
@@ -611,208 +476,6 @@ export class ArtVersionService {
       return {
         artVersion: this.get(project.id, id),
         project: this.deps.projects.get(project.id)
-      }
-    })
-  }
-
-  reviseReferences(input: {
-    versionId: string
-    references: ArtVersionReference[]
-    reason: ReviseArtVersionReferencesInput['reason']
-    expectedProjectRowVersion: number
-    ctx: RequestIds
-  }): ArtVersionMutationDto {
-    return withEvents(this.deps.db, this.deps.events, (events) => {
-      const parsed = artVersionReferenceSetSchema.safeParse(input.references)
-      if (!parsed.success) {
-        throw new AppError('ART_REFERENCE_SET_INVALID', {
-          reasons: parsed.error.issues.slice(0, 20).map((issue) => issue.message)
-        })
-      }
-      const sourceRow = this.deps.db
-        .prepare(
-          `select v.*, p.deleted_at as project_deleted_at
-           from art_versions v
-           join art_projects p on p.id = v.art_project_id
-           where v.id = ?`
-        )
-        .get(input.versionId) as (ArtVersionRow & { project_deleted_at: number | null }) | undefined
-      if (!sourceRow) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artVersion' })
-      if (sourceRow.project_deleted_at !== null) {
-        throw new AppError('RESOURCE_DELETED', { resource: 'artProject' })
-      }
-      const project = this.requireProjectRow(sourceRow.art_project_id, input.expectedProjectRowVersion)
-      this.get(project.id, sourceRow.id)
-      this.deps.promptVersions.get(project.id, sourceRow.prompt_version_id)
-      const references: ArtVersionReference[] = [...parsed.data].sort(
-        (left, right) => left.sortOrder - right.sortOrder
-      )
-      for (const reference of references) this.requireImageAsset(reference.assetId)
-      const primary = references.find((reference) => reference.isPrimary)
-      if (!primary) throw new AppError('ART_REFERENCE_PRIMARY_REQUIRED', {})
-      const primaryAsset = this.requireImageAsset(primary.assetId)
-      const now = this.deps.clock.now()
-      const id = this.insertVersion({
-        projectId: project.id,
-        promptVersionId: sourceRow.prompt_version_id,
-        references,
-        parent: sourceRow,
-        source: {
-          schemaVersion: 'art-source/1',
-          kind: 'reference_revision',
-          sourceVersionId: sourceRow.id,
-          sourceContentHash: sourceRow.content_hash,
-          reason: input.reason
-        },
-        validation: {
-          schemaVersion: 'art-validation/1',
-          status: 'passed',
-          width: primaryAsset.width,
-          height: primaryAsset.height,
-          mediaType: primaryAsset.mediaType,
-          sha256: primaryAsset.sha256
-        },
-        canvasTransform: parseObject(sourceRow.canvas_transform_json, 'canvas_transform_json'),
-        ctx: input.ctx
-      })
-      const changed =
-        project.active_version_id === sourceRow.id
-          ? this.deps.db
-              .prepare(
-                `update art_projects
-             set active_version_id = ?, stage = 'art_version_active',
-                 updated_at = ?, row_version = row_version + 1
-             where id = ? and row_version = ?`
-              )
-              .run(id, now, project.id, input.expectedProjectRowVersion)
-          : this.deps.db
-              .prepare(
-                `update art_projects
-             set updated_at = ?, row_version = row_version + 1
-             where id = ? and row_version = ?`
-              )
-              .run(now, project.id, input.expectedProjectRowVersion)
-      if (changed.changes !== 1) {
-        throw new AppError('ROW_VERSION_CONFLICT', {
-          expected: input.expectedProjectRowVersion
-        })
-      }
-      this.deps.audit.append({
-        actor: { kind: 'local-user' },
-        action: 'art_version.reference_revision',
-        targetType: 'art_version',
-        targetId: id,
-        outcome: 'success',
-        requestId: input.ctx.requestId,
-        traceId: input.ctx.traceId,
-        metadata: {
-          sourceVersionId: sourceRow.id,
-          reason: input.reason,
-          referenceCount: references.length,
-          primaryAssetId: primary.assetId
-        }
-      })
-      events.append({
-        type: 'artVersion.created',
-        scopeKind: 'project',
-        scopeId: project.id,
-        payload: {
-          versionId: id,
-          kind: 'reference_revision',
-          sourceVersionId: sourceRow.id,
-          reason: input.reason,
-          previousVersionId: project.active_version_id
-        },
-        requestId: input.ctx.requestId,
-        traceId: input.ctx.traceId
-      })
-      return {
-        artVersion: this.get(project.id, id),
-        project: this.deps.projects.get(project.id)
-      }
-    })
-  }
-
-  restore(input: {
-    projectId: string
-    versionId: string
-    expectedProjectRowVersion: number
-    ctx: RequestIds
-  }): ArtVersionMutationDto {
-    return withEvents(this.deps.db, this.deps.events, (events) => {
-      const project = this.requireProjectRow(input.projectId, input.expectedProjectRowVersion)
-      const sourceRow = this.deps.db
-        .prepare('select * from art_versions where id = ? and art_project_id = ?')
-        .get(input.versionId, input.projectId) as ArtVersionRow | undefined
-      if (!sourceRow) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artVersion' })
-      const source = this.get(input.projectId, input.versionId)
-      this.deps.promptVersions.get(input.projectId, source.promptVersionId)
-      const references: ArtVersionReference[] = source.references.map((reference) => ({
-        assetId: reference.assetId,
-        role: reference.role,
-        note: reference.note,
-        weight: reference.weight,
-        sortOrder: reference.sortOrder,
-        isPrimary: reference.isPrimary,
-        locked: reference.locked
-      }))
-      for (const reference of references) this.requireImageAsset(reference.assetId)
-
-      const now = this.deps.clock.now()
-      const id = this.insertVersion({
-        projectId: input.projectId,
-        promptVersionId: source.promptVersionId,
-        references,
-        parent: sourceRow,
-        originVersionId: source.id,
-        source: parseObject(sourceRow.source_json, 'source_json') as ArtVersionSource,
-        validation: parseObject(sourceRow.validation_json, 'validation_json'),
-        canvasTransform: parseObject(sourceRow.canvas_transform_json, 'canvas_transform_json'),
-        ctx: input.ctx
-      })
-      const changed = this.deps.db
-        .prepare(
-          `update art_projects
-           set active_version_id = ?, stage = 'art_version_active',
-               updated_at = ?, row_version = row_version + 1
-           where id = ? and row_version = ?`
-        )
-        .run(id, now, input.projectId, input.expectedProjectRowVersion)
-      if (changed.changes !== 1) {
-        throw new AppError('ROW_VERSION_CONFLICT', {
-          expected: input.expectedProjectRowVersion
-        })
-      }
-      this.deps.audit.append({
-        actor: { kind: 'local-user' },
-        action: 'art_version.restored',
-        targetType: 'art_version',
-        targetId: id,
-        outcome: 'success',
-        requestId: input.ctx.requestId,
-        traceId: input.ctx.traceId,
-        metadata: {
-          sourceVersionId: source.id,
-          previousVersionId: project.active_version_id,
-          referenceCount: references.length
-        }
-      })
-      events.append({
-        type: 'artVersion.created',
-        scopeKind: 'project',
-        scopeId: input.projectId,
-        payload: {
-          versionId: id,
-          kind: 'restore',
-          sourceVersionId: source.id,
-          previousVersionId: project.active_version_id
-        },
-        requestId: input.ctx.requestId,
-        traceId: input.ctx.traceId
-      })
-      return {
-        artVersion: this.get(input.projectId, id),
-        project: this.deps.projects.get(input.projectId)
       }
     })
   }

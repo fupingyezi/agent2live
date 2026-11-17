@@ -115,12 +115,30 @@ describe('prompt drafts and versions', () => {
           versionNumber: number
           contentHash: string
           parentVersionId: string | null
-          state: { contentHash?: string; parentVersionId?: string | null }
+          references: Array<{ assetId: string; role: string; note: string; weight: number; locked: boolean }>
+          state: {
+            contentHash?: string
+            parentVersionId?: string | null
+            materialRefs: Array<{ assetId: string }>
+          }
         }
       }>().version
       expect(version.versionNumber).toBe(1)
       expect(version.state.contentHash).toBe(version.contentHash)
       expect(version.state.parentVersionId).toBeNull()
+      expect(version.references.map((reference) => reference.assetId)).toEqual([assetId])
+      expect(version.state.materialRefs.map((reference) => reference.assetId)).toEqual([assetId])
+      expect(
+        ctx.db
+          .prepare(
+            `select asset_id, sort_order from asset_links
+             where owner_type = 'prompt_version' and owner_id = ? order by sort_order`
+          )
+          .all(version.id)
+      ).toEqual([{ asset_id: assetId, sort_order: 0 }])
+      expect(
+        ctx.db.prepare("select count(*) as n from asset_links where owner_type = 'art_version'").get()
+      ).toEqual({ n: 0 })
 
       const workspace = await ctx.app.inject({
         method: 'GET',
@@ -131,6 +149,104 @@ describe('prompt drafts and versions', () => {
         activeDraft: null,
         activePromptVersion: { id: version.id, versionNumber: 1 }
       })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('persists prompt reference order and changes the version hash when order changes', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, asset } = await seedProject(ctx)
+      const input = await postInput(ctx, project.id)
+      expect(input.statusCode).toBe(201)
+      const inputBody = input.json<{
+        submission: { materials: Array<{ assetId: string }> }
+        draft: { id: string; rowVersion: number }
+      }>()
+      const second = (
+        await ctx.services.assets.ingestUpload({
+          bytes: await png(360, 540),
+          declaredMime: 'image/png',
+          originalName: 'style.png',
+          requestId: 'prompt-ref-order',
+          traceId: 'prompt-ref-order'
+        })
+      ).asset
+      const firstAssetId = inputBody.submission.materials[0]!.assetId
+      const state = specWithAsset(firstAssetId) as PromptSpecV2
+      state.materialRefs = [
+        { assetId: firstAssetId, role: 'identity_reference', note: '脸型', weight: 1, locked: true },
+        { assetId: second.id, role: 'style_reference', note: '风格', weight: 0.8, locked: false }
+      ]
+      const saved = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${inputBody.draft.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${inputBody.draft.rowVersion}"` },
+        payload: { state }
+      })
+      expect(saved.statusCode).toBe(200)
+      const savedDraft = saved.json<{ rowVersion: number }>()
+      const firstCommit = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${inputBody.draft.id}/commit`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${savedDraft.rowVersion}"`,
+          'idempotency-key': 'commit-ref-order-1'
+        },
+        payload: {}
+      })
+      expect(firstCommit.statusCode).toBe(201)
+      const firstVersion = firstCommit.json<{
+        version: {
+          id: string
+          contentHash: string
+          references: Array<{ assetId: string }>
+          state: PromptSpecV2
+        }
+      }>().version
+      expect(firstVersion.references.map((reference) => reference.assetId)).toEqual([firstAssetId, second.id])
+
+      const secondDraft = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts`,
+        headers: { ...ctx.auth, 'idempotency-key': 'draft-ref-order-2' },
+        payload: { from: 'version', versionId: firstVersion.id }
+      })
+      expect(secondDraft.statusCode).toBe(201)
+      const draftBody = secondDraft.json<{ id: string; rowVersion: number }>()
+      const reversed = structuredClone(firstVersion.state)
+      reversed.materialRefs = [...reversed.materialRefs].reverse()
+      const secondSaved = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${draftBody.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${draftBody.rowVersion}"` },
+        payload: { state: reversed }
+      })
+      expect(secondSaved.statusCode).toBe(200)
+      const secondSavedDraft = secondSaved.json<{ rowVersion: number }>()
+      const secondCommit = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${draftBody.id}/commit`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${secondSavedDraft.rowVersion}"`,
+          'idempotency-key': 'commit-ref-order-2'
+        },
+        payload: {}
+      })
+      expect(secondCommit.statusCode).toBe(201)
+      const secondVersion = secondCommit.json<{
+        version: { contentHash: string; references: Array<{ assetId: string }> }
+      }>().version
+      expect(secondVersion.references.map((reference) => reference.assetId)).toEqual([
+        second.id,
+        firstAssetId
+      ])
+      expect(secondVersion.contentHash).not.toBe(firstVersion.contentHash)
+      expect(ctx.db.prepare('select count(*) as n from art_versions').get()).toEqual({ n: 0 })
+      expect(asset.id).toHaveLength(30)
     } finally {
       await ctx.close()
     }

@@ -1,11 +1,12 @@
 import { create } from 'zustand'
-import type { PromptSpecV2 } from '@agent2live/contracts'
+import type { PromptMaterialRef, PromptSpecV2 } from '@agent2live/contracts'
 import type { PromptEditSource } from '@agent2live/contracts'
 import {
   makePromptBlock,
   makeRequirement,
   removeBlock as removeBlockHelper,
   removeRequirement as removeRequirementHelper,
+  replaceMaterialRefs,
   toCoreSpec
 } from './prompt-helpers'
 
@@ -36,6 +37,7 @@ interface WorkbenchStore extends WorkbenchSnapshot {
   updateBlock(blockId: string, patch: { label?: string; text?: string; category?: string }): void
   updateBlockWeight(blockId: string, weight: number): void
   updateBlockReferences(blockId: string, patch: { requirementRefs?: string[]; materialRefs?: string[] }): void
+  updateMaterialRefs(materialRefs: PromptMaterialRef[]): void
   toggleBlockLock(blockId: string): void
   removeBlock(blockId: string): void
   addBlock(negative: boolean): void
@@ -171,6 +173,12 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
       target.materialRefs = [...new Set(patch.materialRefs)]
     }
     set({ draft: next, dirty: true, lastEdited: 'blocks' })
+  },
+
+  updateMaterialRefs(materialRefs) {
+    const current = get()
+    const next = replaceMaterialRefs(requireDraft(current), materialRefs)
+    set({ draft: next, dirty: true, lastEdited: 'references' })
   },
 
   toggleBlockLock(blockId) {

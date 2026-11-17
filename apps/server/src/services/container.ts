@@ -168,7 +168,6 @@ export function createServices(deps: ServiceDeps): Services {
     clock,
     projects,
     versions,
-    submissions,
     artVersions,
     assets,
     connections: providerConnections,

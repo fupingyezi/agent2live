@@ -89,14 +89,13 @@ export const VersionGraph: React.FC<VersionGraphProps> = ({
           <ol className="version-list">
             {artVersions.map((version) => {
               const active = version.id === project.activeVersionId
-              const primary = version.references.find((reference) => reference.isPrimary)
               return (
                 <li className={`version-row art-row${active ? ' active-version' : ''}`} key={version.id}>
-                  {primary ? <ArtThumb assetId={primary.assetId} /> : null}
+                  <ArtThumb assetId={version.artworkAssetId} />
                   <div className="version-row-body">
                     <div className="version-row-main">
                       <strong>v{version.versionNumber}</strong>
-                      {active ? <StatusPill label="当前参考" tone="accent" /> : null}
+                      {active ? <StatusPill label="当前立绘" tone="accent" /> : null}
                     </div>
                     <div className="version-row-meta">
                       提示词 {shortId(version.promptVersionId, 8)} · {formatDateTime(version.createdAt)}

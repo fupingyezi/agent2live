@@ -493,46 +493,17 @@ export const ERROR_REGISTRY = {
       })
       .strict()
   ),
-  ART_REFERENCE_SET_INVALID: def(
-    'ART_REFERENCE_SET_INVALID',
+  PROMPT_REFERENCE_SET_INVALID: def(
+    'PROMPT_REFERENCE_SET_INVALID',
     422,
     'validation',
     false,
     'warning',
-    'errors.artReferenceSetInvalid',
+    'errors.promptReferenceSetInvalid',
     'fix_input',
     '参考图集合无效',
-    '请至少保留一张且不重复使用图片',
+    '请检查顺序、重复图片和数量',
     z.object({ reasons: z.array(z.string().max(120)).max(20) }).strict()
-  ),
-  ART_REFERENCE_PRIMARY_REQUIRED: def(
-    'ART_REFERENCE_PRIMARY_REQUIRED',
-    422,
-    'validation',
-    false,
-    'warning',
-    'errors.artReferencePrimaryRequired',
-    'fix_input',
-    '必须指定一张主参考图',
-    '请将一张参考图设为主图',
-    z.object({}).strict()
-  ),
-  ART_REFERENCE_ORDER_INVALID: def(
-    'ART_REFERENCE_ORDER_INVALID',
-    422,
-    'validation',
-    false,
-    'warning',
-    'errors.artReferenceOrderInvalid',
-    'fix_input',
-    '参考图顺序无效',
-    '主图必须为 0，其余从 1 连续编号',
-    z
-      .object({
-        primarySortOrder: z.number().int().nonnegative(),
-        orders: z.array(z.number().int().nonnegative()).max(32)
-      })
-      .strict()
   ),
   PROMPT_INPUT_EMPTY: def(
     'PROMPT_INPUT_EMPTY',

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { promptOperationSchema, promptSpecSchema, type PromptSpecV2 } from './prompt'
 
-export type PromptEditSource = 'full' | 'blocks'
+export type PromptEditSource = 'full' | 'blocks' | 'references'
 
 export const promptSyncInputSchema = z
   .object({

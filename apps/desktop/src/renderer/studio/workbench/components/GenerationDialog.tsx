@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto, CreateGenerationResultDto, ProviderConnectionDto } from '@studio/api'
-import { ApiError, createGeneration, queryKeys } from '@studio/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type {
+  ArtProjectDto,
+  ArtVersionDto,
+  CreateGenerationResultDto,
+  PromptVersionSummaryDto,
+  ProviderConnectionDto
+} from '@studio/api'
+import { ApiError, createGeneration, getPromptVersion, queryKeys } from '@studio/api'
 import {
   AsyncButton,
   Button,
@@ -38,8 +44,11 @@ function storeGeneration(projectId: string, generationId: string): void {
 export interface GenerationDialogProps {
   open: boolean
   project: ArtProjectDto
-  promptVersionId: string | null
-  promptVersionNumber: number | null
+  promptVersions: PromptVersionSummaryDto[]
+  artVersions: ArtVersionDto[]
+  initialPromptVersionId: string | null
+  initialPromptVersionNumber: number | null
+  initialBaseArtVersionId: string | null
   providers: ProviderConnectionDto[]
   onClose(): void
   onCreated(created: CreateGenerationResultDto): void
@@ -48,8 +57,11 @@ export interface GenerationDialogProps {
 export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   open,
   project,
-  promptVersionId,
-  promptVersionNumber,
+  promptVersions,
+  artVersions,
+  initialPromptVersionId,
+  initialPromptVersionNumber,
+  initialBaseArtVersionId,
   providers,
   onClose,
   onCreated
@@ -59,6 +71,8 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     () => providers.filter((provider) => provider.enabled && provider.kind === 'image'),
     [providers]
   )
+  const [promptVersionId, setPromptVersionId] = useState(initialPromptVersionId ?? '')
+  const [baseArtVersionId, setBaseArtVersionId] = useState(initialBaseArtVersionId ?? '')
   const [providerId, setProviderId] = useState('')
   const [count, setCount] = useState(1)
   const [size, setSize] = useState('')
@@ -66,9 +80,22 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   const [localError, setLocalError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!open) return
+    setPromptVersionId(initialPromptVersionId ?? '')
+    setBaseArtVersionId(initialBaseArtVersionId ?? '')
+    setLocalError(null)
+  }, [open, initialPromptVersionId, initialBaseArtVersionId])
+
+  useEffect(() => {
     if (!providerId && imageProviders[0]) setProviderId(imageProviders[0].id)
   }, [providerId, imageProviders])
 
+  const promptQuery = useQuery({
+    queryKey: ['prompt-version-for-generation', project.id, promptVersionId],
+    queryFn: ({ signal }) => getPromptVersion(project.id, promptVersionId, signal),
+    enabled: open && promptVersionId !== ''
+  })
+  const selectedPrompt = promptQuery.data ?? null
   const selectedProvider =
     imageProviders.find((provider) => provider.id === providerId) ?? imageProviders[0] ?? null
   const caps = selectedProvider ? imageCapabilities(selectedProvider) : undefined
@@ -84,13 +111,9 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     if (firstSize !== undefined && !sizes.includes(size)) setSize(firstSize)
   }, [size, sizes])
 
-  useEffect(() => {
-    if (open) setLocalError(null)
-  }, [open])
-
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!promptVersionId) throw new Error('当前版本尚未保存。')
+      if (!promptVersionId) throw new Error('请选择已保存的提示词版本。')
       if (!selectedProvider) throw new Error('没有可用的图像模型连接。')
       let parsedSeed: number | null | undefined
       if (seed.trim()) {
@@ -102,6 +125,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       }
       return createGeneration(project.id, {
         promptVersionId,
+        baseArtVersionId: baseArtVersionId || null,
         providerConnectionId: selectedProvider.id,
         count,
         ...(size ? { size } : {}),
@@ -124,18 +148,32 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     }
   })
 
+  const promptOptions = useMemo(() => {
+    const options = promptVersions.map((version) => ({
+      id: version.id,
+      versionNumber: version.versionNumber
+    }))
+    if (initialPromptVersionId !== null && !options.some((option) => option.id === initialPromptVersionId)) {
+      options.unshift({
+        id: initialPromptVersionId,
+        versionNumber: initialPromptVersionNumber ?? 0
+      })
+    }
+    return options
+  }, [initialPromptVersionId, initialPromptVersionNumber, promptVersions])
+
   return (
     <Dialog
       open={open}
       title="生成立绘"
-      description="设置只用于本次生成，不会占用画布。"
+      description="参考图来自所选提示词版本；继续创作来源不会自动加入参考图。"
       onOpenChange={(next) => {
         if (!next && !createMutation.isPending) onClose()
       }}
       className="generation-dialog"
     >
-      {!promptVersionId ? (
-        <EmptyState title="先生成提示词版本" description="生成任务必须绑定当前不可变 PromptVersion。" />
+      {promptOptions.length === 0 ? (
+        <EmptyState title="还没有提示词版本" description="生成任务必须绑定不可变 PromptVersion。" />
       ) : imageProviders.length === 0 ? (
         <EmptyState
           title="没有可用的图像模型"
@@ -144,7 +182,25 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       ) : (
         <div className="generation-dialog-content" data-testid="generation-dialog">
           <div className="generation-form" data-testid="generation-settings">
-            <StatusPill label={`提示词 v${promptVersionNumber ?? '—'}`} tone="accent" />
+            <Field label="生成输入版本">
+              <Select value={promptVersionId} onValueChange={setPromptVersionId}>
+                {promptOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    提示词 v{option.versionNumber || '—'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="继续创作来源（可选）" description="只记录来源，不会自动加入参考图。">
+              <Select value={baseArtVersionId} onValueChange={setBaseArtVersionId}>
+                <option value="">不指定</option>
+                {artVersions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    美术 v{version.versionNumber}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="图像模型">
               <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
                 {imageProviders.map((provider) => (
@@ -187,11 +243,25 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
               ) : null}
             </div>
           </div>
-          <p className="muted">
-            {project.activeVersionId
-              ? '本次会使用当前 active ArtVersion 作为主参考。'
-              : '当前还没有 active ArtVersion；本次只使用提示词与素材。'}
-          </p>
+          {promptQuery.isError ? (
+            <InlineNotice tone="danger">提示词版本加载失败，请关闭后重试。</InlineNotice>
+          ) : selectedPrompt ? (
+            <div className="generation-reference-summary">
+              {selectedPrompt.references.length === 0 ? (
+                <p className="muted">该版本没有参考图，本次按文生图生成。</p>
+              ) : (
+                <>
+                  <StatusPill label={`${selectedPrompt.references.length} 张参考图`} tone="accent" />
+                  <p className="muted">
+                    发送顺序：
+                    {selectedPrompt.references
+                      .map((reference, index) => `${index + 1}. ${reference.role}`)
+                      .join(' → ')}
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
           {localError ? (
             <div role="alert">
               <InlineNotice tone="danger">{localError}</InlineNotice>
@@ -205,7 +275,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
               type="button"
               busy={createMutation.isPending}
               busyLabel="提交生成…"
-              disabled={!selectedProvider}
+              disabled={!selectedProvider || !promptVersionId}
               onClick={() => createMutation.mutate()}
             >
               开始生成

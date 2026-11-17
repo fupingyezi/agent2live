@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { PROMPT_CATEGORIES } from '@agent2live/contracts/prompt'
-import type { PromptBlock, PromptInputMaterialDto, PromptRequirement } from '@studio/api'
+import type { PromptBlock, PromptMaterialRef, PromptRequirement } from '@studio/api'
 import { useWorkbenchStore } from '../store'
 import {
   Button,
@@ -51,16 +51,16 @@ const MATERIAL_ROLE_LABELS: Record<string, string> = {
 
 const STRENGTH_LABELS = { must: '必须', prefer: '偏好', avoid: '避免' } as const
 
-function materialLabel(material: PromptInputMaterialDto): string {
+function materialLabel(material: PromptMaterialRef, index: number): string {
   const role = MATERIAL_ROLE_LABELS[material.role] ?? material.role
-  return material.note ? `${role} · ${material.note}` : `${role} ${material.sortOrder + 1}`
+  return material.note ? `${role} · ${material.note}` : `${role} ${index + 1}`
 }
 
 export interface PromptBlockCardProps {
   block: PromptBlock
   negative: boolean
   requirements: PromptRequirement[]
-  materials: PromptInputMaterialDto[]
+  materials: PromptMaterialRef[]
   disabled: boolean
 }
 
@@ -211,11 +211,11 @@ export const PromptBlockCard: React.FC<PromptBlockCardProps> = ({
         <fieldset className="block-refs" disabled={controlsDisabled}>
           <legend>引用素材</legend>
           <div className="block-ref-options">
-            {materials.map((material) => {
+            {materials.map((material, index) => {
               const selected = block.materialRefs.includes(material.assetId)
               return (
                 <Button
-                  key={material.id}
+                  key={material.assetId}
                   type="button"
                   variant={selected ? 'secondary' : 'quiet'}
                   size="sm"
@@ -223,7 +223,7 @@ export const PromptBlockCard: React.FC<PromptBlockCardProps> = ({
                   disabled={controlsDisabled}
                   onClick={() => toggleMaterial(material.assetId)}
                 >
-                  {materialLabel(material)}
+                  {materialLabel(material, index)}
                 </Button>
               )
             })}

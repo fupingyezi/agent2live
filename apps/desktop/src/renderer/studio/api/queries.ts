@@ -10,7 +10,6 @@ import type {
   ArtVersionDto,
   ArtVersionListDto,
   ArtVersionMutationDto,
-  ArtVersionReferenceDto,
   AssetDto,
   CharacterBackupDto,
   CharacterDto,
@@ -378,27 +377,11 @@ export function createManualArtVersion(
   })
 }
 
-export type ArtVersionReferenceInput = Omit<ArtVersionReferenceDto, 'id'>
-
-export function reviseArtVersionReferences(
-  versionId: string,
-  references: ArtVersionReferenceInput[],
-  reason: 'add' | 'remove' | 'reorder' | 'metadata' | 'switch_primary',
-  expectedProjectRowVersion: number,
-  idempotencyKey = newIdempotencyKey()
-): Promise<ArtVersionMutationDto> {
-  return api.request(`/api/v1/art-versions/${encodeURIComponent(versionId)}/reference-revisions`, {
-    method: 'POST',
-    body: { references, reason },
-    ifMatch: expectedProjectRowVersion,
-    idempotencyKey
-  })
-}
-
 export function createGeneration(
   projectId: string,
   input: {
     promptVersionId: string
+    baseArtVersionId?: string | null
     providerConnectionId: string
     count: number
     size?: string
@@ -440,23 +423,6 @@ export function activateArtVersion(
   return api.request<ArtVersionMutationDto>(
     `/api/v1/art-projects/${encodeURIComponent(projectId)}/art-versions/${encodeURIComponent(versionId)}/activate`,
     { method: 'POST', body: { reason }, ifMatch, idempotencyKey }
-  )
-}
-
-export function restoreArtVersion(
-  projectId: string,
-  versionId: string,
-  expectedProjectRowVersion: number,
-  idempotencyKey = newIdempotencyKey()
-): Promise<ArtVersionMutationDto> {
-  return api.request<ArtVersionMutationDto>(
-    `/api/v1/art-projects/${encodeURIComponent(projectId)}/art-versions/${encodeURIComponent(versionId)}/restore`,
-    {
-      method: 'POST',
-      body: {},
-      ifMatch: expectedProjectRowVersion,
-      idempotencyKey
-    }
   )
 }
 

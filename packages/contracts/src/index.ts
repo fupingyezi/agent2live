@@ -1,5 +1,5 @@
 export * from './api'
-export * from './art-reference'
+export * from './prompt-reference'
 export * from './capabilities'
 export * from './character-brief'
 export * from './errors'

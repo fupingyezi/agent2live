@@ -1,5 +1,5 @@
-import { promptSpecSchema } from '@agent2live/contracts/prompt'
-import type { PromptBlock, PromptSpecV2 } from '@agent2live/contracts'
+import { promptMaterialRefSchema, promptSpecSchema } from '@agent2live/contracts/prompt'
+import type { PromptBlock, PromptMaterialRef, PromptSpecV2 } from '@agent2live/contracts'
 
 const CORE_KEYS = [
   'schemaVersion',
@@ -68,6 +68,32 @@ export function removeRequirement(spec: PromptSpecV2, requirementId: string): Pr
   next.sourceRequirements = next.sourceRequirements.filter((item) => item.id !== requirementId)
   for (const block of [...next.blocks, ...next.negativeBlocks]) {
     block.requirementRefs = block.requirementRefs.filter((id) => id !== requirementId)
+  }
+  return next
+}
+
+export function replaceMaterialRefs(spec: PromptSpecV2, materialRefs: PromptMaterialRef[]): PromptSpecV2 {
+  if (materialRefs.length > 14) throw new Error('at most 14 references are allowed')
+  const normalized = materialRefs.map((material) =>
+    promptMaterialRefSchema.parse({ ...material, note: material.note.trim() })
+  )
+  const assetIds = normalized.map((material) => material.assetId)
+  if (new Set(assetIds).size !== assetIds.length) throw new Error('duplicate reference asset')
+  const nextAssetIds = new Set(assetIds)
+  const removed = spec.materialRefs
+    .map((material) => material.assetId)
+    .filter((assetId) => !nextAssetIds.has(assetId))
+  if (removed.length > 0) {
+    const blocked = [...spec.blocks, ...spec.negativeBlocks].filter(
+      (block) =>
+        (spec.lockAll || block.locked) && block.materialRefs.some((assetId) => removed.includes(assetId))
+    )
+    if (blocked.length > 0) throw new Error('a locked block references this material')
+  }
+  const next = structuredClone(spec)
+  next.materialRefs = normalized
+  for (const block of [...next.blocks, ...next.negativeBlocks]) {
+    block.materialRefs = block.materialRefs.filter((assetId) => nextAssetIds.has(assetId))
   }
   return next
 }

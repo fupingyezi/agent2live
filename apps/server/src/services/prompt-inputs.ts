@@ -227,7 +227,8 @@ export class PromptInputService {
         })
       }
       const state = normalizeSpecForSubmission(baseState, submission, brief, {
-        adoptGlobalNotes: true
+        adoptGlobalNotes: true,
+        replaceMaterialsFromSubmission: true
       })
       const contentHash = specContentHash(state)
 

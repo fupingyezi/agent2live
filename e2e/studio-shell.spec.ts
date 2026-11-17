@@ -175,8 +175,6 @@ test('initializes a character from reference images', async () => {
 
     const cards = studio.locator('[data-testid="character-reference-card"]')
     await expect(cards).toHaveCount(3)
-    await expect(cards.nth(0)).toHaveAttribute('data-primary', 'true')
-    await expect(cards.nth(1)).toHaveAttribute('data-primary', 'false')
 
     const styleCard = studio.locator('[data-testid="character-reference-card"][data-file-name="style.png"]')
     const hoverActions = styleCard.getByTestId('reference-hover-actions')
@@ -222,27 +220,17 @@ test('initializes a character from reference images', async () => {
     await editor.getByRole('button', { name: '服装', exact: true }).click()
     await editor.getByRole('button', { name: '严格照做', exact: true }).click()
     await editor.getByLabel('备注').fill('只参考袖口轮廓')
-    await editor.getByRole('button', { name: '设为主图', exact: true }).click()
-    await expect(editor.getByRole('button', { name: '已是主图', exact: true })).toBeVisible()
     await editor.getByRole('button', { name: '完成', exact: true }).click()
     await expect(editor).toHaveCount(0)
 
-    await expect(cards.nth(0)).toHaveAttribute('data-file-name', 'style.png')
-    await expect(cards.nth(0)).toHaveAttribute('data-primary', 'true')
-    await expect(cards.nth(0)).toHaveAttribute('data-role', 'outfit_reference')
-    await expect(cards.nth(0)).toHaveAttribute('data-strength', 'strict')
-    await expect(cards.nth(0)).toContainText('服装')
+    await expect(styleCard).toHaveAttribute('data-file-name', 'style.png')
+    await expect(styleCard).toHaveAttribute('data-role', 'outfit_reference')
+    await expect(styleCard).toHaveAttribute('data-strength', 'strict')
+    await expect(styleCard).toContainText('服装')
 
-    await cards
-      .nth(0)
-      .getByRole('button', { name: /移除参考图/ })
-      .click()
+    await styleCard.getByRole('button', { name: /移除参考图/ }).click()
     await expect(cards).toHaveCount(2)
-    await expect(studio.locator('[data-testid="character-reference-card"][data-primary="true"]')).toHaveCount(
-      1
-    )
     await expect(cards.nth(0)).toHaveAttribute('data-file-name', 'identity.png')
-    await expect(cards.nth(0)).toHaveAttribute('data-primary', 'true')
 
     await studio.getByRole('button', { name: '创建并生成', exact: true }).click()
 

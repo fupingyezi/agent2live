@@ -1,5 +1,5 @@
 import React from 'react'
-import type { PromptInputMaterialDto, PromptRequirement, PromptSpecV2 } from '@studio/api'
+import type { PromptRequirement, PromptSpecV2 } from '@studio/api'
 import { useWorkbenchStore } from '../store'
 import { uncoveredRequirementIds } from '../prompt-helpers'
 import { PromptBlockCard } from './PromptBlockCard'
@@ -8,23 +8,15 @@ import { Button, CountBadge, EmptyState, InlineNotice, SectionHeader } from '@ag
 export interface PromptBlockListProps {
   spec: PromptSpecV2
   requirements: PromptRequirement[]
-  materials: PromptInputMaterialDto[]
   disabled: boolean
 }
 
-export const PromptBlockList: React.FC<PromptBlockListProps> = ({
-  spec,
-  requirements,
-  materials,
-  disabled
-}) => {
+export const PromptBlockList: React.FC<PromptBlockListProps> = ({ spec, requirements, disabled }) => {
   const store = useWorkbenchStore()
   const uncovered = uncoveredRequirementIds(spec)
   const uncoveredRequirements = requirements.filter((item) => uncovered.includes(item.id))
   const total = spec.blocks.length + spec.negativeBlocks.length
-  const usableMaterials = materials.filter((material) =>
-    spec.materialRefs.some((ref) => ref.assetId === material.assetId)
-  )
+  const usableMaterials = spec.materialRefs
 
   return (
     <section className="workbench-panel prompt-blocks" data-testid="prompt-block-list">

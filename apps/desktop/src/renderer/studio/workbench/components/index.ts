@@ -42,9 +42,9 @@ export type { PromptInputPanelProps } from './PromptInputPanel'
 export { ReferenceChainBar } from './ReferenceChainBar'
 export type { ReferenceChainBarProps } from './ReferenceChainBar'
 
-/** 编辑立绘版本的参考图集合与引用关系。 */
-export { ReferenceSetEditor } from './ReferenceSetEditor'
-export type { ReferenceSetEditorProps } from './ReferenceSetEditor'
+/** 编辑 PromptVersion 的有序参考图集合。 */
+export { PromptReferenceEditor } from './PromptReferenceEditor'
+export type { PromptReferenceEditorProps } from './PromptReferenceEditor'
 
 /** 审阅 AI 反推结果并选择应用或丢弃。 */
 export { ReverseReview } from './ReverseReview'

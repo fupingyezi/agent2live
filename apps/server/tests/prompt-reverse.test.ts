@@ -138,6 +138,67 @@ describe('prompt reverse', () => {
     }
   })
 
+  it('uses the current draft references rather than the original submission materials', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, draft, assetId } = await prepareDraft(ctx)
+      const second = (
+        await ctx.services.assets.ingestUpload({
+          bytes: await png(360, 540),
+          declaredMime: 'image/png',
+          originalName: 'draft-style.png',
+          requestId: 'reverse-draft-refs',
+          traceId: 'reverse-draft-refs'
+        })
+      ).asset
+      const state = specWithAsset(assetId) as {
+        materialRefs: Array<Record<string, unknown>>
+      }
+      state.materialRefs = [
+        ...state.materialRefs,
+        { assetId: second.id, role: 'style_reference', note: '当前草稿参考', weight: 1, locked: false }
+      ]
+      const saved = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/art-projects/${project.id}/prompt-drafts/${draft.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${draft.rowVersion}"` },
+        payload: { state }
+      })
+      expect(saved.statusCode).toBe(200)
+      const savedDraft = saved.json<{ rowVersion: number }>()
+      const connection = await createMockChat(ctx)
+      const created = await enqueueReverse(ctx, project.id, connection.id, 'reverse-draft-refs-0001')
+      expect(created.statusCode).toBe(202)
+      const jobId = created.json<{ jobId: string }>().jobId
+      await ctx.services.jobs.tick()
+      const job = await ctx.app.inject({ method: 'GET', url: `/api/v1/jobs/${jobId}`, headers: ctx.auth })
+      const reverseResultId = job.json<{ result: { reverseResultId: string } }>().result.reverseResultId
+      const applied = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-reverse-results/${reverseResultId}/apply`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${savedDraft.rowVersion}"`,
+          'idempotency-key': 'reverse-apply-draft-refs'
+        },
+        payload: {}
+      })
+      expect(applied.statusCode).toBe(200)
+      expect(applied.json()).toMatchObject({
+        draft: {
+          state: {
+            materialRefs: [
+              { assetId, role: 'identity_reference' },
+              { assetId: second.id, role: 'style_reference', note: '当前草稿参考' }
+            ]
+          }
+        }
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('runs a mock reverse job, stores a ready candidate, and applies it with If-Match', async () => {
     const ctx = await createTestApp()
     try {

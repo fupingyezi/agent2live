@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { PromptDraftDto, PromptWorkspaceDto, ProviderConnectionDto } from '@studio/api'
+import type {
+  PromptDraftDto,
+  PromptMaterialRef,
+  PromptWorkspaceDto,
+  ProviderConnectionDto
+} from '@studio/api'
 import {
   getPromptReverseResult,
   getPromptSuggestion,
@@ -48,6 +53,7 @@ function resultId(jobResult: unknown, key: 'reverseResultId' | 'suggestionId'): 
 export interface PromptAiPanelProps {
   projectId: string
   workspace: PromptWorkspaceDto
+  references: PromptMaterialRef[]
   providers: ProviderConnectionDto[]
   dirty: boolean
   initialJob: InitialPromptJob | null
@@ -59,6 +65,7 @@ export interface PromptAiPanelProps {
 export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   projectId,
   workspace,
+  references,
   providers,
   dirty,
   initialJob,
@@ -77,7 +84,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
   const [base, setBase] = useState<'draft' | 'version'>(workspace.activeDraft ? 'draft' : 'version')
   const [activeJob, setActiveJob] = useState<ActiveAiJob | null>(initialJob)
   const [localError, setLocalError] = useState<string | null>(null)
-  const hasMaterials = (workspace.latestSubmission?.materials.length ?? 0) > 0
+  const hasMaterials = references.length > 0
   const reverseNeedsVision = kind === 'reverse' && hasMaterials
   const availableChatProviders = useMemo(
     () =>
@@ -191,7 +198,7 @@ export const PromptAiPanel: React.FC<PromptAiPanelProps> = ({
       {availableChatProviders.length === 0 ? (
         <InlineNotice tone="warning">
           {reverseNeedsVision
-            ? '带参考图的素材反推需要启用支持视觉输入的聊天连接；也可在“素材与要求”中移除参考图，按文字设定反推。'
+            ? '当前草稿带参考图，反推需要启用支持视觉输入的聊天连接；也可移除参考图后按文字设定反推。'
             : '没有可用的聊天模型连接，请在设置中启用。'}
         </InlineNotice>
       ) : (

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { RefinementCtx } from 'zod'
 import { materialRoleSchema, promptRequirementSchema, providerCapabilitiesSchema } from './prompt'
 import type { MaterialRole, PromptOperation, PromptRequirement, PromptSpecV2 } from './prompt'
-import type { ArtVersionReference } from './art-reference'
+import type { PromptReference } from './prompt-reference'
 import { characterBriefContentSchema } from './character-brief'
 
 const title = z.string().trim().min(1).max(100)
@@ -259,6 +259,7 @@ export const providerProbeDtoSchema = z
 export const createGenerationInputSchema = z
   .object({
     promptVersionId: z.string().min(1).max(64),
+    baseArtVersionId: z.string().min(1).max(64).nullable().optional(),
     providerConnectionId: z.string().min(1).max(64),
     count: z.number().int().min(1).max(4).default(1),
     size: z
@@ -302,10 +303,7 @@ export const acceptSuggestionInputSchema = z
 export const createManualArtVersionInputSchema = z
   .object({
     assetId,
-    promptVersionId: z.string().min(1).max(64).optional(),
-    role: materialRoleSchema.default('identity_reference'),
-    note: z.string().max(1000).default(''),
-    weight: z.number().min(0.1).max(2).default(1)
+    promptVersionId: z.string().min(1).max(64).optional()
   })
   .strict()
 
@@ -314,8 +312,6 @@ export const activateArtVersionInputSchema = z
     reason: z.enum(['switch', 'rollback'])
   })
   .strict()
-
-export const restoreArtVersionInputSchema = z.object({}).strict()
 
 export const artVersionListQuerySchema = z
   .object({
@@ -587,6 +583,7 @@ export interface PromptVersionDto extends PromptVersionSummary {
   inputSubmissionId: string
   characterBriefVersionId: string | null
   state: PromptSpecV2
+  references: PromptReference[]
 }
 
 export interface PromptWorkspaceDto {
@@ -642,16 +639,16 @@ export interface PromptSuggestionDto {
   resolvedAt: number | null
 }
 
-export type ArtVersionReferenceDto = ArtVersionReference & { id: string }
-
 export interface ArtVersionDto {
   id: string
   artProjectId: string
   versionNumber: number
+  artworkAssetId: string
+  promptVersionId: string
+  generationJobId: string | null
   parentVersionId: string | null
   originVersionId: string | null
-  promptVersionId: string
-  references: ArtVersionReferenceDto[]
+  sourceKind: 'generated' | 'manual_upload' | 'fork_seed'
   source: Record<string, unknown>
   validation: Record<string, unknown>
   canvasTransform: Record<string, unknown>

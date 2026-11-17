@@ -5,6 +5,7 @@ import {
   makePromptBlock,
   removeBlock,
   removeRequirement,
+  replaceMaterialRefs,
   toCoreSpec,
   uncoveredRequirementIds,
   validatePromptForSave
@@ -92,6 +93,43 @@ describe('removeBlock', () => {
     expect(() => removeBlock(spec, 'block-hair')).toThrow(/locked/i)
     const allLocked = { ...baseSpec(), lockAll: true }
     expect(() => removeBlock(allLocked, 'block-hair')).toThrow(/locked/i)
+  })
+})
+
+describe('replaceMaterialRefs', () => {
+  const first = {
+    assetId: 'ast_01J00000000000000000000000',
+    role: 'identity_reference' as const,
+    note: ' 脸型 ',
+    weight: 1,
+    locked: false
+  }
+  const second = {
+    assetId: 'ast_01J00000000000000000000001',
+    role: 'style_reference' as const,
+    note: '',
+    weight: 0.8,
+    locked: true
+  }
+
+  it('keeps array order and trims notes', () => {
+    const next = replaceMaterialRefs(baseSpec(), [first, second])
+    expect(next.materialRefs.map((item) => item.assetId)).toEqual([first.assetId, second.assetId])
+    expect(next.materialRefs[0]!.note).toBe('脸型')
+  })
+
+  it('cleans block references and guards locked blocks', () => {
+    const spec = baseSpec()
+    spec.materialRefs = [first, second]
+    spec.blocks[0]!.materialRefs = [first.assetId, second.assetId]
+    expect(replaceMaterialRefs(spec, [first]).blocks[0]!.materialRefs).toEqual([first.assetId])
+
+    spec.blocks[0]!.locked = true
+    expect(() => replaceMaterialRefs(spec, [first])).toThrow(/locked block/i)
+  })
+
+  it('rejects duplicates', () => {
+    expect(() => replaceMaterialRefs(baseSpec(), [first, { ...first }])).toThrow(/duplicate/i)
   })
 })
 

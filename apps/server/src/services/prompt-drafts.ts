@@ -20,7 +20,12 @@ import { specContentHash } from '../prompt/compile'
 import type { AuditService } from './audit'
 import type { CharacterBriefService } from './character-briefs'
 import type { ArtProjectDto, ProjectService } from './projects'
-import type { PromptVersionDto, PromptVersionService } from './prompt-versions'
+import {
+  promptReferencesFromMaterialRefs,
+  writePromptReferences,
+  type PromptVersionDto,
+  type PromptVersionService
+} from './prompt-versions'
 import type { PromptInputSubmissionDto, PromptSubmissionRepository } from './prompt-submissions'
 import type { RequestIds } from './request-ids'
 
@@ -81,19 +86,22 @@ export function normalizeSpecForSubmission(
   state: PromptSpecV2,
   submission: PromptInputSubmissionDto,
   brief: CharacterBriefVersion | null = null,
-  options: { adoptGlobalNotes?: boolean } = {}
+  options: { adoptGlobalNotes?: boolean; replaceMaterialsFromSubmission?: boolean } = {}
 ): PromptSpecV2 {
   let next: PromptSpecV2 = {
     ...structuredClone(state),
     characterBriefVersionId: submission.characterBriefVersionId,
     sourceRequirements: submission.requirements,
-    materialRefs: submission.materials.map((material) => ({
-      assetId: material.assetId,
-      role: material.role,
-      note: material.note,
-      weight: material.weight,
-      locked: material.locked
-    }))
+    materialRefs:
+      options.replaceMaterialsFromSubmission === true
+        ? submission.materials.map((material) => ({
+            assetId: material.assetId,
+            role: material.role,
+            note: material.note,
+            weight: material.weight,
+            locked: material.locked
+          }))
+        : structuredClone(state.materialRefs)
   }
   for (const block of [...next.blocks, ...next.negativeBlocks]) {
     block.text = normalizeText(block.text)
@@ -319,6 +327,12 @@ export class PromptDraftService {
           versionNumber,
           now
         )
+      writePromptReferences(
+        this.deps.db,
+        versionId,
+        promptReferencesFromMaterialRefs(versionState.materialRefs),
+        now
+      )
       this.deps.db
         .prepare(
           `update prompt_drafts set status = 'committed', updated_at = ?, row_version = row_version + 1 where id = ?`
@@ -433,7 +447,7 @@ export class PromptDraftService {
         projectId,
         this.nextDraftRevision(projectId),
         JSON.stringify(version.state),
-        version.contentHash,
+        specContentHash(version.state),
         version.inputSubmissionId,
         version.id,
         now,

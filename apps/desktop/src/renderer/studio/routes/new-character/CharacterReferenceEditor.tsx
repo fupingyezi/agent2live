@@ -2,12 +2,7 @@ import React, { useEffect, useId, useState } from 'react'
 import { Button, Dialog, IconButton } from '@agent2live/design-system'
 import type { MaterialRole } from '@studio/api'
 import { StudioPageTopbar } from '@studio/components'
-import {
-  setPrimaryReference,
-  strengthToWeight,
-  type CharacterReferenceDraft,
-  type ReferenceStrength
-} from './reference-draft'
+import { strengthToWeight, type CharacterReferenceDraft, type ReferenceStrength } from './reference-draft'
 
 const ROLE_OPTIONS: Array<{ value: MaterialRole; label: string }> = [
   { value: 'identity_reference', label: '身份' },
@@ -73,10 +68,6 @@ export const CharacterReferenceEditor: React.FC<CharacterReferenceEditorProps> =
     setDraft(reference)
     setDimensions(null)
   }, [reference])
-
-  const choosePrimary = (): void => {
-    setDraft((current) => setPrimaryReference([current], current.id)[0] ?? current)
-  }
 
   const complete = (): void => {
     onComplete(draft)
@@ -160,19 +151,6 @@ export const CharacterReferenceEditor: React.FC<CharacterReferenceEditorProps> =
 
           <aside className="reference-editor-settings">
             <h2>参考图设置</h2>
-
-            <section className="reference-editor-group">
-              <h3>主图</h3>
-              <Button
-                type="button"
-                className="reference-editor-primary-action"
-                variant={draft.isPrimary ? 'quiet' : 'secondary'}
-                disabled={draft.isPrimary}
-                onClick={choosePrimary}
-              >
-                {draft.isPrimary ? '已是主图' : '设为主图'}
-              </Button>
-            </section>
 
             <section className="reference-editor-group">
               <h3>用途</h3>

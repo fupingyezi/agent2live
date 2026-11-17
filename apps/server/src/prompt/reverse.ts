@@ -36,7 +36,7 @@ export function buildReverseState(
   brief: CharacterBriefVersion | null = null
 ): PromptSpecV2 {
   const lockedMaterials = new Set(
-    submission.materials.filter((material) => material.locked).map((material) => material.assetId)
+    base.materialRefs.filter((material) => material.locked).map((material) => material.assetId)
   )
   const lockedPositive = base.blocks.filter((block) => block.locked)
   const lockedNegative = base.negativeBlocks.filter((block) => block.locked)
@@ -51,13 +51,7 @@ export function buildReverseState(
     fullPrompt: '',
     characterBriefVersionId: submission.characterBriefVersionId,
     sourceRequirements: submission.requirements,
-    materialRefs: submission.materials.map((material) => ({
-      assetId: material.assetId,
-      role: material.role,
-      note: material.note,
-      weight: material.weight,
-      locked: material.locked
-    })),
+    materialRefs: structuredClone(base.materialRefs),
     blocks: [
       ...output.blocks.filter((block) => !lockedIds.has(block.id)).map(lockDerived),
       ...lockedPositive
@@ -104,15 +98,15 @@ export function buildReverseMessages(input: {
   maxPromptChars: number
 }): { messages: ChatMessage[]; warnings: string[] } {
   const warnings: string[] = []
-  if (input.submission.materials.length > input.images.length) {
+  if (input.base.materialRefs.length > input.images.length) {
     warnings.push(
-      `only ${input.images.length} of ${input.submission.materials.length} reference images fit the provider limit`
+      `only ${input.images.length} of ${input.base.materialRefs.length} reference images fit the provider limit`
     )
   }
   const requirements = input.submission.requirements
     .map((item) => `- [${item.strength}] ${item.id}: ${normalizeText(item.text)}`)
     .join('\n')
-  const materials = input.submission.materials
+  const materials = input.base.materialRefs
     .map(
       (item, index) =>
         `- image ${index + 1}: assetId=${item.assetId} role=${item.role} locked=${item.locked} note=${normalizeText(item.note)}`
@@ -150,7 +144,7 @@ export function buildReverseMessages(input: {
       characterBriefVersionId: input.submission.characterBriefVersionId,
       globalNotes: normalizeText(input.submission.globalNotes),
       requirements: input.submission.requirements,
-      materials: input.submission.materials.map((item) => ({
+      materials: input.base.materialRefs.map((item) => ({
         assetId: item.assetId,
         role: item.role,
         note: normalizeText(item.note),

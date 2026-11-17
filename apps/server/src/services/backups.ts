@@ -469,8 +469,10 @@ export class BackupService {
           .map((record) => String(record.data.id))
       },
       {
-        ownerType: 'art_version',
-        ids: records.filter((record) => record.type === 'art_version').map((record) => String(record.data.id))
+        ownerType: 'prompt_version',
+        ids: records
+          .filter((record) => record.type === 'prompt_version')
+          .map((record) => String(record.data.id))
       }
     ]
     const assetIds = new Set<string>()
@@ -493,6 +495,7 @@ export class BackupService {
 
     for (const record of records) {
       if (record.type === 'generation_candidate') assetIds.add(String(record.data.asset_id))
+      if (record.type === 'art_version') assetIds.add(String(record.data.artwork_asset_id))
     }
 
     const assets: ExportAsset[] = []

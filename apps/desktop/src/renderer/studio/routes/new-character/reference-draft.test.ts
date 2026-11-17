@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
   normalizeCharacterReferences,
-  setPrimaryReference,
   strengthToWeight,
   weightToStrength,
   type CharacterReferenceDraft,
@@ -11,19 +10,17 @@ import {
 function reference(
   id: string,
   {
-    isPrimary = false,
     role = 'other',
     strength = 'balanced',
     note = ''
-  }: Partial<Pick<CharacterReferenceDraft, 'isPrimary' | 'role' | 'strength' | 'note'>> = {}
+  }: Partial<Pick<CharacterReferenceDraft, 'role' | 'strength' | 'note'>> = {}
 ): CharacterReferenceDraft {
   return {
     id,
     file: { name: `${id}.png` } as File,
     role,
     strength,
-    note,
-    isPrimary
+    note
   }
 }
 
@@ -46,46 +43,14 @@ describe('reference strength', () => {
 })
 
 describe('normalizeCharacterReferences', () => {
-  test('leaves an empty list empty', () => {
-    expect(normalizeCharacterReferences([])).toEqual([])
-  })
-
-  test('makes the first reference primary when a primary was deleted', () => {
-    const normalized = normalizeCharacterReferences([reference('style'), reference('outfit')])
-
-    expect(normalized.map((item) => item.id)).toEqual(['style', 'outfit'])
-    expect(normalized.map((item) => item.isPrimary)).toEqual([true, false])
-  })
-
-  test('setting a new primary clears the old primary', () => {
-    const references = [reference('identity', { isPrimary: true }), reference('style')]
-
-    const normalized = setPrimaryReference(references, 'style')
-
-    expect(normalized.map((item) => item.id)).toEqual(['style', 'identity'])
-    expect(normalized.filter((item) => item.isPrimary)).toHaveLength(1)
-    expect(normalized[0]?.isPrimary).toBe(true)
-  })
-
-  test('moves the existing primary to the front without mutating the input', () => {
-    const references = [reference('style'), reference('identity', { isPrimary: true })]
-
+  test('preserves the submitted order', () => {
+    const references = [reference('style'), reference('identity'), reference('outfit')]
     const normalized = normalizeCharacterReferences(references)
-
-    expect(normalized.map((item) => item.id)).toEqual(['identity', 'style'])
-    expect(normalized.filter((item) => item.isPrimary)).toHaveLength(1)
-    expect(references.map((item) => item.id)).toEqual(['style', 'identity'])
+    expect(normalized.map((item) => item.id)).toEqual(['style', 'identity', 'outfit'])
+    expect(references.map((item) => item.id)).toEqual(['style', 'identity', 'outfit'])
   })
 
-  test('keeps exactly one primary when multiple references are marked', () => {
-    const normalized = normalizeCharacterReferences([
-      reference('identity', { isPrimary: true }),
-      reference('style', { isPrimary: true })
-    ])
-
-    expect(normalized.map((item) => [item.id, item.isPrimary])).toEqual([
-      ['identity', true],
-      ['style', false]
-    ])
+  test('keeps an empty list empty', () => {
+    expect(normalizeCharacterReferences([])).toEqual([])
   })
 })

@@ -149,10 +149,7 @@ export const CharacterCockpitPage: React.FC<EmptyProps> = () => {
     (primaryProject?.activeVersionId
       ? versions.find((version) => version.id === primaryProject.activeVersionId)
       : null) ?? null
-  const activeArtAssetId =
-    activeArtVersion?.references.find((reference) => reference.isPrimary)?.assetId ??
-    activeArtVersion?.references[0]?.assetId ??
-    null
+  const activeArtAssetId = activeArtVersion?.artworkAssetId ?? null
   const referenceCount = workspace?.latestSubmission?.materials.length ?? 0
   const promptVersionCount = workspace?.versions.length ?? 0
   const justCreated =

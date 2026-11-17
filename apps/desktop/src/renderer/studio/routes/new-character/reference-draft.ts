@@ -8,7 +8,6 @@ export interface CharacterReferenceDraft {
   role: MaterialRole
   strength: ReferenceStrength
   note: string
-  isPrimary: boolean
 }
 
 const STRENGTH_WEIGHTS: Record<ReferenceStrength, number> = {
@@ -30,31 +29,5 @@ export function weightToStrength(weight: number): ReferenceStrength {
 export function normalizeCharacterReferences(
   references: CharacterReferenceDraft[]
 ): CharacterReferenceDraft[] {
-  if (references.length === 0) return []
-
-  const primaryIndex = Math.max(
-    0,
-    references.findIndex((reference) => reference.isPrimary)
-  )
-  const normalized = references.map((reference, index) => ({
-    ...reference,
-    isPrimary: index === primaryIndex
-  }))
-
-  return [
-    ...normalized.filter((reference) => reference.isPrimary),
-    ...normalized.filter((reference) => !reference.isPrimary)
-  ]
-}
-
-export function setPrimaryReference(
-  references: CharacterReferenceDraft[],
-  primaryId: string
-): CharacterReferenceDraft[] {
-  return normalizeCharacterReferences(
-    references.map((reference) => ({
-      ...reference,
-      isPrimary: reference.id === primaryId
-    }))
-  )
+  return [...references]
 }

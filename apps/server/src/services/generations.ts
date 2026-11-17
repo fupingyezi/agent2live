@@ -17,13 +17,12 @@ import {
 } from './provider-diagnostics'
 import { withEvents } from './events-buffer'
 import { compilePrompt } from '../prompt/compile'
-import { foldedReferenceInstruction, generationRequestSchema, planReferences } from '../generation/request'
+import { generationRequestSchema, planReferences } from '../generation/request'
 import type { GenerationRequest, PreparedGeneration } from '../generation/request'
 import type { AssetService } from './assets'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
 import type { EventStore } from '../events/store'
-import type { PromptSubmissionRepository } from './prompt-submissions'
 import type { ProviderConnectionService } from './provider-connections'
 import type { ProviderInvocationService } from './provider-invocations'
 import type { ProviderRegistry } from './provider-registry'
@@ -38,7 +37,6 @@ export interface GenerationServiceDeps {
   clock: Clock
   projects: ProjectService
   versions: PromptVersionService
-  submissions: PromptSubmissionRepository
   artVersions: ArtVersionService
   assets: AssetService
   connections: ProviderConnectionService
@@ -191,61 +189,27 @@ export class GenerationService {
         limit: image.maxPromptChars
       })
     }
-    const submission = this.deps.submissions.get(projectId, version.inputSubmissionId)
-    const activeArt = this.deps.artVersions.active(projectId)
-    const activeReferences =
-      activeArt?.references.map((reference) => ({
-        assetId: reference.assetId,
-        role: reference.role,
-        note: reference.note,
-        weight: reference.weight,
-        sortOrder: reference.sortOrder,
-        isPrimary: reference.isPrimary
-      })) ?? []
-    const promptMaterials = [...submission.materials]
-      .sort((left, right) => left.sortOrder - right.sortOrder || left.assetId.localeCompare(right.assetId))
-      .map((material) => ({
-        assetId: material.assetId,
-        role: material.role,
-        note: material.note,
-        weight: material.weight
-      }))
+    const baseArtVersionId = input.baseArtVersionId ?? null
+    if (baseArtVersionId !== null) {
+      this.deps.artVersions.get(projectId, baseArtVersionId)
+    }
     const referencePlan = planReferences({
-      activeReferences,
-      promptMaterials,
+      references: version.references,
       limit: image.maxReferenceImages
     })
     for (const reference of referencePlan.requested) {
       this.deps.assets.getAsset(reference.assetId)
     }
-    const folded = referencePlan.requested.filter((reference) =>
-      referencePlan.foldedAssetIds.includes(reference.assetId)
-    )
-    const foldedText = foldedReferenceInstruction(folded)
-    const prompt = foldedText === '' ? compiled.prompt : `${compiled.prompt}\n\n${foldedText}`
-    if (prompt.length > image.maxPromptChars) {
-      throw new AppError('PROMPT_LENGTH_EXCEEDS_LIMIT', {
-        length: prompt.length,
-        limit: image.maxPromptChars
-      })
-    }
-    const warnings = [
-      ...new Set([
-        ...compiled.warnings,
-        ...referencePlan.warnings,
-        ...(referencePlan.duplicateMaterialAssetIds.length > 0 ? ['prompt_material_duplicate_asset'] : [])
-      ])
-    ]
+    const warnings = [...new Set([...compiled.warnings, ...referencePlan.warnings])]
 
     return {
       artProjectId: projectId,
       promptVersionId: version.id,
-      baseArtVersionId: activeArt?.id ?? null,
+      baseArtVersionId,
       providerConnectionId: connection.id,
       promptContentHash: version.contentHash,
-      compiled: { ...compiled, prompt, promptLength: prompt.length, warnings },
+      compiled: { ...compiled, warnings },
       referenceAssetIds: referencePlan.sentAssetIds,
-      primaryReferenceAssetId: referencePlan.primaryAssetId,
       references: referencePlan,
       count: input.count,
       size,
@@ -300,7 +264,6 @@ export class GenerationService {
           referenceCount: request.referenceAssetIds.length,
           referenceMode: request.references.mode,
           referenceSetHash: request.references.fingerprint,
-          referenceFoldedCount: request.references.foldedAssetIds.length,
           referenceDroppedCount: request.references.droppedAssetIds.length
         }
       })

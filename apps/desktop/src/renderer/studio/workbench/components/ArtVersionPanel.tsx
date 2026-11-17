@@ -25,8 +25,6 @@ import {
   StatusPill
 } from '@agent2live/design-system'
 
-import { ReferenceSetEditor } from './ReferenceSetEditor'
-
 import type { ForkSource } from './ForkDialog'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -89,7 +87,6 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
   const [confirmActivate, setConfirmActivate] = useState(false)
 
   const active = artVersions.find((version) => version.id === project.activeVersionId) ?? null
-  const selectedPrimary = selected?.references.find((reference) => reference.isPrimary) ?? null
   const promptById = new Map(promptVersions.map((version) => [version.id, version]))
 
   const invalidate = (): Promise<unknown> =>
@@ -132,12 +129,6 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
     }
   })
 
-  const handleMutated = async (mutation: ArtVersionMutationDto): Promise<void> => {
-    setSelectedId(mutation.artVersion.id)
-    onMutated(mutation)
-    await invalidate()
-  }
-
   const mutationError = errorMessage(manualMutation.error) ?? errorMessage(activateMutation.error)
 
   return (
@@ -163,7 +154,7 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
       {selected ? (
         <>
           <div className="art-version-detail">
-            {selectedPrimary ? <ArtPreview assetId={selectedPrimary.assetId} /> : null}
+            <ArtPreview assetId={selected.artworkAssetId} />
             <div className="art-version-facts">
               <KeyValueList
                 items={[
@@ -190,10 +181,10 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
                     disabled={activateMutation.isPending}
                     onClick={() => setConfirmActivate(true)}
                   >
-                    设为当前参考
+                    设为当前立绘
                   </AsyncButton>
                 ) : (
-                  <StatusPill label="当前参考" tone="success" />
+                  <StatusPill label="当前立绘" tone="success" />
                 )}
                 <Button
                   type="button"
@@ -225,15 +216,6 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
               </Select>
             </Field>
           ) : null}
-
-          <ReferenceSetEditor
-            project={project}
-            version={selected}
-            disabled={activateMutation.isPending || manualMutation.isPending}
-            onMutated={(mutation) => {
-              void handleMutated(mutation)
-            }}
-          />
         </>
       ) : (
         <EmptyState title="还没有美术版本" description="生成候选或手工上传后会出现在这里。" />
@@ -260,7 +242,7 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
       <Dialog
         open={manualDialogOpen}
         title="手工上传立绘"
-        description="上传后会创建不可变 ArtVersion 并设为当前参考。"
+        description="上传后会创建不可变 ArtVersion 并设为当前立绘。"
         onOpenChange={(open) => {
           if (!open && !manualMutation.isPending) setManualDialogOpen(false)
         }}
@@ -316,7 +298,7 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
 
       <ConfirmDialog
         open={confirmActivate}
-        title={`把美术 v${selected?.versionNumber ?? ''} 设为当前参考？`}
+        title={`把美术 v${selected?.versionNumber ?? ''} 设为当前立绘？`}
         confirmLabel="切换"
         busy={activateMutation.isPending}
         onCancel={() => setConfirmActivate(false)}
@@ -324,7 +306,7 @@ export const ArtVersionPanel: React.FC<ArtVersionPanelProps> = ({
           if (selected) activateMutation.mutate(selected)
         }}
       >
-        <p>下一次生成会以该版本作为主参考。历史版本不会被删除。</p>
+        <p>只会切换当前立绘指针；当前 PromptVersion 和它的参考图不会改变。</p>
       </ConfirmDialog>
     </section>
   )

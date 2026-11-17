@@ -61,11 +61,7 @@ const ArtVersionNode: React.FC<ArtVersionNodeProps> = ({
   selected,
   onSelect
 }) => {
-  const assetId =
-    version.references.find((reference) => reference.isPrimary)?.assetId ??
-    version.references[0]?.assetId ??
-    null
-  const { url } = useAssetUrl(assetId)
+  const { url } = useAssetUrl(version.artworkAssetId)
   const active = version.id === project.activeVersionId
 
   return (

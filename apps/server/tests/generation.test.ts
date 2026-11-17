@@ -52,11 +52,21 @@ async function committedPrompt(ctx: Ctx, options: { materials?: number } = {}) {
     submission: { id: string; materials: Array<{ assetId: string }> }
     draft: { id: string; rowVersion: number }
   }>()
+  const state = specWithAsset(inputBody.submission.materials[0]!.assetId) as {
+    materialRefs: Array<Record<string, unknown>>
+  }
+  state.materialRefs = materials.map((material, index) => ({
+    assetId: inputBody.submission.materials[index]!.assetId,
+    role: material.role,
+    note: material.note,
+    weight: material.weight,
+    locked: material.locked
+  }))
   const saved = await ctx.app.inject({
     method: 'PATCH',
     url: `/api/v1/art-projects/${project.id}/prompt-drafts/${inputBody.draft.id}`,
     headers: { ...ctx.auth, 'if-match': `"${inputBody.draft.rowVersion}"` },
-    payload: { state: specWithAsset(inputBody.submission.materials[0]!.assetId) }
+    payload: { state }
   })
   expect(saved.statusCode).toBe(200)
   const draft = saved.json<{ rowVersion: number }>()
@@ -108,11 +118,11 @@ async function mockImageConnection(ctx: Ctx, overrides: Record<string, unknown> 
   return response.json<{ id: string }>()
 }
 
-function seedActiveArtVersion(
+function seedArtVersion(
   ctx: Ctx,
   projectId: string,
   promptVersionId: string,
-  assetIds: string[]
+  artworkAssetId: string
 ): string {
   const now = ctx.clock.now()
   const versionId = newId('artVersion')
@@ -120,27 +130,11 @@ function seedActiveArtVersion(
     .prepare(
       `insert into art_versions
      (id, art_project_id, parent_version_id, origin_version_id, prompt_version_id,
-      source_json, validation_json, canvas_transform_json, content_hash, version_number, created_at)
-     values (?, ?, null, ?, ?, '{}', '{}', '{}', ?, 1, ?)`
+      artwork_asset_id, generation_job_id, source_kind, source_json, validation_json,
+      canvas_transform_json, content_hash, version_number, created_at)
+     values (?, ?, null, ?, ?, ?, null, 'manual_upload', '{}', '{}', '{}', ?, 1, ?)`
     )
-    .run(versionId, projectId, versionId, promptVersionId, hashCanonical({ versionId }), now)
-  const insertLink = ctx.db.prepare(
-    `insert into asset_links
-     (id, asset_id, owner_type, owner_id, role, note, weight, sort_order, is_primary, locked, created_at)
-     values (?, ?, 'art_version', ?, ?, ?, 1, ?, ?, 0, ?)`
-  )
-  for (const [index, assetId] of assetIds.entries()) {
-    insertLink.run(
-      newId('assetLink'),
-      assetId,
-      versionId,
-      index === 0 ? 'identity_reference' : 'style_reference',
-      index === 0 ? '主参考' : `辅参考${index}`,
-      index,
-      index === 0 ? 1 : 0,
-      now
-    )
-  }
+    .run(versionId, projectId, versionId, promptVersionId, artworkAssetId, hashCanonical({ versionId }), now)
   ctx.db
     .prepare(
       `update art_projects
@@ -183,7 +177,7 @@ describe('generation jobs', () => {
       expect(createdBody.referenceAssetIds).toHaveLength(1)
       expect(createdBody.references.mode).toBe('full')
       expect(createdBody.references.requested).toHaveLength(1)
-      expect(createdBody.references.requested[0]!.source).toBe('prompt_material')
+      expect(createdBody.references.requested[0]!.source).toBe('prompt_version')
       expect(createdBody.references.fingerprint).toHaveLength(64)
       await ctx.services.jobs.tick()
 
@@ -314,11 +308,11 @@ describe('generation jobs', () => {
     }
   })
 
-  it('freezes the full active reference set and reports budget truncation', async () => {
+  it('uses PromptVersion references and records an explicit base ArtVersion', async () => {
     const ctx = await createTestApp()
     try {
       const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 3 })
-      const activeVersionId = seedActiveArtVersion(ctx, project.id, version.id, materialAssetIds)
+      const baseArtVersionId = seedArtVersion(ctx, project.id, version.id, materialAssetIds[2]!)
       const connection = await mockImageConnection(ctx, { maxReferenceImages: 2 })
       const created = await ctx.app.inject({
         method: 'POST',
@@ -326,6 +320,7 @@ describe('generation jobs', () => {
         headers: { ...ctx.auth, 'idempotency-key': 'generation-key-0005' },
         payload: {
           promptVersionId: version.id,
+          baseArtVersionId,
           providerConnectionId: connection.id,
           count: 1,
           size: '512x896'
@@ -338,7 +333,6 @@ describe('generation jobs', () => {
         referenceAssetIds: string[]
         references: {
           mode: string
-          primaryAssetId: string
           requested: Array<{ assetId: string; source: string; sortOrder: number }>
           sentAssetIds: string[]
           droppedAssetIds: string[]
@@ -346,12 +340,11 @@ describe('generation jobs', () => {
           fingerprint: string
         }
       }>()
-      expect(body.baseArtVersionId).toBe(activeVersionId)
+      expect(body.baseArtVersionId).toBe(baseArtVersionId)
       expect(body.referenceAssetIds).toEqual(materialAssetIds.slice(0, 2))
       expect(body.references.mode).toBe('truncated')
-      expect(body.references.primaryAssetId).toBe(materialAssetIds[0])
       expect(body.references.requested.map((reference) => reference.assetId)).toEqual(materialAssetIds)
-      expect(body.references.requested.every((reference) => reference.source === 'art_version')).toBe(true)
+      expect(body.references.requested.every((reference) => reference.source === 'prompt_version')).toBe(true)
       expect(body.references.sentAssetIds).toEqual(materialAssetIds.slice(0, 2))
       expect(body.references.droppedAssetIds).toEqual([materialAssetIds[2]])
       expect(body.references.warnings).toContain('reference_budget_exceeded')
@@ -372,7 +365,7 @@ describe('generation jobs', () => {
     }
   })
 
-  it('folds auxiliary references into the frozen prompt for a single-image provider', async () => {
+  it('sends only the first reference for a single-image provider', async () => {
     const ctx = await createTestApp()
     try {
       const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 2 })
@@ -395,15 +388,15 @@ describe('generation jobs', () => {
         references: {
           mode: string
           sentAssetIds: string[]
-          foldedAssetIds: string[]
+          droppedAssetIds: string[]
           warnings: string[]
         }
       }>()
       expect(body.referenceAssetIds).toEqual([materialAssetIds[0]])
-      expect(body.references.mode).toBe('folded_single_image')
+      expect(body.references.mode).toBe('truncated')
       expect(body.references.sentAssetIds).toEqual([materialAssetIds[0]])
-      expect(body.references.foldedAssetIds).toEqual([materialAssetIds[1]])
-      expect(body.references.warnings).toContain('auxiliary_images_folded')
+      expect(body.references.droppedAssetIds).toEqual([materialAssetIds[1]])
+      expect(body.references.warnings).toContain('reference_budget_exceeded')
 
       const generation = await ctx.app.inject({
         method: 'GET',
@@ -413,14 +406,13 @@ describe('generation jobs', () => {
       const snapshot = generation.json<{
         request: {
           compiled: { prompt: string; warnings: string[] }
-          references: { requested: unknown[]; foldedAssetIds: string[] }
+          references: { requested: unknown[]; droppedAssetIds: string[] }
         }
       }>()
       expect(snapshot.request.references.requested).toHaveLength(2)
-      expect(snapshot.request.references.foldedAssetIds).toEqual([materialAssetIds[1]])
-      expect(snapshot.request.compiled.prompt).toContain('were not sent to the image model')
-      expect(snapshot.request.compiled.prompt).toContain('参考1')
-      expect(snapshot.request.compiled.warnings).toContain('auxiliary_images_folded')
+      expect(snapshot.request.references.droppedAssetIds).toEqual([materialAssetIds[1]])
+      expect(snapshot.request.compiled.prompt).not.toContain('were not sent to the image model')
+      expect(snapshot.request.compiled.warnings).toContain('reference_budget_exceeded')
 
       await ctx.services.jobs.tick()
       const finished = await ctx.app.inject({

@@ -132,16 +132,25 @@ CREATE TABLE art_versions (
   parent_version_id TEXT REFERENCES art_versions(id) ON DELETE RESTRICT,
   origin_version_id TEXT,
   prompt_version_id TEXT NOT NULL REFERENCES prompt_versions(id) ON DELETE RESTRICT,
+  artwork_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
+  generation_job_id TEXT REFERENCES generation_jobs(id) ON DELETE RESTRICT,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('generated','manual_upload','fork_seed')),
   source_json TEXT NOT NULL,
   validation_json TEXT NOT NULL,
   canvas_transform_json TEXT NOT NULL,
   content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
   version_number INTEGER NOT NULL CHECK (version_number >= 1),
   created_at INTEGER NOT NULL,
-  UNIQUE(art_project_id, version_number)
+  UNIQUE(art_project_id, version_number),
+  CHECK (
+    (source_kind = 'generated' AND generation_job_id IS NOT NULL)
+    OR (source_kind IN ('manual_upload','fork_seed') AND generation_job_id IS NULL)
+  )
 );
 CREATE INDEX ix_art_versions_project ON art_versions(art_project_id, created_at);
 CREATE INDEX ix_art_versions_parent ON art_versions(parent_version_id);
+CREATE INDEX ix_art_versions_artwork ON art_versions(artwork_asset_id);
+CREATE INDEX ix_art_versions_generation_job ON art_versions(generation_job_id);
 
 -- Immutability guards. Delete is also blocked; soft-deleted projects keep versions.
 CREATE TRIGGER trg_prompt_versions_no_update
@@ -168,14 +177,14 @@ BEGIN SELECT RAISE(ABORT, 'CHARACTER_BRIEF_IMMUTABLE'); END;
 CREATE TRIGGER trg_character_brief_versions_no_delete
 BEFORE DELETE ON character_brief_versions
 BEGIN SELECT RAISE(ABORT, 'CHARACTER_BRIEF_IMMUTABLE'); END;
-CREATE TRIGGER trg_art_asset_links_no_update
+CREATE TRIGGER trg_prompt_asset_links_no_update
 BEFORE UPDATE ON asset_links
-WHEN OLD.owner_type = 'art_version'
-BEGIN SELECT RAISE(ABORT, 'ART_VERSION_IMMUTABLE'); END;
-CREATE TRIGGER trg_art_asset_links_no_delete
+WHEN OLD.owner_type = 'prompt_version'
+BEGIN SELECT RAISE(ABORT, 'PROMPT_VERSION_IMMUTABLE'); END;
+CREATE TRIGGER trg_prompt_asset_links_no_delete
 BEFORE DELETE ON asset_links
-WHEN OLD.owner_type = 'art_version'
-BEGIN SELECT RAISE(ABORT, 'ART_VERSION_IMMUTABLE'); END;
+WHEN OLD.owner_type = 'prompt_version'
+BEGIN SELECT RAISE(ABORT, 'PROMPT_VERSION_IMMUTABLE'); END;
 
 CREATE TRIGGER trg_prompt_drafts_refs_insert
 AFTER INSERT ON prompt_drafts
@@ -210,13 +219,6 @@ BEFORE INSERT ON art_versions
 WHEN NEW.parent_version_id IS NOT NULL
  AND (SELECT art_project_id FROM art_versions WHERE id = NEW.parent_version_id) <> NEW.art_project_id
 BEGIN SELECT RAISE(ABORT, 'ART_PARENT_PROJECT_MISMATCH'); END;
-
-CREATE TRIGGER trg_art_asset_links_primary_order
-BEFORE INSERT ON asset_links
-WHEN NEW.owner_type = 'art_version'
- AND ((NEW.is_primary = 1 AND NEW.sort_order <> 0)
-   OR (NEW.is_primary = 0 AND NEW.sort_order = 0))
-BEGIN SELECT RAISE(ABORT, 'ART_REFERENCE_ORDER_INVALID'); END;
 
 CREATE TRIGGER trg_characters_active_brief_same_character
 BEFORE UPDATE OF active_brief_version_id ON characters

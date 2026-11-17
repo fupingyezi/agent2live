@@ -89,9 +89,7 @@ describe('error registry', () => {
       'CHARACTER_BRIEF_NOT_FOUND',
       'CHARACTER_BRIEF_INPUT_CONFLICT',
       'CHARACTER_BRIEF_STALE',
-      'ART_REFERENCE_SET_INVALID',
-      'ART_REFERENCE_PRIMARY_REQUIRED',
-      'ART_REFERENCE_ORDER_INVALID',
+      'PROMPT_REFERENCE_SET_INVALID',
       'PROMPT_INPUT_EMPTY',
       'PROMPT_BASE_STALE',
       'PROMPT_BLOCK_LOCKED',
@@ -154,7 +152,7 @@ describe('error registry', () => {
       category: 'conflict',
       retryable: false
     })
-    expect(getErrorDefinition('ART_REFERENCE_SET_INVALID')).toMatchObject({
+    expect(getErrorDefinition('PROMPT_REFERENCE_SET_INVALID')).toMatchObject({
       httpStatus: 422,
       category: 'validation',
       retryable: false

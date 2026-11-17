@@ -5,27 +5,6 @@ import { multipartPayload, postMetadataOnlyInput, seedProject, specWithAsset } f
 import { png } from './helpers/files'
 
 type Ctx = Awaited<ReturnType<typeof createTestApp>>
-type ReferenceView = {
-  assetId: string
-  role: string
-  note: string
-  weight: number
-  sortOrder: number
-  isPrimary: boolean
-  locked: boolean
-}
-
-function referenceTuples(references: ReferenceView[]) {
-  return references.map((reference) => [
-    reference.assetId,
-    reference.role,
-    reference.note,
-    reference.weight,
-    reference.sortOrder,
-    reference.isPrimary,
-    reference.locked
-  ])
-}
 
 async function committedPrompt(ctx: Ctx, key = 'fork-commit-0001') {
   const { project, asset } = await seedProject(ctx)
@@ -253,45 +232,19 @@ describe('project forks', () => {
       })
       expect(art.statusCode).toBe(201)
       const manual = art.json<{
-        artVersion: { id: string; references: ReferenceView[]; contentHash: string }
+        artVersion: { id: string; artworkAssetId: string; sourceKind: string; contentHash: string }
         project: { rowVersion: number }
       }>()
-      const revised = await ctx.app.inject({
-        method: 'POST',
-        url: `/api/v1/art-versions/${manual.artVersion.id}/reference-revisions`,
-        headers: {
-          ...ctx.auth,
-          'if-match': `"${manual.project.rowVersion}"`,
-          'idempotency-key': 'fork-ref-0001'
-        },
-        payload: {
-          reason: 'add',
-          references: [
-            {
-              assetId: manualAsset.id,
-              role: 'identity_reference',
-              note: '',
-              weight: 1,
-              sortOrder: 0,
-              isPrimary: true,
-              locked: false
-            },
-            {
-              assetId: auxAsset.id,
-              role: 'style_reference',
-              note: '服装',
-              weight: 1.2,
-              sortOrder: 1,
-              isPrimary: false,
-              locked: true
-            }
-          ]
-        }
+      const sourceArt = manual.artVersion
+      const sourcePromptResponse = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${project.id}/prompt-versions/${promptVersion.id}`,
+        headers: ctx.auth
       })
-      expect(revised.statusCode).toBe(201)
-      const sourceArt = revised.json<{
-        artVersion: { id: string; references: ReferenceView[]; contentHash: string }
-      }>().artVersion
+      expect(sourcePromptResponse.statusCode).toBe(200)
+      const sourcePrompt = sourcePromptResponse.json<{
+        references: Array<{ assetId: string; role: string; note: string; weight: number; locked: boolean }>
+      }>()
 
       const forked = await ctx.app.inject({
         method: 'POST',
@@ -309,13 +262,19 @@ describe('project forks', () => {
           sourceHash: string
         }
         childProject: { id: string; stage: string; activeVersionId: string; activePromptVersionId: string }
-        seedPromptVersion: { id: string; contentHash: string }
+        seedPromptVersion: {
+          id: string
+          contentHash: string
+          references: Array<{ assetId: string; role: string; note: string; weight: number; locked: boolean }>
+        }
         seedArtVersion: {
           id: string
           artProjectId: string
           versionNumber: number
           parentVersionId: string | null
-          references: ReferenceView[]
+          artworkAssetId: string
+          generationJobId: string | null
+          sourceKind: string
           contentHash: string
         }
       }>()
@@ -330,13 +289,14 @@ describe('project forks', () => {
       })
       expect(forkedBody.seedArtVersion).toMatchObject({
         versionNumber: 1,
-        parentVersionId: null
+        parentVersionId: null,
+        artworkAssetId: sourceArt.artworkAssetId,
+        generationJobId: null,
+        sourceKind: 'fork_seed'
       })
-      expect(referenceTuples(forkedBody.seedArtVersion.references)).toEqual(
-        referenceTuples(sourceArt.references)
-      )
       expect(forkedBody.seedArtVersion.contentHash).toHaveLength(64)
       expect(forkedBody.seedArtVersion.artProjectId).toBe(forkedBody.childProject.id)
+      expect(forkedBody.seedPromptVersion.references).toEqual(sourcePrompt.references)
       expect(forkedBody.fork.sourceHash).toBe(sourceArt.contentHash)
 
       const nested = await ctx.app.inject({

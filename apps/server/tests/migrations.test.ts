@@ -216,7 +216,7 @@ describe('Phase 1 migrations', () => {
     ).toThrow(/CHARACTER_BRIEF_IMMUTABLE/i)
   })
 
-  it('enforces art_version reference primary, asset, and order uniqueness', () => {
+  it('stores ordered prompt references without a primary field', () => {
     const database = fresh()
     for (const id of ['ast_01J00000000000000000000000', 'ast_01J00000000000000000000001']) {
       database
@@ -225,54 +225,53 @@ describe('Phase 1 migrations', () => {
         )
         .run(id, id.slice(-1).repeat(64), 'image/png', 1, `blobs/${id}`, '{}', 1)
     }
+    expect(
+      (database.pragma('table_info(asset_links)') as Array<{ name: string }>).map((row) => row.name)
+    ).not.toContain('is_primary')
     const insert = database.prepare(
-      'insert into asset_links (id,asset_id,owner_type,owner_id,role,weight,sort_order,is_primary,created_at) values (?,?,?,?,?,?,?,?,?)'
+      'insert into asset_links (id,asset_id,owner_type,owner_id,role,weight,sort_order,created_at) values (?,?,?,?,?,?,?,?)'
     )
     insert.run(
       'lnk_01J00000000000000000000000',
       'ast_01J00000000000000000000000',
-      'art_version',
-      'artv_01J00000000000000000000000',
+      'prompt_version',
+      'pv_01J00000000000000000000000',
       'identity_reference',
       1,
       0,
+      1
+    )
+    insert.run(
+      'lnk_01J00000000000000000000001',
+      'ast_01J00000000000000000000001',
+      'prompt_version',
+      'pv_01J00000000000000000000000',
+      'style_reference',
+      1,
       1,
       1
     )
     expect(() =>
       insert.run(
-        'lnk_01J00000000000000000000001',
+        'lnk_01J00000000000000000000002',
         'ast_01J00000000000000000000001',
-        'art_version',
-        'artv_01J00000000000000000000000',
+        'prompt_version',
+        'pv_01J00000000000000000000000',
         'style_reference',
         1,
         0,
-        1,
         1
       )
     ).toThrow(/UNIQUE/i)
-    insert.run(
-      'lnk_01J00000000000000000000002',
-      'ast_01J00000000000000000000001',
-      'art_version',
-      'artv_01J00000000000000000000000',
-      'style_reference',
-      1,
-      1,
-      0,
-      1
-    )
     expect(() =>
       insert.run(
         'lnk_01J00000000000000000000003',
         'ast_01J00000000000000000000000',
-        'art_version',
-        'artv_01J00000000000000000000000',
+        'prompt_version',
+        'pv_01J00000000000000000000000',
         'other',
         1,
-        2,
-        0,
+        1,
         1
       )
     ).toThrow(/UNIQUE/i)
@@ -284,19 +283,152 @@ describe('Phase 1 migrations', () => {
         'artv_01J00000000000000000000000',
         'other',
         1,
-        1,
         0,
         1
       )
-    ).toThrow(/UNIQUE/i)
+    ).toThrow(/CHECK/i)
     expect(() =>
       database
         .prepare('update asset_links set weight = 0.5 where id = ?')
         .run('lnk_01J00000000000000000000000')
-    ).toThrow(/ART_VERSION_IMMUTABLE/i)
+    ).toThrow(/PROMPT_VERSION_IMMUTABLE/i)
     expect(() =>
       database.prepare('delete from asset_links where id = ?').run('lnk_01J00000000000000000000000')
+    ).toThrow(/PROMPT_VERSION_IMMUTABLE/i)
+  })
+
+  it('requires an artwork and a source-consistent generation job on art versions', () => {
+    const database = fresh()
+    database
+      .prepare('insert into characters (id,title,created_at,updated_at,row_version) values (?,?,?,?,1)')
+      .run('chr_01J00000000000000000000000', 'A', 1, 1)
+    database
+      .prepare(
+        'insert into art_projects (id,character_id,title,stage,created_at,updated_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run('artp_01J00000000000000000000000', 'chr_01J00000000000000000000000', 'main', 'idea_draft', 1, 1)
+    database
+      .prepare(
+        'insert into prompt_drafts (id,art_project_id,revision,status,state_json,content_hash,created_at,updated_at,row_version) values (?,?,?,?,?,?,?,?,1)'
+      )
+      .run(
+        'pd_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        1,
+        'active',
+        '{}',
+        'a'.repeat(64),
+        1,
+        1
+      )
+    database
+      .prepare(
+        'insert into prompt_input_submissions (id,art_project_id,draft_id,revision,requirements_json,created_at,row_version) values (?,?,?,?,?,?,1)'
+      )
+      .run(
+        'pin_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pd_01J00000000000000000000000',
+        1,
+        '[]',
+        1
+      )
+    database
+      .prepare(
+        'insert into prompt_versions (id,art_project_id,input_submission_id,content_json,content_hash,version_number,created_at) values (?,?,?,?,?,?,?)'
+      )
+      .run(
+        'pv_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pin_01J00000000000000000000000',
+        '{}',
+        'a'.repeat(64),
+        1,
+        1
+      )
+    for (const id of ['ast_01J00000000000000000000000', 'ast_01J00000000000000000000001']) {
+      database
+        .prepare(
+          'insert into assets (id,sha256,media_type,byte_size,storage_key,metadata_json,created_at) values (?,?,?,?,?,?,?)'
+        )
+        .run(id, id.slice(-1).repeat(64), 'image/png', 1, `blobs/${id}`, '{}', 1)
+    }
+    database
+      .prepare(
+        'insert into jobs (id,type,status,payload_json,payload_hash,created_at,updated_at) values (?,?,?,?,?,?,?)'
+      )
+      .run('job_01J00000000000000000000000', 'image.generate', 'queued', '{}', 'b'.repeat(64), 1, 1)
+    database
+      .prepare(
+        'insert into generation_jobs (id,art_project_id,prompt_version_id,request_json,request_hash,job_id,created_at) values (?,?,?,?,?,?,?)'
+      )
+      .run(
+        'gen_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pv_01J00000000000000000000000',
+        '{}',
+        'c'.repeat(64),
+        'job_01J00000000000000000000000',
+        1
+      )
+    const insert = database.prepare(
+      `insert into art_versions
+       (id,art_project_id,prompt_version_id,artwork_asset_id,generation_job_id,source_kind,source_json,
+        validation_json,canvas_transform_json,content_hash,version_number,created_at)
+       values (?,?,?,?,?,?,?,?,?,?,?,?)`
+    )
+    expect(() =>
+      insert.run(
+        'artv_01J00000000000000000000000',
+        'artp_01J00000000000000000000000',
+        'pv_01J00000000000000000000000',
+        'ast_01J00000000000000000000000',
+        null,
+        'generated',
+        '{}',
+        '{}',
+        '{}',
+        'd'.repeat(64),
+        1,
+        1
+      )
+    ).toThrow(/CHECK/i)
+    const row = [
+      'artp_01J00000000000000000000000',
+      'pv_01J00000000000000000000000',
+      'ast_01J00000000000000000000000',
+      null,
+      'manual_upload',
+      '{}',
+      '{}',
+      '{}',
+      'd'.repeat(64),
+      1,
+      1
+    ] as const
+    insert.run('artv_01J00000000000000000000000', ...row)
+    expect(() =>
+      database
+        .prepare('update art_versions set artwork_asset_id = ? where id = ?')
+        .run('ast_01J00000000000000000000001', 'artv_01J00000000000000000000000')
     ).toThrow(/ART_VERSION_IMMUTABLE/i)
+    expect(() =>
+      database.prepare('delete from art_versions where id = ?').run('artv_01J00000000000000000000000')
+    ).toThrow(/ART_VERSION_IMMUTABLE/i)
+    insert.run(
+      'artv_01J00000000000000000000001',
+      'artp_01J00000000000000000000000',
+      'pv_01J00000000000000000000000',
+      'ast_01J00000000000000000000000',
+      'gen_01J00000000000000000000000',
+      'generated',
+      '{}',
+      '{}',
+      '{}',
+      'e'.repeat(64),
+      2,
+      1
+    )
   })
 
   it('enforces prompt draft hashes, same-project refs, and version numbers', () => {

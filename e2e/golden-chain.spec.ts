@@ -12,7 +12,7 @@ function hashRoute(page: Page): URL {
   return new URL(pageUrl.hash.slice(1), 'http://studio.local')
 }
 
-test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链路', async () => {
+test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄金链路', async () => {
   test.setTimeout(180_000)
   const studio = await launchStudio('agent2live-golden-chain-')
   try {
@@ -101,10 +101,32 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     expect(assetId).toMatch(/^ast_/)
     checks.promptInputsIngested = true
 
+    const auxAsset = await api.uploadAsset(
+      await makePng(256, 256, '#9fc7d8'),
+      'image/png',
+      'aux-reference.png'
+    )
+    expect(auxAsset.id).not.toBe(assetId)
+    const referenceState = goldenPromptState(assetId) as {
+      materialRefs: Array<{
+        assetId: string
+        role: string
+        note: string
+        weight: number
+        locked: boolean
+      }>
+    }
+    referenceState.materialRefs.push({
+      assetId: auxAsset.id,
+      role: 'style_reference',
+      note: '柔光与配色',
+      weight: 0.8,
+      locked: true
+    })
     const savedDraft = await api.savePromptDraft(
       projectId!,
       promptInput.draft.id,
-      goldenPromptState(assetId),
+      referenceState,
       promptInput.draft.rowVersion
     )
     const committed = await api.commitPromptDraft(projectId!, savedDraft.id, savedDraft.rowVersion)
@@ -112,7 +134,10 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     expect(committed.version.artProjectId).toBe(projectId)
     expect(committed.project.activePromptVersionId).toBe(committed.version.id)
     expect(committed.project.activeVersionId).toBeNull()
+    expect(committed.version.references.map((reference) => reference.assetId)).toEqual([assetId, auxAsset.id])
+    expect((await api.getArtVersions(projectId!)).items).toHaveLength(0)
     checks.draftSavedAndCommitted = true
+    checks.referenceRevisionCreated = true
 
     const provider = await api.createMockImageProvider()
     expect(provider.kind).toBe('image')
@@ -146,12 +171,10 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     expect(firstArtVersion.versionNumber).toBe(1)
     expect(firstArtVersion.parentVersionId).toBeNull()
     expect(firstArtVersion.originVersionId).toBe(firstArtVersion.id)
-    expect(firstArtVersion.references).toHaveLength(1)
-    expect(firstArtVersion.references[0]).toMatchObject({
-      assetId: candidate!.assetId,
-      isPrimary: true,
-      sortOrder: 0
-    })
+    expect(firstArtVersion.artworkAssetId).toBe(candidate!.assetId)
+    expect(firstArtVersion.generationJobId).toBe(created.generationId)
+    expect(firstArtVersion.sourceKind).toBe('generated')
+    expect('references' in firstArtVersion).toBe(false)
     expect(firstArtVersion.source).toMatchObject({
       kind: 'generation_candidate',
       candidateId: candidate!.id
@@ -173,111 +196,32 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     expect(secondArtVersion.parentVersionId).toBe(firstArtVersion.id)
     expect(secondArtVersion.originVersionId).toBe(firstArtVersion.id)
     expect(secondArtVersion.source).toMatchObject({ kind: 'manual_upload' })
-    expect(secondArtVersion.references).toHaveLength(1)
-    expect(secondArtVersion.references[0]).toMatchObject({
-      assetId: manualAsset.id,
-      isPrimary: true,
-      sortOrder: 0
-    })
+    expect(secondArtVersion.artworkAssetId).toBe(manualAsset.id)
+    expect(secondArtVersion.generationJobId).toBeNull()
+    expect(secondArtVersion.sourceKind).toBe('manual_upload')
+    expect('references' in secondArtVersion).toBe(false)
     expect(manual.project.activeVersionId).toBe(secondArtVersion.id)
     checks.manualVersionCreated = true
 
-    const auxAssetBytes = await makePng(256, 256, '#9fc7d8')
-    const auxAsset = await api.uploadAsset(auxAssetBytes, 'image/png', 'aux-reference.png')
-    expect(auxAsset.id).not.toBe(manualAsset.id)
-    expect(auxAsset.id).not.toBe(assetId)
-
-    const revised = await api.reviseArtVersionReferences({
-      versionId: secondArtVersion.id,
-      reason: 'add',
-      references: [
-        {
-          assetId: manualAsset.id,
-          role: 'identity_reference',
-          note: '主参考：脸型与发色',
-          weight: 1,
-          sortOrder: 0,
-          isPrimary: true,
-          locked: false
-        },
-        {
-          assetId: auxAsset.id,
-          role: 'style_reference',
-          note: '柔光与配色',
-          weight: 0.8,
-          sortOrder: 1,
-          isPrimary: false,
-          locked: true
-        }
-      ],
-      expectedProjectRowVersion: manual.project.rowVersion
-    })
-    const thirdArtVersion = revised.artVersion
-    expect(thirdArtVersion.versionNumber).toBe(3)
-    expect(thirdArtVersion.parentVersionId).toBe(secondArtVersion.id)
-    expect(thirdArtVersion.originVersionId).toBe(firstArtVersion.id)
-    expect(
-      thirdArtVersion.references.map((reference) => [
-        reference.assetId,
-        reference.role,
-        reference.sortOrder,
-        reference.isPrimary,
-        reference.locked
-      ])
-    ).toEqual([
-      [manualAsset.id, 'identity_reference', 0, true, false],
-      [auxAsset.id, 'style_reference', 1, false, true]
-    ])
-    expect(thirdArtVersion.references.map((reference) => reference.assetId)).toEqual([
-      manualAsset.id,
-      auxAsset.id
-    ])
-    expect(new Set(thirdArtVersion.references.map((reference) => reference.assetId)).size).toBe(
-      thirdArtVersion.references.length
-    )
-    expect(revised.project.activeVersionId).toBe(thirdArtVersion.id)
-    expect(revised.project.rowVersion).toBe(manual.project.rowVersion + 1)
-    const snapshot = await api.getArtVersions(projectId!)
-    expect(snapshot.items.map((item) => item.versionNumber)).toEqual([3, 2, 1])
-    expect(snapshot.items.find((item) => item.id === secondArtVersion.id)!.references).toHaveLength(1)
-    expect(snapshot.items.find((item) => item.id === thirdArtVersion.id)!.references).toHaveLength(2)
-    checks.referenceRevisionCreated = true
-
     const fork = await api.forkFromArtVersion({
-      versionId: thirdArtVersion.id,
-      title: '默认造型 · 多参考分支',
-      branchLabel: '多参考分支',
-      description: '从 2 张有序参考图的不可变快照创建'
+      versionId: secondArtVersion.id,
+      title: '默认造型 · 输入分支',
+      branchLabel: '输入分支',
+      description: '从当前 PromptVersion 的完整输入创建'
     })
     expect(fork.fork.sourceKind).toBe('art_version')
-    expect(fork.fork.sourceVersionId).toBe(thirdArtVersion.id)
-    expect(fork.fork.sourceHash).toBe(thirdArtVersion.contentHash)
+    expect(fork.fork.sourceVersionId).toBe(secondArtVersion.id)
+    expect(fork.fork.sourceHash).toBe(secondArtVersion.contentHash)
     expect(fork.fork.parentProjectId).toBe(projectId)
     expect(fork.childProject.characterId).toBe(characterId)
     expect(fork.seedArtVersion).not.toBeNull()
     expect(fork.seedArtVersion!.id).toBe(fork.childProject.activeVersionId!)
     expect(fork.seedArtVersion!.versionNumber).toBe(1)
     expect(fork.seedArtVersion!.parentVersionId).toBeNull()
-    expect(
-      fork.seedArtVersion!.references.map((reference) => [
-        reference.assetId,
-        reference.role,
-        reference.sortOrder,
-        reference.isPrimary,
-        reference.locked
-      ])
-    ).toEqual(
-      thirdArtVersion.references.map((reference) => [
-        reference.assetId,
-        reference.role,
-        reference.sortOrder,
-        reference.isPrimary,
-        reference.locked
-      ])
-    )
-    const copiedPrimary = fork.seedArtVersion!.references.filter((reference) => reference.isPrimary)
-    expect(copiedPrimary).toHaveLength(1)
-    expect(copiedPrimary[0]).toMatchObject({ assetId: manualAsset.id, sortOrder: 0 })
+    expect(fork.seedArtVersion!.artworkAssetId).toBe(secondArtVersion.artworkAssetId)
+    expect(fork.seedArtVersion!.generationJobId).toBeNull()
+    expect(fork.seedArtVersion!.sourceKind).toBe('fork_seed')
+    expect(fork.seedPromptVersion.references).toEqual(committed.version.references)
     expect(fork.childProject.id).not.toBe(projectId)
     checks.artVersionForked = true
     checks.forkCopiedOrderedReferences = true
@@ -286,13 +230,13 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
       projectId: projectId!,
       versionId: firstArtVersion.id,
       reason: 'rollback',
-      expectedProjectRowVersion: revised.project.rowVersion
+      expectedProjectRowVersion: manual.project.rowVersion
     })
     expect(rolledBack.project.activeVersionId).toBe(firstArtVersion.id)
     expect(rolledBack.artVersion.id).toBe(firstArtVersion.id)
     const versionsAfterRollback = await api.getArtVersions(projectId!)
     expect(versionsAfterRollback.activeVersionId).toBe(firstArtVersion.id)
-    expect(versionsAfterRollback.items.map((item) => item.versionNumber)).toEqual([3, 2, 1])
+    expect(versionsAfterRollback.items.map((item) => item.versionNumber)).toEqual([2, 1])
     checks.rollbackActivated = true
 
     const backupCreated = await api.createBackup(characterId)
@@ -347,7 +291,7 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     await expect(childCard).toBeVisible()
     await expect(parentCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '100')
     await expect(childCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '100')
-    await expect(childCard.getByText('分支：多参考分支')).toBeVisible()
+    await expect(childCard.getByText('分支：输入分支')).toBeVisible()
     await expect(page.locator('[data-testid="backup-panel"]')).toBeVisible()
     const backupRow = page.locator(`[data-testid="backup-row"][data-backup-id="${backup.id}"]`)
     await expect(backupRow).toBeVisible()
@@ -376,7 +320,7 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
     await expect(originBar).toBeVisible()
     await expect(originBar.locator(`code[title="${projectId}"]`)).toBeVisible()
     await expect(originBar).toContainText('美术版本')
-    await expect(originBar).toContainText('多参考分支')
+    await expect(originBar).toContainText('输入分支')
     checks.workbenchVerified = true
 
     expect(Object.values(checks).every(Boolean)).toBe(true)
@@ -399,15 +343,13 @@ test('素材到多参考 ArtVersion、回退、Fork 与备份的完整黄金链�
       candidateId: candidate!.id,
       firstArtVersionId: firstArtVersion.id,
       secondArtVersionId: secondArtVersion.id,
-      thirdArtVersionId: thirdArtVersion.id,
       auxiliaryAssetId: auxAsset.id,
-      referenceRevisionReason: 'add',
-      referenceCount: thirdArtVersion.references.length,
+      referenceCount: committed.version.references.length,
       activeAfterRollback: firstArtVersion.id,
       forkId: fork.fork.id,
       forkSourceHash: fork.fork.sourceHash,
       seedArtVersionId: fork.seedArtVersion!.id,
-      seedReferenceCount: fork.seedArtVersion!.references.length,
+      seedReferenceCount: fork.seedPromptVersion.references.length,
       backupId: backup.id,
       backupJobId: backupCreated.jobId,
       backupArtifactPath: zipRelativePath,

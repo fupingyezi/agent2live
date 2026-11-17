@@ -3,22 +3,14 @@ import type {
   ArtProjectDto,
   ArtVersionDto,
   PromptDraftDto,
-  PromptInputMaterialDto,
   PromptRequirement,
   PromptSpecV2,
   PromptVersionDto
 } from '@studio/api'
-import {
-  AsyncButton,
-  Button,
-  ConfirmDialog,
-  Field,
-  InlineNotice,
-  StatusPill,
-  Textarea
-} from '@agent2live/design-system'
+import { AsyncButton, Button, Field, InlineNotice, StatusPill, Textarea } from '@agent2live/design-system'
 import { useWorkbenchStore } from '../store'
 import { PromptBlockList } from './PromptBlockList'
+import { PromptReferenceEditor } from './PromptReferenceEditor'
 
 export interface UnifiedPromptInspectorProps {
   project: ArtProjectDto
@@ -27,11 +19,9 @@ export interface UnifiedPromptInspectorProps {
   draft: PromptDraftDto | null
   spec: PromptSpecV2 | null
   requirements: PromptRequirement[]
-  materials: PromptInputMaterialDto[]
   dirty: boolean
   onSave(): Promise<{ versionNumber: number; created: boolean }>
   onGenerate(): Promise<{ versionNumber: number; created: boolean }>
-  onRestore(): Promise<void>
   onOpenAi(): void
 }
 
@@ -46,25 +36,22 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
   draft,
   spec,
   requirements,
-  materials,
   dirty,
   onSave,
   onGenerate,
-  onRestore,
   onOpenAi
 }) => {
   const updateFullPrompt = useWorkbenchStore((state) => state.updateFullPrompt)
+  const updateMaterialRefs = useWorkbenchStore((state) => state.updateMaterialRefs)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const [confirmRestore, setConfirmRestore] = useState(false)
-  const [restoring, setRestoring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveResult, setSaveResult] = useState<{ versionNumber: number; created: boolean } | null>(null)
   const historical =
     (selectedArtVersion !== null && selectedArtVersion.id !== project.activeVersionId) ||
     (selectedPromptVersion !== null && selectedPromptVersion.id !== project.activePromptVersionId)
   const editable = !historical && draft !== null
-  const canGenerate = !historical && selectedPromptVersion !== null
+  const canGenerate = selectedPromptVersion !== null
 
   const save = async (): Promise<void> => {
     setSaving(true)
@@ -87,20 +74,6 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
       setError(errorMessage(reason))
     } finally {
       setGenerating(false)
-    }
-  }
-
-  const restore = async (): Promise<void> => {
-    setRestoring(true)
-    setError(null)
-    try {
-      await onRestore()
-      setConfirmRestore(false)
-    } catch (reason) {
-      setError(errorMessage(reason))
-      setConfirmRestore(false)
-    } finally {
-      setRestoring(false)
     }
   }
 
@@ -163,11 +136,18 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
                   <span>颗粒化提示词</span>
                   <small>{spec.blocks.length + spec.negativeBlocks.length} 块</small>
                 </summary>
-                <PromptBlockList
-                  spec={spec}
-                  requirements={requirements}
-                  materials={materials}
+                <PromptBlockList spec={spec} requirements={requirements} disabled={!editable} />
+              </details>
+
+              <details className="workbench-granular-editor" open>
+                <summary>
+                  <span>参考图</span>
+                  <small>{spec.materialRefs.length} 张</small>
+                </summary>
+                <PromptReferenceEditor
+                  references={spec.materialRefs}
                   disabled={!editable}
+                  onChange={updateMaterialRefs}
                 />
               </details>
             </>
@@ -212,21 +192,10 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
           >
             AI 优化
           </AsyncButton>
-          {historical ? (
-            <button
-              type="button"
-              className="workbench-prompt-restore"
-              disabled={restoring || saving}
-              onClick={() => setConfirmRestore(true)}
-            >
-              还原此版本
-            </button>
-          ) : null}
           <button
             type="button"
             className="workbench-prompt-generate"
             disabled={!canGenerate || saving || generating}
-            title={historical ? '历史版本需先还原' : undefined}
             onClick={() => {
               void generate()
             }}
@@ -235,21 +204,6 @@ export const UnifiedPromptInspector: React.FC<UnifiedPromptInspectorProps> = ({
           </button>
         </footer>
       </aside>
-      <ConfirmDialog
-        open={confirmRestore}
-        title="还原此版本？"
-        confirmLabel="还原此版本"
-        busy={restoring}
-        onCancel={() => setConfirmRestore(false)}
-        onConfirm={() => {
-          void restore()
-        }}
-      >
-        <p>
-          会复制旧版本 v{selectedArtVersion?.versionNumber ?? ''} 的参考图、立绘和提示词来源，创建一个新的
-          active 美术版本。旧的 v{selectedArtVersion?.versionNumber ?? ''} 不会被修改。
-        </p>
-      </ConfirmDialog>
     </>
   )
 }

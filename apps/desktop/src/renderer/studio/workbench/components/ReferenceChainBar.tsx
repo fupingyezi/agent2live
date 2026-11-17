@@ -1,5 +1,5 @@
 import React from 'react'
-import type { ArtProjectDto, ArtVersionDto, PromptVersionSummaryDto } from '@studio/api'
+import type { ArtProjectDto, PromptVersionDto } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
 import { shortId } from '@studio/format'
 import { StatusPill } from '@agent2live/design-system'
@@ -25,35 +25,32 @@ const ReferenceThumb: React.FC<ReferenceThumbProps> = ({ assetId, label }) => {
 
 export interface ReferenceChainBarProps {
   project: ArtProjectDto
-  artVersions: ArtVersionDto[]
-  activePromptVersion: PromptVersionSummaryDto | null
+  activePromptVersion: PromptVersionDto | null
 }
 
-export const ReferenceChainBar: React.FC<ReferenceChainBarProps> = ({
-  project,
-  artVersions,
-  activePromptVersion
-}) => {
-  const active = artVersions.find((version) => version.id === project.activeVersionId) ?? null
-  const primary = active?.references.find((reference) => reference.isPrimary) ?? null
+export const ReferenceChainBar: React.FC<ReferenceChainBarProps> = ({ project, activePromptVersion }) => {
+  const firstReference = activePromptVersion?.references[0] ?? null
   return (
     <section className="reference-chain" data-testid="reference-chain" aria-label="参考链">
       <div className="reference-chain-title">
         <span className="eyebrow">参考链</span>
-        <strong>下一次生成的主参考</strong>
+        <strong>下一次生成的参考顺序</strong>
       </div>
       <div className="reference-chain-flow">
-        {active && primary ? (
+        {firstReference ? (
           <>
-            <ReferenceThumb assetId={primary.assetId} label={`美术 v${active.versionNumber}`} />
+            <ReferenceThumb
+              assetId={firstReference.assetId}
+              label={`提示词 v${activePromptVersion!.versionNumber} 第 1 张`}
+            />
             <span className="chain-arrow" aria-hidden="true">
               →
             </span>
           </>
         ) : (
           <div className="reference-empty">
-            <span>尚无 active ArtVersion</span>
-            <small>首轮生成将只使用素材</small>
+            <span>当前提示词没有参考图</span>
+            <small>生成将按文生图处理</small>
           </div>
         )}
         <div className="reference-prompt">

@@ -60,7 +60,7 @@ async function createMockProvider(page: Page, kind: 'chat' | 'image'): Promise<v
   )
 }
 
-test('submits materials, saves a draft, commits a prompt version, and survives reload', async () => {
+test('reference version edits create only a PromptVersion and survive reload', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-workbench-'))
   const uploadDir = mkdtempSync(join(tmpdir(), 'agent2live-workbench-upload-'))
   const imagePath = join(uploadDir, 'identity.png')
@@ -200,29 +200,41 @@ test('submits materials, saves a draft, commits a prompt version, and survives r
     await manualDialog.getByLabel('选择手工美术图片').setInputFiles(imagePath)
     await manualDialog.getByRole('button', { name: '创建并激活', exact: true }).click()
 
-    const referenceEditor = artPanel.locator('[data-testid="reference-set-editor"]')
-    await expect(referenceEditor).toBeVisible({ timeout: 20_000 })
-    await expect(referenceEditor.getByTestId('reference-row')).toHaveCount(1)
     await expect(artPanel).toContainText('active v2')
+    await studio.keyboard.press('Escape')
+    await expect(studio.getByRole('dialog', { name: '版本操作' })).toHaveCount(0)
 
-    await referenceEditor.getByLabel('添加参考图片').setInputFiles(auxiliaryPath)
-    await expect(referenceEditor.getByTestId('reference-row')).toHaveCount(2, {
+    const promptReferences = promptEditor.locator('[data-testid="prompt-reference-editor"]')
+    await expect(promptReferences).toBeVisible({ timeout: 20_000 })
+    await expect(promptReferences.getByTestId('reference-row')).toHaveCount(1)
+    await promptReferences.getByLabel('添加参考图片').setInputFiles(auxiliaryPath)
+    await expect(promptReferences.getByTestId('reference-row')).toHaveCount(2, {
       timeout: 20_000
     })
-    await referenceEditor.getByRole('button', { name: '保存为新版本', exact: true }).click()
-
-    await expect(artPanel).toContainText('active v3', { timeout: 20_000 })
-    await expect(referenceEditor.getByTestId('reference-row')).toHaveCount(2)
-    await expect(referenceEditor.getByTestId('reference-row').first()).toContainText('主参考')
+    await promptEditor.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(promptEditor).toContainText('已创建 v4', { timeout: 20_000 })
+    await expect(promptReferences.getByTestId('reference-row')).toHaveCount(2)
+    await expect(studio.locator('[data-testid="workbench-version-node"]')).toHaveCount(2)
+    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
+    await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v2')
+    await studio.keyboard.press('Escape')
+    await expect(studio.getByRole('dialog', { name: '版本操作' })).toHaveCount(0)
 
     await studio.reload()
     await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
     await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await studio.getByRole('button', { name: '版本操作', exact: true }).click()
     await expect(studio.getByTestId('version-graph')).toContainText('v1')
-    await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v3')
+    await expect(studio.getByTestId('version-graph')).toContainText('v2')
+    await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v2')
+    await studio.keyboard.press('Escape')
+    await expect(studio.getByRole('dialog', { name: '版本操作' })).toHaveCount(0)
+    await studio
+      .locator('[data-testid="workbench-prompt-version-node"]')
+      .filter({ hasText: '提示词 v4' })
+      .click()
     await expect(
-      studio.locator('[data-testid="reference-set-editor"]').getByTestId('reference-row')
+      studio.locator('[data-testid="prompt-reference-editor"]').getByTestId('reference-row')
     ).toHaveCount(2)
   } finally {
     await app.close()
@@ -575,16 +587,16 @@ test('no page tail keeps the workbench in one frame', async () => {
   }
 })
 
-test('restore historical version creates a new active art version', async () => {
+test('same prompt serves multiple artwork versions and historical artwork activates safely', async () => {
   test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-workbench-restore-')
+  const studio = await launchStudio('agent2live-workbench-historical-art-')
 
   try {
     const api = new ApiClient(studio.endpoint)
     const character = await api.createCharacter('岫', '在雪线附近巡山的年轻向导。')
-    const project = await api.createProject(character.id, '默认造型', '用于验证历史版本还原。')
+    const project = await api.createProject(character.id, '默认造型', '用于验证历史立绘切换。')
     const input = await api.uploadPromptInput(project.id, await makePng(), {
-      filename: 'restore-reference.png'
+      filename: 'historical-art-reference.png'
     })
     const state = {
       ...goldenPromptState(input.submission.materials[0]!.assetId),
@@ -595,7 +607,7 @@ test('restore historical version creates a new active art version', async () => 
     const firstAsset = await api.uploadAsset(
       await makePng(512, 768, '#aec9d8'),
       'image/png',
-      'restore-v1.png'
+      'historical-v1.png'
     )
     const first = await api.createManualArtVersion({
       projectId: project.id,
@@ -606,7 +618,7 @@ test('restore historical version creates a new active art version', async () => 
     const secondAsset = await api.uploadAsset(
       await makePng(512, 768, '#8fa9c1'),
       'image/png',
-      'restore-v2.png'
+      'historical-v2.png'
     )
     const second = await api.createManualArtVersion({
       projectId: project.id,
@@ -614,6 +626,11 @@ test('restore historical version creates a new active art version', async () => 
       promptVersionId: committed.version.id,
       expectedProjectRowVersion: first.project.rowVersion
     })
+    const versions = await api.getArtVersions(project.id)
+    expect(versions.items.map((version) => version.promptVersionId)).toEqual([
+      committed.version.id,
+      committed.version.id
+    ])
 
     await studio.page.evaluate(
       ({ characterId, projectId }) => {
@@ -628,39 +645,35 @@ test('restore historical version creates a new active art version', async () => 
     const firstNode = studio.page.locator(
       `[data-testid="workbench-version-node"][data-version-id="${first.artVersion.id}"]`
     )
+    const secondNode = studio.page.locator(
+      `[data-testid="workbench-version-node"][data-version-id="${second.artVersion.id}"]`
+    )
     await expect(firstNode).toBeVisible()
+    await expect(secondNode).toHaveAttribute('data-active', 'true')
     await firstNode.click()
 
     const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
-    await expect(inspector.getByRole('button', { name: '生成立绘', exact: true })).toBeDisabled()
-    await inspector.getByRole('button', { name: '还原此版本', exact: true }).click()
-    const restoreDialog = studio.page.getByRole('dialog', { name: '还原此版本？' })
-    await expect(restoreDialog).toBeVisible()
-    await expect(restoreDialog).toContainText('旧的 v1 不会被修改')
-
-    const restoreResponsePromise = studio.page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname.endsWith(`/art-versions/${first.artVersion.id}/restore`)
-    )
-    await restoreDialog.getByRole('button', { name: '还原此版本', exact: true }).click()
-    const restoreResponse = await restoreResponsePromise
-    expect(restoreResponse.status()).toBe(201)
-    const restored = await restoreResponse.json()
-    expect(restored.artVersion).toMatchObject({
-      versionNumber: 3,
-      originVersionId: first.artVersion.id,
-      promptVersionId: second.artVersion.promptVersionId
-    })
-    expect(restored.project.activeVersionId).toBe(restored.artVersion.id)
-
-    const restoredNode = studio.page.locator(
-      `[data-testid="workbench-version-node"][data-version-id="${restored.artVersion.id}"]`
-    )
-    await expect(restoredNode).toBeVisible()
-    await expect(restoredNode).toHaveAttribute('data-active', 'true')
-    await expect(firstNode).toHaveAttribute('data-active', 'false')
     await expect(inspector.getByRole('button', { name: '生成立绘', exact: true })).toBeEnabled()
+
+    await studio.page.getByRole('button', { name: '版本操作', exact: true }).click()
+    const artPanel = studio.page.locator('[data-testid="art-version-panel"]')
+    await expect(artPanel).toContainText('active v2')
+    await artPanel.getByLabel('查看版本').selectOption(first.artVersion.id)
+    await artPanel.getByRole('button', { name: '设为当前立绘', exact: true }).click()
+    const activateDialog = studio.page.getByRole('dialog', { name: /设为当前立绘/ })
+    await expect(activateDialog).toContainText('不会改变')
+    await activateDialog.getByRole('button', { name: '切换', exact: true }).click()
+    await expect(artPanel).toContainText('active v1', { timeout: 20_000 })
+    await expect(firstNode).toHaveAttribute('data-active', 'true')
+    await expect(secondNode).toHaveAttribute('data-active', 'false')
+
+    const projectAfter = await api.getProject(project.id)
+    expect(projectAfter.activeVersionId).toBe(first.artVersion.id)
+    expect(projectAfter.activePromptVersionId).toBe(committed.version.id)
+    expect(versions.items.map((version) => version.artworkAssetId)).toEqual([
+      second.artVersion.artworkAssetId,
+      first.artVersion.artworkAssetId
+    ])
   } finally {
     await studio.close()
   }

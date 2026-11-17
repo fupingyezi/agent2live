@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3'
 import {
-  artVersionReferenceSetSchema,
   hashCanonical,
   newId,
   promptSpecSchema,
@@ -9,20 +8,21 @@ import {
   type ForkLinkMutationDto,
   type ForkResultDto,
   type LineageNodeDto,
-  type PatchForkInput
+  type PatchForkInput,
+  type PromptReference
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { specContentHash } from '../prompt/compile'
 import { normalizeLegacyFullPrompt } from '../prompt/full-prompt'
 import { withEvents } from './events-buffer'
-import { parseObject, type ArtVersionReferenceDto, type ArtVersionService } from './art-versions'
+import { parseObject, type ArtVersionService } from './art-versions'
 import type { AssetService } from './assets'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
 import type { EventStore } from '../events/store'
 import { loadForkLinkRow, toForkLinkDto, type ForkLinkRow } from './fork-query'
 import type { ProjectService } from './projects'
-import type { PromptVersionService } from './prompt-versions'
+import { readPromptReferences, writePromptReferences, type PromptVersionService } from './prompt-versions'
 import type { RequestIds } from './request-ids'
 
 export interface ForkServiceDeps {
@@ -61,6 +61,9 @@ interface SourceArtVersionRow {
   parent_version_id: string | null
   origin_version_id: string | null
   prompt_version_id: string
+  artwork_asset_id: string
+  generation_job_id: string | null
+  source_kind: 'generated' | 'manual_upload' | 'fork_seed'
   source_json: string
   validation_json: string
   canvas_transform_json: string
@@ -88,7 +91,6 @@ interface SourceAssetLinkRow {
   note: string | null
   weight: number
   sort_order: number
-  is_primary: number
   locked: number
   created_at: number
 }
@@ -103,10 +105,10 @@ interface ForkSource {
   projectId: string
   sourceHash: string
   prompt: SourcePromptVersionRow
+  promptRefs: PromptReference[]
   sourceSubmission: SourceSubmissionRow
   sourceLinks: SourceAssetLinkRow[]
   art: SourceArtVersionRow | null
-  artLinks: SourceAssetLinkRow[]
 }
 
 function isBranchUniqueViolation(error: unknown): boolean {
@@ -351,15 +353,7 @@ export class ForkService {
           projectId: childId,
           promptVersionId: seedPrompt.id,
           originVersionId: art.origin_version_id ?? art.id,
-          references: source.artLinks.map((link) => ({
-            assetId: link.asset_id,
-            role: link.role as ArtVersionReferenceDto['role'],
-            note: link.note ?? '',
-            weight: link.weight,
-            sortOrder: link.sort_order,
-            isPrimary: link.is_primary === 1,
-            locked: link.locked === 1
-          })),
+          artworkAssetId: art.artwork_asset_id,
           source: {
             schemaVersion: 'art-source/1',
             kind: 'fork_seed',
@@ -486,10 +480,10 @@ export class ForkService {
       projectId: prompt.art_project_id,
       sourceHash: prompt.content_hash,
       prompt,
+      promptRefs: readPromptReferences(this.deps.db, prompt.id),
       sourceSubmission: submission,
       sourceLinks: links,
-      art: null,
-      artLinks: []
+      art: null
     }
   }
 
@@ -498,28 +492,7 @@ export class ForkService {
       | SourceArtVersionRow
       | undefined
     if (!art) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'artVersion' })
-    const artLinks = this.deps.db
-      .prepare(
-        `select * from asset_links
-       where owner_type = 'art_version' and owner_id = ?
-       order by sort_order, id`
-      )
-      .all(art.id) as SourceAssetLinkRow[]
-    const referenceSet = artVersionReferenceSetSchema.safeParse(
-      artLinks.map((link) => ({
-        assetId: link.asset_id,
-        role: link.role,
-        note: link.note ?? '',
-        weight: link.weight,
-        sortOrder: link.sort_order,
-        isPrimary: link.is_primary === 1,
-        locked: link.locked === 1
-      }))
-    )
-    if (!referenceSet.success) {
-      throw new AppError('SYS_INTERNAL', { reason: 'art version reference set is invalid' })
-    }
-    for (const link of artLinks) this.deps.assets.getAsset(link.asset_id)
+    this.deps.assets.getAsset(art.artwork_asset_id)
     const promptRow = this.deps.db
       .prepare('select * from prompt_versions where id = ? and art_project_id = ?')
       .get(art.prompt_version_id, art.art_project_id) as SourcePromptVersionRow | undefined
@@ -541,10 +514,10 @@ export class ForkService {
       projectId: art.art_project_id,
       sourceHash: art.content_hash,
       prompt: promptRow,
+      promptRefs: readPromptReferences(this.deps.db, promptRow.id),
       sourceSubmission: submission,
       sourceLinks: links,
-      art,
-      artLinks
+      art
     }
   }
 
@@ -621,6 +594,7 @@ export class ForkService {
         source.prompt.content_hash,
         now
       )
+    writePromptReferences(this.deps.db, seedVersionId, source.promptRefs, now)
     return { id: seedVersionId }
   }
 }

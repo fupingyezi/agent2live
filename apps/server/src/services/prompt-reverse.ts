@@ -102,6 +102,9 @@ export class PromptReverseService {
     if (connection.kind !== 'chat' || !capabilities.chat) {
       throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
     }
+    if (state.materialRefs.length > 0 && !capabilities.chat.supportsVision) {
+      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'vision' })
+    }
     return {
       payload: {
         artProjectId: projectId,
@@ -152,10 +155,10 @@ export class PromptReverseService {
     if (!connection.enabled || connection.kind !== 'chat' || !capabilities.chat) {
       throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
     }
-    if (submission.materials.length > 0 && !capabilities.chat.supportsVision) {
+    if (base.materialRefs.length > 0 && !capabilities.chat.supportsVision) {
       throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'vision' })
     }
-    const images = submission.materials.slice(0, capabilities.chat.maxImages).map((material) => {
+    const images = base.materialRefs.slice(0, capabilities.chat.maxImages).map((material) => {
       const { asset, bytes } = this.deps.assets.openContent(material.assetId)
       return { mimeType: asset.mediaType, data: bytes }
     })

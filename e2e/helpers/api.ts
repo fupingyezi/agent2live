@@ -75,6 +75,14 @@ export interface PromptDraftDto {
   updatedAt: string
 }
 
+export interface PromptReferenceDto {
+  assetId: string
+  role: string
+  note: string
+  weight: number
+  locked: boolean
+}
+
 export interface PromptVersionDto {
   id: string
   artProjectId: string
@@ -82,6 +90,7 @@ export interface PromptVersionDto {
   parentVersionId: string | null
   inputSubmissionId: string
   state: Record<string, unknown>
+  references: PromptReferenceDto[]
   contentHash: string
   createdAt: string
 }
@@ -158,35 +167,16 @@ export interface JobDto {
   updatedAt: string
 }
 
-export interface ArtVersionReferenceDto {
-  id: string
-  assetId: string
-  role: string
-  note: string
-  weight: number
-  sortOrder: number
-  isPrimary: boolean
-  locked: boolean
-}
-
-export interface ArtReferenceInput {
-  assetId: string
-  role: string
-  note: string
-  weight: number
-  sortOrder: number
-  isPrimary: boolean
-  locked: boolean
-}
-
 export interface ArtVersionDto {
   id: string
   artProjectId: string
   versionNumber: number
+  artworkAssetId: string
+  promptVersionId: string
+  generationJobId: string | null
   parentVersionId: string | null
   originVersionId: string | null
-  promptVersionId: string
-  references: ArtVersionReferenceDto[]
+  sourceKind: 'generated' | 'manual_upload' | 'fork_seed'
   source: Record<string, unknown>
   validation: Record<string, unknown>
   canvasTransform: Record<string, unknown>
@@ -501,6 +491,7 @@ export class ApiClient {
   async createGeneration(input: {
     projectId: string
     promptVersionId: string
+    baseArtVersionId?: string | null
     providerConnectionId: string
     count?: number
     size?: string
@@ -513,6 +504,7 @@ export class ApiClient {
         headers: { 'idempotency-key': uniqueKey('generation') },
         body: {
           promptVersionId: input.promptVersionId,
+          ...(input.baseArtVersionId === undefined ? {} : { baseArtVersionId: input.baseArtVersionId }),
           providerConnectionId: input.providerConnectionId,
           count: input.count ?? 1,
           size: input.size ?? '512x896',
@@ -611,27 +603,6 @@ export class ApiClient {
             assetId: input.assetId,
             promptVersionId: input.promptVersionId
           }
-        }
-      )
-    ).body
-  }
-
-  async reviseArtVersionReferences(input: {
-    versionId: string
-    reason: 'add' | 'remove' | 'reorder' | 'metadata' | 'switch_primary'
-    references: ArtReferenceInput[]
-    expectedProjectRowVersion: number
-  }): Promise<ArtVersionMutationDto> {
-    return (
-      await this.json<ArtVersionMutationDto>(
-        'POST',
-        `/api/v1/art-versions/${encodeURIComponent(input.versionId)}/reference-revisions`,
-        {
-          headers: {
-            'if-match': `"${input.expectedProjectRowVersion}"`,
-            'idempotency-key': uniqueKey('reference-revision')
-          },
-          body: { reason: input.reason, references: input.references }
         }
       )
     ).body

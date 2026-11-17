@@ -47,7 +47,6 @@ import { findDefaultTextProvider, findDefaultVisionProvider } from '@studio/prov
 import { CharacterReferenceEditor } from './new-character/CharacterReferenceEditor'
 import {
   normalizeCharacterReferences,
-  setPrimaryReference,
   strengthToWeight,
   type CharacterReferenceDraft
 } from './new-character/reference-draft'
@@ -203,12 +202,10 @@ const ReferencePreview: React.FC<ReferencePreviewProps> = ({
       data-file-name={reference.file.name}
       data-role={reference.role}
       data-strength={reference.strength}
-      data-primary={reference.isPrimary}
     >
       <div className="new-character-reference-image">
         {url ? <img src={url} alt={reference.file.name} /> : <span>…</span>}
         <span className="new-character-reference-role">{REFERENCE_ROLE_LABELS[reference.role]}</span>
-        {reference.isPrimary ? <span className="new-character-reference-primary">主图</span> : null}
         <div className="new-character-reference-hover" data-testid="reference-hover-actions">
           <button type="button" onClick={() => onPreview(reference)}>
             <img src={previewIcon} alt="" aria-hidden="true" />
@@ -323,8 +320,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
               file,
               role: current.length === 0 && index === 0 ? 'identity_reference' : 'other',
               strength: 'balanced',
-              note: '',
-              isPrimary: current.length === 0 && index === 0
+              note: ''
             })
           )
         ]).slice(0, MAX_REFERENCES)
@@ -551,9 +547,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
   const completeReferenceEdit = (reference: CharacterReferenceDraft): void => {
     setReferences((current) => {
       const updated = current.map((item) => (item.id === reference.id ? reference : item))
-      return reference.isPrimary
-        ? setPrimaryReference(updated, reference.id)
-        : normalizeCharacterReferences(updated)
+      return normalizeCharacterReferences(updated)
     })
     setEditingReferenceId(null)
   }

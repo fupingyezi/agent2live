@@ -1,6 +1,10 @@
 import type Database from 'better-sqlite3'
 import {
+  newId,
+  promptReferenceSetSchema,
   promptSpecSchema,
+  type PromptMaterialRef,
+  type PromptReference,
   type PromptSpecV2,
   type PromptVersionDto,
   type PromptVersionSummary
@@ -21,8 +25,92 @@ interface VersionRow {
   created_at: number
 }
 
-export function toVersionDto(row: VersionRow): PromptVersionDto {
-  const state = normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(row.content_json)))
+interface PromptReferenceRow {
+  asset_id: string
+  role: string
+  note: string | null
+  weight: number
+  locked: number
+}
+
+export function readPromptReferences(db: Database.Database, promptVersionId: string): PromptReference[] {
+  const rows = db
+    .prepare(
+      `select asset_id, role, note, weight, locked
+       from asset_links
+       where owner_type = 'prompt_version' and owner_id = ?
+       order by sort_order, id`
+    )
+    .all(promptVersionId) as PromptReferenceRow[]
+  const parsed = promptReferenceSetSchema.safeParse(
+    rows.map((row) => ({
+      assetId: row.asset_id,
+      role: row.role,
+      note: row.note ?? '',
+      weight: row.weight,
+      locked: row.locked === 1
+    }))
+  )
+  if (!parsed.success) {
+    throw new AppError('SYS_INTERNAL', { reason: 'prompt references are invalid' })
+  }
+  return parsed.data
+}
+
+export function promptReferencesFromMaterialRefs(materialRefs: PromptMaterialRef[]): PromptReference[] {
+  return materialRefs.map((material) => ({
+    assetId: material.assetId,
+    role: material.role,
+    note: material.note,
+    weight: material.weight,
+    locked: material.locked
+  }))
+}
+
+export function writePromptReferences(
+  db: Database.Database,
+  promptVersionId: string,
+  references: PromptReference[],
+  createdAt: number
+): void {
+  const parsed = promptReferenceSetSchema.safeParse(references)
+  if (!parsed.success) {
+    throw new AppError('PROMPT_REFERENCE_SET_INVALID', {
+      reasons: parsed.error.issues.slice(0, 20).map((issue) => issue.message)
+    })
+  }
+  const insert = db.prepare(
+    `insert into asset_links
+     (id, asset_id, owner_type, owner_id, role, note, weight, sort_order, locked, created_at)
+     values (?, ?, 'prompt_version', ?, ?, ?, ?, ?, ?, ?)`
+  )
+  parsed.data.forEach((reference, sortOrder) => {
+    insert.run(
+      newId('assetLink'),
+      reference.assetId,
+      promptVersionId,
+      reference.role,
+      reference.note,
+      reference.weight,
+      sortOrder,
+      reference.locked ? 1 : 0,
+      createdAt
+    )
+  })
+}
+
+export function toVersionDto(row: VersionRow, references: PromptReference[]): PromptVersionDto {
+  const stored = normalizeLegacyFullPrompt(promptSpecSchema.parse(JSON.parse(row.content_json)))
+  const state = promptSpecSchema.parse({
+    ...stored,
+    materialRefs: references.map((reference) => ({
+      assetId: reference.assetId,
+      role: reference.role,
+      note: reference.note,
+      weight: reference.weight,
+      locked: reference.locked
+    }))
+  })
   return {
     id: row.id,
     artProjectId: row.art_project_id,
@@ -31,6 +119,7 @@ export function toVersionDto(row: VersionRow): PromptVersionDto {
     inputSubmissionId: row.input_submission_id,
     characterBriefVersionId: state.characterBriefVersionId ?? null,
     state,
+    references,
     contentHash: row.content_hash,
     createdAt: row.created_at
   }
@@ -63,7 +152,7 @@ export class PromptVersionService {
       .prepare('select * from prompt_versions where id = ? and art_project_id = ?')
       .get(versionId, projectId) as VersionRow | undefined
     if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'promptVersion' })
-    return toVersionDto(row)
+    return toVersionDto(row, readPromptReferences(this.db, row.id))
   }
 
   requireById(versionId: string): PromptVersionDto {
@@ -71,6 +160,6 @@ export class PromptVersionService {
       | VersionRow
       | undefined
     if (!row) throw new AppError('RESOURCE_NOT_FOUND', { resource: 'promptVersion' })
-    return toVersionDto(row)
+    return toVersionDto(row, readPromptReferences(this.db, row.id))
   }
 }

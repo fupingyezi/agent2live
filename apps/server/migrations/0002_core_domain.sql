@@ -93,25 +93,21 @@ CREATE INDEX ix_provenance_asset ON asset_provenance(asset_id, created_at);
 CREATE TABLE asset_links (
   id TEXT PRIMARY KEY,
   asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
-  owner_type TEXT NOT NULL CHECK (owner_type IN ('prompt_input','prompt_version','art_version','layer_spec','model')),
+  owner_type TEXT NOT NULL CHECK (owner_type IN ('prompt_input','prompt_version','layer_spec','model')),
   owner_id TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('identity_reference','style_reference','outfit_reference','color_reference','background_reference','pose_reference','sketch','texture','other')),
   note TEXT CHECK (note IS NULL OR length(note) <= 1000),
   weight REAL NOT NULL CHECK (weight >= 0.1 AND weight <= 2.0),
   sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
-  is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
   locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0,1)),
-  created_at INTEGER NOT NULL,
-  CHECK (owner_type = 'art_version' OR is_primary = 0)
+  created_at INTEGER NOT NULL
 );
 CREATE INDEX ix_asset_links_owner ON asset_links(owner_type, owner_id, sort_order);
 CREATE INDEX ix_asset_links_asset ON asset_links(asset_id);
-CREATE UNIQUE INDEX ux_asset_links_art_version_primary
-  ON asset_links(owner_id) WHERE owner_type = 'art_version' AND is_primary = 1;
-CREATE UNIQUE INDEX ux_asset_links_art_version_asset
-  ON asset_links(owner_id, asset_id) WHERE owner_type = 'art_version';
-CREATE UNIQUE INDEX ux_asset_links_art_version_order
-  ON asset_links(owner_id, sort_order) WHERE owner_type = 'art_version';
+CREATE UNIQUE INDEX ux_asset_links_prompt_version_asset
+  ON asset_links(owner_id, asset_id) WHERE owner_type = 'prompt_version';
+CREATE UNIQUE INDEX ux_asset_links_prompt_version_order
+  ON asset_links(owner_id, sort_order) WHERE owner_type = 'prompt_version';
 
 CREATE TABLE provider_connections (
   id TEXT PRIMARY KEY,

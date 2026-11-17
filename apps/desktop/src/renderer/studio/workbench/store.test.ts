@@ -117,6 +117,53 @@ describe('workbench store', () => {
     ).toThrow('block is locked')
   })
 
+  it('reorders references without a primary field and marks the edit source', () => {
+    const state = spec()
+    const first = 'ast_01J00000000000000000000000'
+    const second = 'ast_01J00000000000000000000001'
+    state.materialRefs = [
+      { assetId: first, role: 'identity_reference', note: '', weight: 1, locked: false },
+      { assetId: second, role: 'style_reference', note: '', weight: 1, locked: false }
+    ]
+    hydrate(state)
+    useWorkbenchStore.getState().updateMaterialRefs([state.materialRefs[1]!, state.materialRefs[0]!])
+    const next = useWorkbenchStore.getState()
+    expect(next.draft?.materialRefs.map((item) => item.assetId)).toEqual([second, first])
+    expect(next.dirty).toBe(true)
+    expect(next.lastEdited).toBe('references')
+    expect(next.draft?.materialRefs[0]).not.toHaveProperty('isPrimary')
+  })
+
+  it('cleans unlocked block references when a material is removed', () => {
+    const state = spec()
+    const first = 'ast_01J00000000000000000000000'
+    const second = 'ast_01J00000000000000000000001'
+    state.materialRefs = [
+      { assetId: first, role: 'identity_reference', note: '', weight: 1, locked: false },
+      { assetId: second, role: 'style_reference', note: '', weight: 1, locked: false }
+    ]
+    state.blocks[0]!.materialRefs = [first, second]
+    hydrate(state)
+    useWorkbenchStore.getState().updateMaterialRefs([state.materialRefs[0]!])
+    expect(useWorkbenchStore.getState().draft?.blocks[0]?.materialRefs).toEqual([first])
+  })
+
+  it('refuses to remove a material referenced by a locked block', () => {
+    const state = spec()
+    const first = 'ast_01J00000000000000000000000'
+    const second = 'ast_01J00000000000000000000001'
+    state.materialRefs = [
+      { assetId: first, role: 'identity_reference', note: '', weight: 1, locked: false },
+      { assetId: second, role: 'style_reference', note: '', weight: 1, locked: false }
+    ]
+    state.blocks[0]!.materialRefs = [second]
+    state.blocks[0]!.locked = true
+    hydrate(state)
+    expect(() => useWorkbenchStore.getState().updateMaterialRefs([state.materialRefs[0]!])).toThrow(
+      /locked block/i
+    )
+  })
+
   it('tracks which representation produced the latest dirty edit', () => {
     hydrate()
     useWorkbenchStore.getState().updateFullPrompt('新的连贯完整提示词。')

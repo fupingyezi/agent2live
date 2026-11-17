@@ -129,10 +129,7 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
       (project?.activeVersionId
         ? versions.find((version) => version.id === project.activeVersionId)
         : null) ?? null
-    const primaryAssetId =
-      activeArtVersion?.references.find((reference) => reference.isPrimary)?.assetId ??
-      activeArtVersion?.references[0]?.assetId ??
-      null
+    const primaryAssetId = activeArtVersion?.artworkAssetId ?? null
     return { character, project, activeArtVersion, primaryAssetId }
   })
   const featured = items[0] ?? null

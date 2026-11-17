@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import {
-  artVersionReferenceRoleSchema,
-  artVersionReferenceSetSchema,
   hashCanonical,
-  hashSchema
+  hashSchema,
+  promptReferenceRoleSchema,
+  promptReferenceSetSchema,
+  type PromptReference
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 
@@ -21,10 +22,9 @@ export const compiledPromptSnapshotSchema = z
   })
   .strict()
 
-export const referenceSourceSchema = z.enum(['art_version', 'prompt_material'])
+export const referenceSourceSchema = z.literal('prompt_version')
 export const referenceWarningSchema = z.enum([
   'reference_budget_exceeded',
-  'auxiliary_images_folded',
   'references_ignored_no_image_input'
 ])
 
@@ -32,11 +32,11 @@ export const generationReferenceSchema = z
   .object({
     assetId,
     source: referenceSourceSchema,
-    role: artVersionReferenceRoleSchema,
+    role: promptReferenceRoleSchema,
     note: z.string().max(1000),
     weight: z.number().min(0.1).max(2),
-    sortOrder: z.number().int().nonnegative().max(100),
-    isPrimary: z.boolean()
+    locked: z.boolean(),
+    sortOrder: z.number().int().nonnegative().max(100)
   })
   .strict()
 
@@ -44,15 +44,12 @@ export type GenerationReference = z.infer<typeof generationReferenceSchema>
 
 export const referencePlanSchema = z
   .object({
-    mode: z.enum(['none', 'full', 'truncated', 'folded_single_image', 'ignored_no_image_input']),
-    primaryAssetId: assetId.nullable(),
-    requested: z.array(generationReferenceSchema).max(32),
-    sentAssetIds: z.array(assetId).max(32),
-    foldedAssetIds: z.array(assetId).max(32),
-    droppedAssetIds: z.array(assetId).max(32),
-    duplicateMaterialAssetIds: z.array(assetId).max(32),
+    mode: z.enum(['none', 'full', 'truncated', 'ignored_no_image_input']),
+    requested: z.array(generationReferenceSchema).max(14),
+    sentAssetIds: z.array(assetId).max(14),
+    droppedAssetIds: z.array(assetId).max(14),
     fingerprint: hashSchema,
-    warnings: z.array(referenceWarningSchema).max(2)
+    warnings: z.array(referenceWarningSchema).max(1)
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -60,7 +57,7 @@ export const referencePlanSchema = z
     if (new Set(requestedIds).size !== requestedIds.length) {
       ctx.addIssue({ code: 'custom', message: 'requested references must be unique' })
     }
-    const accounted = [...value.sentAssetIds, ...value.foldedAssetIds, ...value.droppedAssetIds]
+    const accounted = [...value.sentAssetIds, ...value.droppedAssetIds]
     if (
       new Set(accounted).size !== accounted.length ||
       accounted.length !== requestedIds.length ||
@@ -68,52 +65,32 @@ export const referencePlanSchema = z
     ) {
       ctx.addIssue({ code: 'custom', message: 'reference plan must partition requested assets' })
     }
-    const primaries = value.requested.filter((reference) => reference.isPrimary)
-    if (value.primaryAssetId === null) {
-      if (primaries.length > 0) {
-        ctx.addIssue({ code: 'custom', message: 'primary reference missing from plan' })
-      }
-    } else if (primaries.length !== 1 || primaries[0]!.assetId !== value.primaryAssetId) {
-      ctx.addIssue({ code: 'custom', message: 'primaryAssetId must match the single primary reference' })
-    } else if (value.sentAssetIds.length > 0 && value.sentAssetIds[0] !== value.primaryAssetId) {
-      ctx.addIssue({ code: 'custom', message: 'primary reference must be sent first' })
+    if (
+      value.sentAssetIds.some((id, index) => id !== requestedIds[index]) ||
+      value.droppedAssetIds.some((id, index) => id !== requestedIds[value.sentAssetIds.length + index])
+    ) {
+      ctx.addIssue({ code: 'custom', message: 'reference plan must preserve reference order' })
     }
-    if (value.mode === 'none' && (requestedIds.length > 0 || value.primaryAssetId !== null)) {
+    if (value.mode === 'none' && (requestedIds.length > 0 || value.warnings.length > 0)) {
       ctx.addIssue({ code: 'custom', message: 'none mode cannot carry references' })
     }
     if (
       value.mode === 'full' &&
-      (requestedIds.length === 0 ||
-        value.foldedAssetIds.length > 0 ||
-        value.droppedAssetIds.length > 0 ||
-        value.warnings.length > 0)
+      (requestedIds.length === 0 || value.droppedAssetIds.length > 0 || value.warnings.length > 0)
     ) {
       ctx.addIssue({ code: 'custom', message: 'full mode requires every reference sent without warnings' })
     }
     if (
       value.mode === 'truncated' &&
-      (value.droppedAssetIds.length === 0 ||
-        value.foldedAssetIds.length > 0 ||
+      (value.sentAssetIds.length === 0 ||
+        value.droppedAssetIds.length === 0 ||
         !value.warnings.includes('reference_budget_exceeded'))
     ) {
-      ctx.addIssue({ code: 'custom', message: 'truncated mode requires dropped assets and its warning' })
-    }
-    if (
-      value.mode === 'folded_single_image' &&
-      (value.foldedAssetIds.length === 0 ||
-        value.sentAssetIds.length !== 1 ||
-        value.droppedAssetIds.length > 0 ||
-        !value.warnings.includes('auxiliary_images_folded'))
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'folded mode requires one sent image, folded assets and its warning'
-      })
+      ctx.addIssue({ code: 'custom', message: 'truncated mode requires sent, dropped and its warning' })
     }
     if (
       value.mode === 'ignored_no_image_input' &&
       (value.sentAssetIds.length > 0 ||
-        value.foldedAssetIds.length > 0 ||
         value.droppedAssetIds.length !== requestedIds.length ||
         !value.warnings.includes('references_ignored_no_image_input'))
     ) {
@@ -142,8 +119,7 @@ export const generationRequestSchema = z
     providerConnectionId: z.string().min(1).max(64),
     promptContentHash: hashSchema,
     compiled: compiledPromptSnapshotSchema,
-    referenceAssetIds: z.array(assetId).max(32),
-    primaryReferenceAssetId: assetId.nullable(),
+    referenceAssetIds: z.array(assetId).max(14),
     references: referencePlanSchema,
     count: z.number().int().min(1).max(15),
     size: z.string().regex(/^\d{3,4}x\d{3,4}$/),
@@ -158,113 +134,30 @@ export const generationRequestSchema = z
     ) {
       ctx.addIssue({ code: 'custom', message: 'referenceAssetIds must equal references.sentAssetIds' })
     }
-    if (value.primaryReferenceAssetId !== value.references.primaryAssetId) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'primaryReferenceAssetId must equal references.primaryAssetId'
-      })
-    }
   })
 
 export type GenerationRequest = z.infer<typeof generationRequestSchema>
 export type PreparedGeneration = Omit<GenerationRequest, 'schemaVersion' | 'generationJobId' | 'requestHash'>
 
-export interface ManagedReferenceInput {
-  assetId: string
-  role: string
-  note: string
-  weight: number
-  sortOrder: number
-  isPrimary: boolean
-}
-
-export interface PromptMaterialReferenceInput {
-  assetId: string
-  role: string
-  note: string
-  weight: number
-}
-
-export function planReferences(input: {
-  activeReferences: ManagedReferenceInput[]
-  promptMaterials: PromptMaterialReferenceInput[]
-  limit: number
-}): ReferencePlan {
-  const limit = Math.max(0, Math.floor(input.limit))
-  const active = [...input.activeReferences].sort((left, right) => left.sortOrder - right.sortOrder)
-  if (
-    active.length > 0 &&
-    !artVersionReferenceSetSchema.safeParse(
-      active.map((reference) => ({
-        assetId: reference.assetId,
-        role: reference.role,
-        note: reference.note,
-        weight: reference.weight,
-        sortOrder: reference.sortOrder,
-        isPrimary: reference.isPrimary
-      }))
-    ).success
-  ) {
-    throw new AppError('SYS_INTERNAL', { reason: 'art version reference set is invalid' })
-  }
-
-  const duplicateMaterialAssetIds: string[] = []
-  const materials: Array<{
-    assetId: string
-    source: 'prompt_material'
-    role: string
-    note: string
-    weight: number
-    sortOrder: number
-    isPrimary: boolean
-  }> = []
-  const seen = new Set(active.map((reference) => reference.assetId))
-  for (const material of input.promptMaterials) {
-    if (seen.has(material.assetId)) {
-      duplicateMaterialAssetIds.push(material.assetId)
-      continue
-    }
-    seen.add(material.assetId)
-    materials.push({
-      assetId: material.assetId,
-      source: 'prompt_material' as const,
-      role: material.role,
-      note: material.note,
-      weight: material.weight,
-      sortOrder: 0,
-      isPrimary: false
-    })
-  }
-
-  const parsed = z.array(generationReferenceSchema).safeParse([
-    ...active.map((reference) => ({
-      assetId: reference.assetId,
-      source: 'art_version' as const,
-      role: reference.role,
-      note: reference.note,
-      weight: reference.weight,
-      sortOrder: reference.sortOrder,
-      isPrimary: reference.isPrimary
-    })),
-    ...materials
-  ])
+export function planReferences(input: { references: PromptReference[]; limit: number }): ReferencePlan {
+  const parsed = promptReferenceSetSchema.safeParse(input.references)
   if (!parsed.success) {
-    throw new AppError('SYS_INTERNAL', { reason: 'generation reference metadata is invalid' })
+    throw new AppError('SYS_INTERNAL', { reason: 'prompt references are invalid' })
   }
-  const requested = parsed.data.map((reference, sortOrder) => ({ ...reference, sortOrder }))
-  const fingerprint = hashCanonical({ schemaVersion: 'generation-references/1', requested })
-  const primary = requested.find((reference) => reference.isPrimary) ?? null
-  const duplicates = [...new Set(duplicateMaterialAssetIds)]
+  const requested = parsed.data.map((reference, sortOrder) => ({
+    ...reference,
+    source: 'prompt_version' as const,
+    sortOrder
+  }))
+  const fingerprint = hashCanonical({ schemaVersion: 'generation-references/2', requested })
+  const limit = Math.max(0, Math.floor(input.limit))
 
   if (requested.length === 0) {
     return {
       mode: 'none',
-      primaryAssetId: null,
       requested,
       sentAssetIds: [],
-      foldedAssetIds: [],
       droppedAssetIds: [],
-      duplicateMaterialAssetIds: duplicates,
       fingerprint,
       warnings: []
     }
@@ -272,12 +165,9 @@ export function planReferences(input: {
   if (limit === 0) {
     return {
       mode: 'ignored_no_image_input',
-      primaryAssetId: primary?.assetId ?? null,
       requested,
       sentAssetIds: [],
-      foldedAssetIds: [],
       droppedAssetIds: requested.map((reference) => reference.assetId),
-      duplicateMaterialAssetIds: duplicates,
       fingerprint,
       warnings: ['references_ignored_no_image_input']
     }
@@ -285,55 +175,23 @@ export function planReferences(input: {
   if (requested.length <= limit) {
     return {
       mode: 'full',
-      primaryAssetId: primary?.assetId ?? null,
       requested,
       sentAssetIds: requested.map((reference) => reference.assetId),
-      foldedAssetIds: [],
       droppedAssetIds: [],
-      duplicateMaterialAssetIds: duplicates,
       fingerprint,
       warnings: []
-    }
-  }
-  if (limit === 1) {
-    const [sent, ...folded] = requested
-    return {
-      mode: 'folded_single_image',
-      primaryAssetId: primary?.assetId ?? null,
-      requested,
-      sentAssetIds: [sent!.assetId],
-      foldedAssetIds: folded.map((reference) => reference.assetId),
-      droppedAssetIds: [],
-      duplicateMaterialAssetIds: duplicates,
-      fingerprint,
-      warnings: ['auxiliary_images_folded']
     }
   }
   const sent = requested.slice(0, limit)
   const dropped = requested.slice(limit)
   return {
     mode: 'truncated',
-    primaryAssetId: primary?.assetId ?? null,
     requested,
     sentAssetIds: sent.map((reference) => reference.assetId),
-    foldedAssetIds: [],
     droppedAssetIds: dropped.map((reference) => reference.assetId),
-    duplicateMaterialAssetIds: duplicates,
     fingerprint,
     warnings: ['reference_budget_exceeded']
   }
-}
-
-export function foldedReferenceInstruction(folded: GenerationReference[]): string {
-  if (folded.length === 0) return ''
-  const lines = folded.map((reference, index) => {
-    const note = reference.note.trim().replace(/\s+/g, ' ')
-    return `${index + 1}. role=${reference.role}; weight=${reference.weight}; note=${note === '' ? '(none)' : note}`
-  })
-  return [
-    'Additional reference constraints. These images were not sent to the image model; use only the metadata below and do not invent visual details that are absent from it:',
-    ...lines
-  ].join('\n')
 }
 
 export function buildGenerationRequest(

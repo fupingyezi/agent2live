@@ -3,7 +3,6 @@ import type {
   ArtVersionDto as ContractArtVersionDto,
   ArtVersionListDto as ContractArtVersionListDto,
   ArtVersionMutationDto as ContractArtVersionMutationDto,
-  ArtVersionReferenceDto as ContractArtVersionReferenceDto,
   AssetDto as ContractAssetDto,
   CharacterBackupDto as ContractCharacterBackupDto,
   CharacterDto as ContractCharacterDto,
@@ -21,6 +20,7 @@ import type {
   PromptInputMaterialDto as ContractPromptInputMaterialDto,
   PromptInputResult as ContractPromptInputResult,
   PromptInputSubmissionDto as ContractPromptInputSubmissionDto,
+  PromptReference as ContractPromptReference,
   PromptReverseResultDto as ContractPromptReverseResultDto,
   PromptSuggestionDto as ContractPromptSuggestionDto,
   PromptSyncInput as ContractPromptSyncInput,
@@ -34,7 +34,6 @@ import type {
 
 export type {
   ArtProjectStage,
-  ArtVersionReferenceRole,
   CreateArtProjectInput,
   CreateCharacterInput,
   CreateForkInput,
@@ -46,7 +45,10 @@ export type {
   PatchForkInput,
   ProblemDetails,
   PromptBlock,
+  PromptMaterialRef,
   PromptOperation,
+  PromptReference,
+  PromptReferenceRole,
   PromptRequirement,
   PromptSpecV2,
   PromptReverseResultStatus,
@@ -104,13 +106,13 @@ export type PromptInputMaterialDto = WithIsoTimestamps<ContractPromptInputMateri
 export type PromptInputSubmissionDto = WithIsoTimestamps<ContractPromptInputSubmissionDto>
 export type PromptVersionSummaryDto = WithIsoTimestamps<ContractPromptVersionSummary>
 export type PromptVersionDto = WithIsoTimestamps<ContractPromptVersionDto>
+export type PromptReferenceDto = WithIsoTimestamps<ContractPromptReference>
 export type PromptWorkspaceDto = WithIsoTimestamps<ContractPromptWorkspaceDto>
 export type SubmitPromptInputResult = WithIsoTimestamps<ContractPromptInputResult>
 export type PromptReverseResultDto = WithIsoTimestamps<ContractPromptReverseResultDto>
 export type PromptSuggestionDto = WithIsoTimestamps<ContractPromptSuggestionDto>
 export type PromptSyncInput = ContractPromptSyncInput
 export type PromptSyncResultDto = ContractPromptSyncResultDto
-export type ArtVersionReferenceDto = WithIsoTimestamps<ContractArtVersionReferenceDto>
 export type ArtVersionDto = WithIsoTimestamps<ContractArtVersionDto>
 export type ArtVersionListDto = WithIsoTimestamps<ContractArtVersionListDto>
 export type ArtVersionMutationDto = WithIsoTimestamps<ContractArtVersionMutationDto>

@@ -3,31 +3,52 @@ import {
   commitPromptDraftInputSchema,
   createForkInputSchema,
   createGenerationInputSchema,
+  createManualArtVersionInputSchema,
   createProviderConnectionInputSchema,
   promptInputMetadataSchema,
   promptInputMultipartMetadataSchema,
   providerProbeDtoSchema,
-  providerProbeInputSchema,
-  restoreArtVersionInputSchema
+  providerProbeInputSchema
 } from './api'
 
 describe('API schemas', () => {
-  it('accepts only an empty restore body', () => {
-    expect(restoreArtVersionInputSchema.parse({})).toEqual({})
-    expect(() => restoreArtVersionInputSchema.parse({ cloneActive: true })).toThrow()
-  })
-
-  it('applies generation defaults and rejects count > 4', () => {
+  it('applies generation defaults and accepts an optional base artwork without changing references', () => {
     const parsed = createGenerationInputSchema.parse({
       promptVersionId: 'pv_1',
       providerConnectionId: 'conn_1'
     })
     expect(parsed.count).toBe(1)
+    expect(parsed.baseArtVersionId).toBeUndefined()
+    expect(
+      createGenerationInputSchema.parse({
+        promptVersionId: 'pv_1',
+        providerConnectionId: 'conn_1',
+        baseArtVersionId: 'av_1'
+      }).baseArtVersionId
+    ).toBe('av_1')
     expect(() =>
       createGenerationInputSchema.parse({
         promptVersionId: 'pv_1',
         providerConnectionId: 'conn_1',
         count: 5
+      })
+    ).toThrow()
+  })
+
+  it('accepts only an artwork asset when creating a manual art version', () => {
+    expect(
+      createManualArtVersionInputSchema.parse({
+        assetId: 'ast_01J00000000000000000000000',
+        promptVersionId: 'pv_1'
+      })
+    ).toEqual({
+      assetId: 'ast_01J00000000000000000000000',
+      promptVersionId: 'pv_1'
+    })
+    expect(() =>
+      createManualArtVersionInputSchema.parse({
+        assetId: 'ast_01J00000000000000000000000',
+        role: 'identity_reference'
       })
     ).toThrow()
   })
