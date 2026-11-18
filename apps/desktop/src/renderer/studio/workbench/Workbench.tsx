@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto, PromptDraftDto } from '@studio/api'
+import type { ArtProjectDto, CharacterDto, PromptBlock, PromptDraftDto } from '@studio/api'
 import {
   ApiError,
   commitPromptDraft,
@@ -14,7 +14,8 @@ import {
   listProviders,
   queryKeys,
   requestPromptSync,
-  savePromptDraft
+  savePromptDraft,
+  updateCharacter
 } from '@studio/api'
 import { Button, Dialog, EmptyState, InlineNotice } from '@agent2live/design-system'
 import { StudioError, StudioLoading } from '@studio/components'
@@ -38,6 +39,9 @@ import type { PromptFilter } from './prompt-diagnostics'
 import { WorkbenchTopbar } from './components/WorkbenchTopbar'
 import { WorkbenchActionBar } from './components/WorkbenchActionBar'
 import { PromptWorkbenchView } from './views/PromptWorkbenchView'
+import { PromptBlockDialog } from './components/prompt/PromptBlockDialog'
+import { FullPromptDialog } from './components/prompt/FullPromptDialog'
+import { RenameDialog } from './components/prompt/RenameDialog'
 
 function draftSnapshot(draft: PromptDraftDto): {
   draftId: string
@@ -81,6 +85,7 @@ async function waitForPromptSync(jobId: string) {
 
 export interface WorkbenchProps {
   project: ArtProjectDto
+  character?: CharacterDto | null
   characterTitle: string
   characterSummary?: string | null
   textWarning?: string | null
@@ -89,6 +94,7 @@ export interface WorkbenchProps {
 
 export const Workbench: React.FC<WorkbenchProps> = ({
   project,
+  character = null,
   characterTitle,
   characterSummary = null,
   textWarning = null,
@@ -103,7 +109,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const storeDraft = useWorkbenchStore((state) => state.draft)
   const storeRowVersion = useWorkbenchStore((state) => state.rowVersion)
   const dirty = useWorkbenchStore((state) => state.dirty)
-  const lastEdited = useWorkbenchStore((state) => state.lastEdited)
 
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
   const [forkSource, setForkSource] = useState<ForkSource | null>(null)
@@ -116,6 +121,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [filter, setFilter] = useState<PromptFilter>('all')
   const [versionSubmitting, setVersionSubmitting] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
+  const [blockDialog, setBlockDialog] = useState<{ blockId: string | null; negative: boolean } | null>(null)
+  const [fullPromptOpen, setFullPromptOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [dialogSaving, setDialogSaving] = useState(false)
+  const [dialogError, setDialogError] = useState<string | null>(null)
   const initializedJob = useRef<string | null>(null)
   const hydratedDraftId = useRef<string | null>(null)
   const draftRequested = useRef(false)
@@ -280,10 +290,14 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }
 
   const persistPromptEdit = async (): Promise<PromptDraftDto> => {
-    if (!draft || !storeDraft) throw new Error('当前版本没有可保存的提示词内容。')
-    const expectedRowVersion = storeRowVersion ?? draft.rowVersion
-    let nextState = storeDraft
-    if (lastEdited !== 'references') {
+    const live = useWorkbenchStore.getState()
+    const liveDraft = live.draft
+    const liveLastEdited = live.lastEdited
+    const liveRowVersion = live.rowVersion
+    if (!draft || !liveDraft) throw new Error('当前版本没有可保存的提示词内容。')
+    const expectedRowVersion = liveRowVersion ?? draft.rowVersion
+    let nextState = liveDraft
+    if (liveLastEdited !== 'references') {
       if (providersQuery.isPending) throw new Error('模型连接仍在加载，请稍后重试保存。')
       if (providersQuery.isError) throw new Error('模型连接加载失败，请重试后再保存。')
       const provider = findDefaultTextProvider(providers)
@@ -293,15 +307,15 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           draft.id,
           {
             providerConnectionId: provider.id,
-            source: lastEdited === 'blocks' ? 'blocks' : 'full',
+            source: liveLastEdited === 'blocks' ? 'blocks' : 'full',
             mode: 'sync',
-            state: storeDraft
+            state: liveDraft
           },
           expectedRowVersion
         )
         const job = await waitForPromptSync(sync.jobId)
         const result = job.result as {
-          state?: typeof storeDraft
+          state?: typeof liveDraft
           conflicts?: Array<{ blockId: string; message: string }>
         } | null
         if (!result?.state) throw new Error('提示词同步没有返回可保存的内容。')
@@ -322,10 +336,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     versionNumber: number
     created: boolean
   }> => {
-    if (!draft || !storeDraft || !workspace.activePromptVersion) {
+    const live = useWorkbenchStore.getState()
+    const liveDraft = live.draft
+    const liveDirty = live.dirty
+    if (!draft || !liveDraft || !workspace.activePromptVersion) {
       throw new Error('当前没有可保存的提示词版本。')
     }
-    if (!dirty && draft.contentHash === workspace.activePromptVersion.contentHash) {
+    if (!liveDirty && draft.contentHash === workspace.activePromptVersion.contentHash) {
       return {
         id: workspace.activePromptVersion.id,
         versionNumber: workspace.activePromptVersion.versionNumber,
@@ -333,8 +350,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       }
     }
     setVersionError(null)
-    const saved = dirty ? await persistPromptEdit() : draft
-    if (dirty) {
+    const saved = liveDirty ? await persistPromptEdit() : draft
+    if (liveDirty) {
       useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
     }
     if (saved.contentHash === workspace.activePromptVersion.contentHash) {
@@ -390,6 +407,70 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     })
     setGenerationDialogOpen(true)
     return version
+  }
+
+  const activeBlock =
+    blockDialog?.blockId && displaySpec
+      ? ([...displaySpec.blocks, ...displaySpec.negativeBlocks].find(
+          (block) => block.id === blockDialog.blockId
+        ) ?? null)
+      : null
+
+  const commitDialogSave = async (apply: () => void, close: () => void): Promise<void> => {
+    if (readOnly) return
+    setDialogSaving(true)
+    setDialogError(null)
+    try {
+      apply()
+      await saveCurrentVersion()
+      close()
+    } catch (reason) {
+      setDialogError(errorMessage(reason))
+    } finally {
+      setDialogSaving(false)
+    }
+  }
+
+  const saveBlock = (block: PromptBlock): void => {
+    void commitDialogSave(
+      () => useWorkbenchStore.getState().replaceBlock(block),
+      () => setBlockDialog(null)
+    )
+  }
+
+  const deleteBlock = (blockId: string): void => {
+    void commitDialogSave(
+      () => useWorkbenchStore.getState().removeBlock(blockId),
+      () => setBlockDialog(null)
+    )
+  }
+
+  const saveFullPrompt = (value: string): void => {
+    void commitDialogSave(
+      () => useWorkbenchStore.getState().updateFullPrompt(value),
+      () => setFullPromptOpen(false)
+    )
+  }
+
+  const saveRename = (title: string): void => {
+    if (!character) {
+      setDialogError('角色信息未加载。')
+      return
+    }
+    setDialogSaving(true)
+    setDialogError(null)
+    updateCharacter(project.characterId, { title }, character.rowVersion)
+      .then(() => {
+        setRenameOpen(false)
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.character(project.characterId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.characters }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.lineage(project.characterId) })
+        ])
+      })
+      .catch((reason) => setDialogError(errorMessage(reason)))
+      .finally(() => setDialogSaving(false))
   }
 
   const handleSubmitted = (result: { draft: PromptDraftDto; warnings: string[] }): void => {
@@ -450,12 +531,24 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             submitting={versionSubmitting}
             error={versionError}
             onFilterChange={setFilter}
-            onRename={() => undefined}
-            onOpenBlock={() => undefined}
-            onNewBlock={() => undefined}
+            onRename={() => {
+              setDialogError(null)
+              setRenameOpen(true)
+            }}
+            onOpenBlock={(blockId, negative) => {
+              setDialogError(null)
+              setBlockDialog({ blockId, negative })
+            }}
+            onNewBlock={(negative) => {
+              setDialogError(null)
+              setBlockDialog({ blockId: null, negative })
+            }}
             onOpenAiRewrite={() => setWorkspaceDialog('ai')}
             onOpenReverse={() => setWorkspaceDialog('ai')}
-            onOpenFullPrompt={() => setWorkspaceDialog('ai')}
+            onOpenFullPrompt={() => {
+              setDialogError(null)
+              setFullPromptOpen(true)
+            }}
             onOpenReferences={() => setWorkspaceDialog('materials')}
             onOpenVersions={() => setWorkspaceDialog('versions')}
             onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
@@ -606,6 +699,44 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           />
         </div>
       </Dialog>
+
+      <PromptBlockDialog
+        open={blockDialog !== null}
+        spec={displaySpec}
+        block={activeBlock}
+        negative={blockDialog?.negative ?? false}
+        readOnly={readOnly}
+        saving={dialogSaving}
+        error={dialogError}
+        onClose={() => {
+          if (!dialogSaving) setBlockDialog(null)
+        }}
+        onSave={saveBlock}
+        onDelete={deleteBlock}
+      />
+
+      <FullPromptDialog
+        open={fullPromptOpen}
+        value={displaySpec?.fullPrompt ?? ''}
+        readOnly={readOnly}
+        saving={dialogSaving}
+        error={dialogError}
+        onClose={() => {
+          if (!dialogSaving) setFullPromptOpen(false)
+        }}
+        onSave={saveFullPrompt}
+      />
+
+      <RenameDialog
+        open={renameOpen}
+        currentTitle={character?.title ?? characterTitle}
+        saving={dialogSaving}
+        error={dialogError}
+        onClose={() => {
+          if (!dialogSaving) setRenameOpen(false)
+        }}
+        onSave={saveRename}
+      />
 
       {forkSource ? (
         <ForkDialog

@@ -124,6 +124,7 @@ export const ArtWorkbenchPage: React.FC<EmptyProps> = () => {
       <Workbench
         key={project.id}
         project={project}
+        character={characterQuery.data ?? null}
         characterTitle={characterQuery.data?.title ?? project.title}
         characterSummary={characterQuery.data?.summary ?? null}
         textWarning={textWarning}
