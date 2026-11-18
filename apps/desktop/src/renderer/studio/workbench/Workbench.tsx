@@ -148,6 +148,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const initializedJob = useRef<string | null>(null)
   const hydratedDraftId = useRef<string | null>(null)
   const draftRequested = useRef(false)
+  const rollbackRequesting = useRef(false)
   const viewState = parseWorkbenchView(searchParams)
   const setView = (patch: Parameters<typeof updateWorkbenchView>[1]): void => {
     setSearchParams((current) => updateWorkbenchView(current, patch), { replace: true })
@@ -327,8 +328,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     const liveDraft = live.draft
     const liveLastEdited = live.lastEdited
     const liveRowVersion = live.rowVersion
-    if (!draft || !liveDraft) throw new Error('当前版本没有可保存的提示词内容。')
-    const expectedRowVersion = liveRowVersion ?? draft.rowVersion
+    if (!activeDraft || !liveDraft) throw new Error('当前版本没有可保存的提示词内容。')
+    const expectedRowVersion = liveRowVersion ?? activeDraft.rowVersion
     let nextState = liveDraft
     if (liveLastEdited !== 'references') {
       if (providersQuery.isPending) throw new Error('模型连接仍在加载，请稍后重试保存。')
@@ -337,7 +338,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       if (provider) {
         const sync = await requestPromptSync(
           project.id,
-          draft.id,
+          activeDraft.id,
           {
             providerConnectionId: provider.id,
             source: liveLastEdited === 'blocks' ? 'blocks' : 'full',
@@ -358,7 +359,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         nextState = result.state
       }
     }
-    const saved = await savePromptDraft(project.id, draft.id, nextState, expectedRowVersion)
+    const saved = await savePromptDraft(project.id, activeDraft.id, nextState, expectedRowVersion)
     setDraftHint(saved)
     invalidateProjectWorkspace()
     return saved
@@ -367,8 +368,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const prepareAiRewrite = async (): Promise<void> => {
     const live = useWorkbenchStore.getState()
     if (!live.dirty) return
-    if (!draft || !live.draft) throw new Error('当前没有可保存的提示词草稿。')
-    const saved = await savePromptDraft(project.id, draft.id, live.draft, live.rowVersion ?? draft.rowVersion)
+    if (!activeDraft || !live.draft) throw new Error('当前没有可保存的提示词草稿。')
+    const saved = await savePromptDraft(
+      project.id,
+      activeDraft.id,
+      live.draft,
+      live.rowVersion ?? activeDraft.rowVersion
+    )
     useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
     setDraftHint(saved)
     invalidateProjectWorkspace()
@@ -382,10 +388,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     const live = useWorkbenchStore.getState()
     const liveDraft = live.draft
     const liveDirty = live.dirty
-    if (!draft || !liveDraft || !workspace.activePromptVersion) {
+    if (!activeDraft || !liveDraft || !workspace.activePromptVersion) {
       throw new Error('当前没有可保存的提示词版本。')
     }
-    if (!liveDirty && draft.contentHash === workspace.activePromptVersion.contentHash) {
+    if (!liveDirty && activeDraft.contentHash === workspace.activePromptVersion.contentHash) {
       return {
         id: workspace.activePromptVersion.id,
         versionNumber: workspace.activePromptVersion.versionNumber,
@@ -393,7 +399,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       }
     }
     setVersionError(null)
-    const saved = liveDirty ? await persistPromptEdit() : draft
+    const saved = liveDirty ? await persistPromptEdit() : activeDraft
     if (liveDirty) {
       useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
     }
@@ -463,12 +469,23 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       }
       const committed = await commitPromptDraft(project.id, draftId, rowVersion, true)
       queryClient.setQueryData(queryKeys.project(project.id), committed.project)
-      const nextBuffer = await createPromptDraft(project.id, {
-        from: 'version',
-        versionId: committed.version.id
-      })
-      setDraftHint(nextBuffer)
-      applyServerDraft(draftSnapshot(nextBuffer))
+      try {
+        const nextBuffer = await createPromptDraft(project.id, {
+          from: 'version',
+          versionId: committed.version.id
+        })
+        setDraftHint(nextBuffer)
+        applyServerDraft(draftSnapshot(nextBuffer))
+      } catch (reason) {
+        setDraftHint(null)
+        hydrate({
+          draftId: null,
+          revision: null,
+          rowVersion: null,
+          draft: committed.version.state
+        })
+        setVersionError(errorMessage(reason))
+      }
       setView({ view: 'prompt', promptVersionId: committed.version.id })
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
@@ -486,20 +503,25 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }
 
   const requestRollback = (versionId: string): void => {
+    if (rollbackRequesting.current) return
     if (versionId === project.activePromptVersionId) {
       setView({ view: 'prompt', promptVersionId: versionId })
       return
     }
+    rollbackRequesting.current = true
     setVersionError(null)
     getPromptVersion(project.id, versionId)
-      .then((version) => {
+      .then(async (version) => {
         if (useWorkbenchStore.getState().dirty) {
           setPendingRollback(version)
         } else {
-          void executeRollback(version, false)
+          await executeRollback(version, false)
         }
       })
       .catch((reason) => setVersionError(errorMessage(reason)))
+      .finally(() => {
+        rollbackRequesting.current = false
+      })
   }
 
   const openGenerationDialog = async (): Promise<{
