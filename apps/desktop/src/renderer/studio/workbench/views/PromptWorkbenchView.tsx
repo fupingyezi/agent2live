@@ -9,6 +9,7 @@ import type {
 import type { PromptSpecV2 } from '@studio/api'
 import type { PromptFilter } from '../prompt-diagnostics'
 import { PromptEditorCard } from '../components/prompt/PromptEditorCard'
+import { VersionOverviewCard } from '../components/prompt/VersionOverviewCard'
 
 export interface PromptWorkbenchViewProps {
   project: ArtProjectDto
@@ -42,11 +43,14 @@ export interface PromptWorkbenchViewProps {
 }
 
 export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
+  project,
   characterTitle,
   characterSummary,
   promptVersion,
-  referenceCount,
+  promptVersions,
+  artVersions,
   spec,
+  referenceCount,
   readOnly,
   dirty,
   canCommit,
@@ -61,6 +65,11 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
   onOpenAiRewrite,
   onOpenReverse,
   onOpenFullPrompt,
+  onOpenReferences,
+  onOpenVersions,
+  onSelectPromptVersion,
+  onRollbackToPromptVersion,
+  onViewArtVersion,
   onSubmitVersion
 }) => {
   return (
@@ -86,21 +95,17 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
         onOpenFullPrompt={onOpenFullPrompt}
         onSubmitVersion={onSubmitVersion}
       />
-      <aside className="wb3-card wb3-overview-card" data-testid="wb3-version-overview">
-        {promptVersion ? (
-          <>
-            <header className="wb3-overview-heading">
-              <h2>当前版本 第 {promptVersion.versionNumber} 版</h2>
-              <span>
-                {spec ? spec.blocks.length + spec.negativeBlocks.length : 0} 块 · {referenceCount} 张参考图
-              </span>
-            </header>
-            <p className="wb3-overview-muted">在后续 Task 中补齐参考图、立绘和版本历史。</p>
-          </>
-        ) : (
-          <p className="wb3-overview-muted">还没有提示词版本。</p>
-        )}
-      </aside>
+      <VersionOverviewCard
+        project={project}
+        promptVersion={promptVersion}
+        promptVersions={promptVersions}
+        artVersions={artVersions}
+        onOpenReferences={onOpenReferences}
+        onOpenVersions={onOpenVersions}
+        onSelectPromptVersion={onSelectPromptVersion}
+        onRollback={onRollbackToPromptVersion}
+        onViewArtVersion={onViewArtVersion}
+      />
     </div>
   )
 }
