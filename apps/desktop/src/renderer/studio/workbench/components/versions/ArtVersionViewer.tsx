@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import type { ArtVersionDto, GenerationDto } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
 import { formatDateTime } from '@studio/format'
-import { Button, Dialog, EmptyState } from '@agent2live/design-system'
+import { Button, Dialog } from '@agent2live/design-system'
 
 function dimensions(version: ArtVersionDto): string | null {
   const validation = version.validation as {
@@ -39,7 +39,7 @@ function sourceText(version: ArtVersionDto, generations: GenerationDto[]): strin
 }
 
 export interface ArtVersionViewerProps {
-  version: ArtVersionDto | null
+  version: ArtVersionDto
   versions: ArtVersionDto[]
   generations: GenerationDto[]
   onSelect(versionId: string): void
@@ -52,18 +52,7 @@ export const ArtVersionViewer: React.FC<ArtVersionViewerProps> = ({
   onSelect
 }) => {
   const [lightbox, setLightbox] = useState(false)
-  const { url, isLoading, error } = useAssetUrl(version?.artworkAssetId ?? null)
-
-  if (!version) {
-    return (
-      <div className="wb3-version-viewer" data-testid="wb3-art-version-viewer">
-        <EmptyState
-          title="还没有立绘版本"
-          description="在提示词工作台生成一组候选，并保存其中一张。"
-        />
-      </div>
-    )
-  }
+  const { url, isLoading, error } = useAssetUrl(version.artworkAssetId)
 
   const ordered = [...versions].sort((left, right) => right.versionNumber - left.versionNumber)
   const index = ordered.findIndex((entry) => entry.id === version.id)

@@ -221,7 +221,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const workspace = workspaceQuery.data ?? null
   const artVersions = versionsQuery.data ?? []
   const selectedArtVersionId =
-    viewState.artVersionId ?? project.activeVersionId ?? artVersions[0]?.id ?? null
+    artVersions.find((version) => version.id === viewState.artVersionId)?.id ??
+    project.activeVersionId ??
+    artVersions[0]?.id ??
+    null
   const selectedArtVersion =
     artVersions.find((version) => version.id === selectedArtVersionId) ?? null
   const artPromptVersionQuery = useQuery({
@@ -357,6 +360,24 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   useEffect(() => {
     if (workspace?.activeDraft) setDraftHint(null)
   }, [workspace?.activeDraft?.id])
+
+  useEffect(() => {
+    if (viewState.view !== 'versions' || !viewState.artVersionId) return
+    if (versionsQuery.isPending || versionsQuery.isError) return
+    if (artVersions.some((version) => version.id === viewState.artVersionId)) return
+    setView({
+      view: 'versions',
+      artVersionId: project.activeVersionId ?? artVersions[0]?.id ?? null
+    })
+  }, [
+    artVersions,
+    project.activeVersionId,
+    setView,
+    versionsQuery.isError,
+    versionsQuery.isPending,
+    viewState.artVersionId,
+    viewState.view
+  ])
 
   if (workspaceQuery.isPending) {
     return (
@@ -870,7 +891,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
             }}
             onRollbackToPromptVersion={requestRollback}
-            onViewArtVersion={() => undefined}
+            onViewArtVersion={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
             onSubmitVersion={handleSubmitVersion}
           />
         ) : viewState.view === 'candidates' ? (
@@ -899,6 +920,19 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             }
             error={versionError}
           />
+        ) : versionsQuery.isPending ? (
+          <section className="workbench-loading">
+            <StudioLoading label="正在加载立绘版本…" />
+          </section>
+        ) : versionsQuery.isError ? (
+          <section className="workbench-loading" data-testid="versions-error">
+            <StudioError
+              error={versionsQuery.error}
+              onRetry={() => {
+                void versionsQuery.refetch()
+              }}
+            />
+          </section>
         ) : (
           <ArtVersionView
             project={project}
