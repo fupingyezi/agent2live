@@ -304,12 +304,14 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   const progress = job?.progress ?? 0
   const noResult = terminal && job?.status === 'succeeded' && !suggestionId
   const needsRetry = failed || noResult
+  const jobRunning = activeJob !== null && !terminal && !failed
   const canStart =
     chatProviders.length > 0 &&
     intent.trim().length > 0 &&
     !startMutation.isPending &&
     !providersLoading &&
-    !providersError
+    !providersError &&
+    !jobRunning
   const proposalReady = suggestion?.status === 'proposed'
   const disabledRows = !proposalReady || applyMutation.isPending
 
@@ -361,7 +363,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 disabled={!canStart}
                 onClick={needsRetry ? retry : () => startMutation.mutate()}
               >
-                {needsRetry ? '重试' : '生成建议'}
+                {jobRunning ? '生成中…' : needsRetry ? '重试' : '生成建议'}
               </AsyncButton>
             </>
           )}

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  clampGenerationCount,
-  generationCountOptions,
-  MAX_GENERATION_COUNT
-} from './generation-params'
+import { clampGenerationCount, generationCountOptions, MAX_GENERATION_COUNT } from './generation-params'
 
 describe('generationCountOptions', () => {
   it('keeps the standard chips and clamps to the provider max', () => {

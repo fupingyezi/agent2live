@@ -1,10 +1,5 @@
 import React from 'react'
-import type {
-  ArtProjectDto,
-  ArtVersionDto,
-  GenerationDto,
-  PromptVersionDto
-} from '@studio/api'
+import type { ArtProjectDto, ArtVersionDto, GenerationDto, PromptVersionDto } from '@studio/api'
 import { Button, EmptyState, InlineNotice } from '@agent2live/design-system'
 import { ArtVersionList } from '../components/versions/ArtVersionList'
 import { ArtVersionViewer } from '../components/versions/ArtVersionViewer'
@@ -59,8 +54,7 @@ export const ArtVersionView: React.FC<ArtVersionViewProps> = ({
   }
 
   const active = selectedVersion.id === project.activeVersionId
-  const parentVersion =
-    artVersions.find((version) => version.id === selectedVersion.parentVersionId) ?? null
+  const parentVersion = artVersions.find((version) => version.id === selectedVersion.parentVersionId) ?? null
 
   return (
     <div className="wb3-version-view" data-testid="wb3-art-version-view">

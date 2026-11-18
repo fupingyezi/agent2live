@@ -225,12 +225,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     project.activeVersionId ??
     artVersions[0]?.id ??
     null
-  const selectedArtVersion =
-    artVersions.find((version) => version.id === selectedArtVersionId) ?? null
+  const selectedArtVersion = artVersions.find((version) => version.id === selectedArtVersionId) ?? null
   const artPromptVersionQuery = useQuery({
     queryKey: queryKeys.promptVersion(project.id, selectedArtVersion?.promptVersionId ?? 'none'),
-    queryFn: ({ signal }) =>
-      getPromptVersion(project.id, selectedArtVersion!.promptVersionId, signal),
+    queryFn: ({ signal }) => getPromptVersion(project.id, selectedArtVersion!.promptVersionId, signal),
     enabled: Boolean(selectedArtVersion)
   })
   const providers = providersQuery.data ?? []
@@ -366,9 +364,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     if (versionsQuery.isFetching || versionsQuery.isError) return
     if (artVersions.some((version) => version.id === viewState.artVersionId)) return
     const resolvedId =
-      artVersions.find((version) => version.id === project.activeVersionId)?.id ??
-      artVersions[0]?.id ??
-      null
+      artVersions.find((version) => version.id === project.activeVersionId)?.id ?? artVersions[0]?.id ?? null
     if (resolvedId === viewState.artVersionId) return
     setView({ view: 'versions', artVersionId: resolvedId })
   }, [
@@ -670,8 +666,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const activateSelectedArtVersion = (): void => {
     if (!selectedArtVersion) return
     const active = artVersions.find((version) => version.id === project.activeVersionId) ?? null
-    const reason =
-      active && selectedArtVersion.versionNumber < active.versionNumber ? 'rollback' : 'switch'
+    const reason = active && selectedArtVersion.versionNumber < active.versionNumber ? 'rollback' : 'switch'
     setActivatingArtVersion(true)
     setVersionError(null)
     activateArtVersion(project.id, selectedArtVersion.id, reason, project.rowVersion)

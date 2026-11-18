@@ -218,9 +218,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       className="wb3-generation-dialog"
       footer={
         <>
-          {formReady ? (
-            <span className="wb3-generation-estimate">生成 {count} 张，约 1 分钟</span>
-          ) : null}
+          {formReady ? <span className="wb3-generation-estimate">生成 {count} 张，约 1 分钟</span> : null}
           <span className="wb3-dialog-spacer" />
           <Button variant="quiet" disabled={createMutation.isPending} onClick={onClose}>
             取消

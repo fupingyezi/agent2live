@@ -218,7 +218,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
           <Field id="wb3-block-text" label="正文">
             <Textarea
               id="wb3-block-text"
-              rows={5}
+              rows={4}
               maxLength={4000}
               value={draft.text}
               disabled={disabled}

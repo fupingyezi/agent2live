@@ -1,9 +1,5 @@
 import React from 'react'
-import type {
-  ArtProjectDto,
-  ArtVersionDto,
-  PromptVersionDto
-} from '@studio/api'
+import type { ArtProjectDto, ArtVersionDto, PromptVersionDto } from '@studio/api'
 import { formatDateTime } from '@studio/format'
 import { Button, KeyValueList } from '@agent2live/design-system'
 import { ART_SOURCE_LABELS, MATERIAL_ROLE_LABELS } from '../../prompt-labels'

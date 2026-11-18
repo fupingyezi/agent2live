@@ -29,8 +29,7 @@ const ArtVersionItem: React.FC<ArtVersionItemProps> = ({ version, active, select
       </span>
       <span className="wb3-version-copy">
         <strong>
-          第 {version.versionNumber} 版
-          {active ? ' · 在用' : ''}
+          第 {version.versionNumber} 版{active ? ' · 在用' : ''}
         </strong>
         <small>
           {ART_SOURCE_LABELS[version.sourceKind]} · {formatDateTime(version.createdAt)}
@@ -72,9 +71,7 @@ export const ArtVersionList: React.FC<ArtVersionListProps> = ({
           />
         ))}
       </div>
-      <footer className="wb3-version-list-foot">
-        切换当前参考不会覆盖任何旧版本。
-      </footer>
+      <footer className="wb3-version-list-foot">切换当前参考不会覆盖任何旧版本。</footer>
     </aside>
   )
 }

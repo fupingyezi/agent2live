@@ -185,6 +185,36 @@ test('renames the character and rolls back a prompt version', async () => {
       studio.page.locator('[data-testid="wb3-prompt-history-row"]').filter({ hasText: '第 2 版' })
     ).toBeVisible()
     await expect(studio.page.locator('[data-testid="wb3-prompt-history-row"]')).toHaveCount(5)
+
+    const versions = (
+      await api.json<{ items: Array<{ id: string; versionNumber: number }> }>(
+        'GET',
+        `/api/v1/art-projects/${encodeURIComponent(seeded.project.id)}/prompt-versions`
+      )
+    ).body.items
+    const savedCurrent = versions.find((version) => version.versionNumber === 4)
+    expect(savedCurrent, 'saving before rollback creates version 4').toBeTruthy()
+    const savedVersionDetail = (
+      await api.json<{ state: { materialRefs: Array<{ weight: number }> } }>(
+        'GET',
+        `/api/v1/art-projects/${encodeURIComponent(seeded.project.id)}/prompt-versions/${encodeURIComponent(
+          savedCurrent!.id
+        )}`
+      )
+    ).body
+    expect(savedVersionDetail.state.materialRefs.map((reference) => reference.weight)).toContain(1.3)
+
+    const rollbackTarget = versions.find((version) => version.versionNumber === 5)
+    expect(rollbackTarget, 'rolling back creates version 5').toBeTruthy()
+    const rollbackDetail = (
+      await api.json<{ state: { materialRefs: Array<{ weight: number }> } }>(
+        'GET',
+        `/api/v1/art-projects/${encodeURIComponent(seeded.project.id)}/prompt-versions/${encodeURIComponent(
+          rollbackTarget!.id
+        )}`
+      )
+    ).body
+    expect(rollbackDetail.state.materialRefs.map((reference) => reference.weight)).toContain(1)
   } finally {
     await studio.close()
   }
@@ -217,11 +247,17 @@ test('applies only the selected AI rewrite operation', async () => {
       .locator('[data-testid="wb3-prompt-block-row"]')
       .filter({ hasText: '渲染风格' })
     await expect(styleRow).toContainText('×1.2')
+    await expect(
+      studio.page.locator('[data-testid="wb3-prompt-block-row"]').filter({ hasText: 'AI 建议' })
+    ).toHaveCount(0)
 
     await studio.page.getByRole('button', { name: '提交为新版本', exact: true }).click()
     await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 2 版', {
       timeout: 30_000
     })
+    await expect(
+      studio.page.locator('[data-testid="wb3-prompt-block-row"]').filter({ hasText: 'AI 建议' })
+    ).toHaveCount(0)
   } finally {
     await studio.close()
   }

@@ -185,7 +185,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
           <InlineNotice tone="info">正在载入提示词…</InlineNotice>
         ) : total === 0 ? (
           <EmptyState
-            icon={<img src={characterEmptyArt} alt="" />}
+            icon={<img className="wb3-empty-illustration" src={characterEmptyArt} alt="" />}
             title="还没有提示词块"
             description={`读 ${referenceCount} 张参考图生成一版，或自己写第一块`}
             action={

@@ -68,26 +68,22 @@ export const ArtVersionViewer: React.FC<ArtVersionViewerProps> = ({
           {size ? <span>{size}</span> : null}
         </div>
         <div className="wb3-viewer-actions">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!newer}
-            onClick={() => newer && onSelect(newer.id)}
-          >
+          <Button variant="secondary" size="sm" disabled={!newer} onClick={() => newer && onSelect(newer.id)}>
             上一张
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!older}
-            onClick={() => older && onSelect(older.id)}
-          >
+          <Button variant="secondary" size="sm" disabled={!older} onClick={() => older && onSelect(older.id)}>
             下一张
           </Button>
         </div>
       </header>
       <div className="wb3-viewer-image">
-        {isLoading ? <span>加载中…</span> : error || !url ? <span>无法加载原图</span> : <img src={url} alt={`第 ${version.versionNumber} 版立绘`} />}
+        {isLoading ? (
+          <span>加载中…</span>
+        ) : error || !url ? (
+          <span>无法加载原图</span>
+        ) : (
+          <img src={url} alt={`第 ${version.versionNumber} 版立绘`} />
+        )}
       </div>
       <footer className="wb3-viewer-foot">
         <span>{sourceText(version, generations)}</span>
@@ -101,7 +97,9 @@ export const ArtVersionViewer: React.FC<ArtVersionViewerProps> = ({
         title={`第 ${version.versionNumber} 版原图`}
         className="wb3-lightbox"
       >
-        {url ? <img className="wb3-lightbox-image" src={url} alt={`第 ${version.versionNumber} 版原图`} /> : null}
+        {url ? (
+          <img className="wb3-lightbox-image" src={url} alt={`第 ${version.versionNumber} 版原图`} />
+        ) : null}
       </Dialog>
     </section>
   )

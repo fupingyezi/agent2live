@@ -82,7 +82,14 @@ export async function captureVisual(
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            // Force a style/layout flush so the compositor reflects the state prepare() just set
+            // (e.g. the reference-card hover overlay) in the screenshot below.
+            void document.body.offsetHeight
+            resolve()
+          })
+        )
       })
   )
   const target = phase1EvidencePath('ui', 'visual', `${name}-1440x900.png`)
