@@ -3,9 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ArtProjectDto, CharacterDto, PromptBlock, PromptDraftDto, PromptVersionDto } from '@studio/api'
 import {
+  acceptGenerationCandidate,
   ApiError,
   commitPromptDraft,
   createPromptDraft,
+  discardGeneration,
+  getGeneration,
   getJob,
   getPromptVersion,
   getPromptWorkspace,
@@ -37,6 +40,7 @@ import type { PromptFilter } from './prompt-diagnostics'
 import { WorkbenchTopbar } from './components/WorkbenchTopbar'
 import { WorkbenchActionBar } from './components/WorkbenchActionBar'
 import { PromptWorkbenchView } from './views/PromptWorkbenchView'
+import { CandidateWorkbenchView } from './views/CandidateWorkbenchView'
 import { PromptBlockDialog } from './components/prompt/PromptBlockDialog'
 import { FullPromptDialog } from './components/prompt/FullPromptDialog'
 import { RenameDialog } from './components/prompt/RenameDialog'
@@ -66,6 +70,8 @@ function errorMessage(error: unknown): string | null {
 const PROMPT_SYNC_POLL_MS = 250
 
 const PROMPT_SYNC_TIMEOUT_MS = 135_000
+
+const TERMINAL_GENERATION_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'unknown_outcome'])
 
 async function waitForPromptSync(jobId: string) {
   const deadline = Date.now() + PROMPT_SYNC_TIMEOUT_MS
@@ -127,6 +133,9 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     id: string
     versionNumber: number
   } | null>(null)
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
+  const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null)
+  const [discarding, setDiscarding] = useState(false)
   const [workspaceDialog, setWorkspaceDialog] = useState<'materials' | 'versions' | null>(null)
   const [referenceGalleryOpen, setReferenceGalleryOpen] = useState(false)
   const [aiRewrite, setAiRewrite] = useState<{ intent: string; autoStart: boolean } | null>(null)
@@ -195,12 +204,69 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     queryKey: queryKeys.generations(project.id),
     queryFn: ({ signal }) => listGenerations(project.id, 20, signal)
   })
+  const generationDetailQuery = useQuery({
+    queryKey: queryKeys.generation(project.id, viewState.generationId ?? 'none'),
+    queryFn: ({ signal }) => getGeneration(viewState.generationId!, signal),
+    enabled: Boolean(viewState.generationId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status && TERMINAL_GENERATION_STATUSES.has(status) ? false : 1500
+    }
+  })
 
   const workspace = workspaceQuery.data ?? null
   const artVersions = versionsQuery.data ?? []
   const providers = providersQuery.data ?? []
   const currentDraftRowVersion =
     useWorkbenchStore((state) => state.rowVersion) ?? workspace?.activeDraft?.rowVersion ?? null
+
+  const candidateGeneration = useMemo(
+    () =>
+      generationDetailQuery.data ??
+      (() => {
+        const items = generationsQuery.data ?? []
+        if (viewState.generationId) {
+          return items.find((generation) => generation.id === viewState.generationId) ?? null
+        }
+        return items[0] ?? null
+      })(),
+    [generationDetailQuery.data, generationsQuery.data, viewState.generationId]
+  )
+
+  useEffect(() => {
+    if (!candidateGeneration) {
+      setSelectedCandidateId(null)
+      return
+    }
+    const ready = candidateGeneration.candidates.filter((candidate) => candidate.status === 'ready')
+    setSelectedCandidateId((current) =>
+      current && ready.some((candidate) => candidate.id === current) ? current : (ready[0]?.id ?? null)
+    )
+  }, [candidateGeneration?.id, candidateGeneration?.candidates.length])
+
+  useEffect(() => {
+    const status = generationDetailQuery.data?.status
+    if (!status || !TERMINAL_GENERATION_STATUSES.has(status)) return
+    void queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
+  }, [generationDetailQuery.data?.id, generationDetailQuery.data?.status, project.id, queryClient])
+
+  const providerLabel =
+    providers.find((provider) => provider.id === candidateGeneration?.providerConnectionId)?.model ??
+    providers.find((provider) => provider.id === candidateGeneration?.providerConnectionId)?.label ??
+    '未指定'
+
+  const promptVersionNumberForGeneration = useMemo(() => {
+    const versionId = candidateGeneration?.promptVersionId
+    if (!versionId) return null
+    return (
+      workspace?.versions.find((version) => version.id === versionId)?.versionNumber ??
+      (workspace?.activePromptVersion?.id === versionId ? workspace.activePromptVersion.versionNumber : null)
+    )
+  }, [candidateGeneration?.promptVersionId, workspace?.versions, workspace?.activePromptVersion])
+
+  const nextVersionNumber = artVersions.reduce((max, version) => Math.max(max, version.versionNumber), 0) + 1
 
   const selectedPromptVersionId = viewState.promptVersionId ?? workspace?.activePromptVersion?.id ?? null
   const latestGeneration = useMemo(() => {
@@ -538,6 +604,59 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     return version
   }
 
+  const saveCandidate = (candidateId: string): void => {
+    setSavingCandidateId(candidateId)
+    setVersionError(null)
+    acceptGenerationCandidate(candidateId, project.activeVersionId)
+      .then((mutation) => {
+        queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
+        setView({ view: 'versions', artVersionId: mutation.artVersion.id })
+        if (candidateGeneration) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.generation(project.id, candidateGeneration.id)
+          })
+        }
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.characters })
+        ])
+      })
+      .catch((reason) => setVersionError(errorMessage(reason)))
+      .finally(() => setSavingCandidateId(null))
+  }
+
+  const discardBatch = (): void => {
+    if (!candidateGeneration) return
+    setDiscarding(true)
+    setVersionError(null)
+    discardGeneration(candidateGeneration.id)
+      .then(() => {
+        setView({ view: 'prompt', promptVersionId: null })
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) }),
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.generation(project.id, candidateGeneration.id)
+          })
+        ])
+      })
+      .catch((reason) => setVersionError(errorMessage(reason)))
+      .finally(() => setDiscarding(false))
+  }
+
+  const openCandidateGenerationDialog = (): void => {
+    if (candidateGeneration) {
+      setGenerationPromptVersion({
+        id: candidateGeneration.promptVersionId,
+        versionNumber: promptVersionNumberForGeneration ?? 0
+      })
+    }
+    setGenerationDialogOpen(true)
+  }
+
   const findDisplayBlock = (blockId: string): PromptBlock | null =>
     displaySpec
       ? ([...displaySpec.blocks, ...displaySpec.negativeBlocks].find((block) => block.id === blockId) ?? null)
@@ -709,10 +828,35 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             onViewArtVersion={() => undefined}
             onSubmitVersion={handleSubmitVersion}
           />
+        ) : viewState.view === 'candidates' ? (
+          <CandidateWorkbenchView
+            generation={candidateGeneration}
+            promptVersionNumber={promptVersionNumberForGeneration}
+            providerLabel={providerLabel}
+            selectedCandidateId={selectedCandidateId}
+            savingCandidateId={savingCandidateId}
+            discarding={discarding}
+            nextVersionNumber={nextVersionNumber}
+            onSelectCandidate={setSelectedCandidateId}
+            onSaveCandidate={saveCandidate}
+            onSaveSelected={() => {
+              if (selectedCandidateId) saveCandidate(selectedCandidateId)
+            }}
+            onDiscard={discardBatch}
+            onRetry={openCandidateGenerationDialog}
+            onRegenerate={openCandidateGenerationDialog}
+            onBackToPrompt={() =>
+              setView({
+                view: 'prompt',
+                promptVersionId: candidateGeneration?.promptVersionId ?? null
+              })
+            }
+            error={versionError}
+          />
         ) : (
           <div className="wb3-placeholder">
             <EmptyState
-              title={viewState.view === 'candidates' ? '候选视图建设中' : '立绘版本视图建设中'}
+              title="立绘版本视图建设中"
               description="后续 Task 会接入完整交互。"
               action={
                 <Button
@@ -726,27 +870,29 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           </div>
         )}
       </div>
-      <WorkbenchActionBar
-        status={
-          readOnly
-            ? '历史版本只读'
-            : dirty
-              ? '有未保存修改'
-              : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版 · ${
-                  (displaySpec?.blocks.length ?? 0) + (displaySpec?.negativeBlocks.length ?? 0)
-                } 块`
-        }
-      >
-        <Button
-          variant="primary"
-          disabled={readOnly || !selectedPromptVersion || (displaySpec?.blocks.length ?? 0) === 0}
-          onClick={() => {
-            void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
-          }}
+      {viewState.view === 'prompt' ? (
+        <WorkbenchActionBar
+          status={
+            readOnly
+              ? '历史版本只读'
+              : dirty
+                ? '有未保存修改'
+                : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版 · ${
+                    (displaySpec?.blocks.length ?? 0) + (displaySpec?.negativeBlocks.length ?? 0)
+                  } 块`
+          }
         >
-          生成图片
-        </Button>
-      </WorkbenchActionBar>
+          <Button
+            variant="primary"
+            disabled={readOnly || !selectedPromptVersion || (displaySpec?.blocks.length ?? 0) === 0}
+            onClick={() => {
+              void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
+            }}
+          >
+            生成图片
+          </Button>
+        </WorkbenchActionBar>
+      ) : null}
 
       <GenerationDialog
         open={generationDialogOpen}
