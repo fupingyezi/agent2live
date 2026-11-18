@@ -26,13 +26,10 @@ import {
   ForkDialog,
   ForkOriginBar,
   GenerationDialog,
-  PromptAiPanel,
   PromptInputPanel,
   ReferenceChainBar,
   VersionGraph,
-  type ActiveAiJob,
-  type ForkSource,
-  type InitialPromptJob
+  type ForkSource
 } from './components'
 import { parseWorkbenchView, updateWorkbenchView } from './view-state'
 import type { PromptFilter } from './prompt-diagnostics'
@@ -42,6 +39,9 @@ import { PromptWorkbenchView } from './views/PromptWorkbenchView'
 import { PromptBlockDialog } from './components/prompt/PromptBlockDialog'
 import { FullPromptDialog } from './components/prompt/FullPromptDialog'
 import { RenameDialog } from './components/prompt/RenameDialog'
+import { AiRewriteDialog } from './components/prompt/AiRewriteDialog'
+import { ReverseDialog } from './components/prompt/ReverseDialog'
+import { ReferenceGalleryDialog } from './components/prompt/ReferenceGalleryDialog'
 
 function draftSnapshot(draft: PromptDraftDto): {
   draftId: string
@@ -83,6 +83,15 @@ async function waitForPromptSync(jobId: string) {
   throw new Error('提示词同步超时')
 }
 
+type AiJobKind = 'reverse' | 'suggest'
+
+type InitialPromptJob = { kind: 'suggest'; jobId: string } | { kind: 'reverse'; jobId: string }
+
+interface ActiveAiJob {
+  kind: AiJobKind
+  jobId: string
+}
+
 export interface WorkbenchProps {
   project: ArtProjectDto
   character?: CharacterDto | null
@@ -117,7 +126,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     id: string
     versionNumber: number
   } | null>(null)
-  const [workspaceDialog, setWorkspaceDialog] = useState<'materials' | 'ai' | 'versions' | null>(null)
+  const [workspaceDialog, setWorkspaceDialog] = useState<'materials' | 'versions' | null>(null)
+  const [referenceGalleryOpen, setReferenceGalleryOpen] = useState(false)
+  const [aiRewrite, setAiRewrite] = useState<{ intent: string; autoStart: boolean } | null>(null)
+  const [reverseOpen, setReverseOpen] = useState(false)
   const [filter, setFilter] = useState<PromptFilter>('all')
   const [versionSubmitting, setVersionSubmitting] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
@@ -179,6 +191,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const workspace = workspaceQuery.data ?? null
   const artVersions = versionsQuery.data ?? []
   const providers = providersQuery.data ?? []
+  const currentDraftRowVersion =
+    useWorkbenchStore((state) => state.rowVersion) ?? workspace?.activeDraft?.rowVersion ?? null
 
   const selectedPromptVersionId = viewState.promptVersionId ?? workspace?.activePromptVersion?.id ?? null
   const promptVersionQuery = useQuery({
@@ -241,7 +255,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   useEffect(() => {
     if (!initialJob || initializedJob.current === initialJob.jobId) return
     initializedJob.current = initialJob.jobId
-    setWorkspaceDialog('ai')
+    if (initialJob.kind === 'suggest') {
+      setAiRewrite({ intent: '', autoStart: false })
+    } else {
+      setReverseOpen(true)
+    }
   }, [initialJob?.jobId])
 
   useEffect(() => {
@@ -333,6 +351,16 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     setDraftHint(saved)
     invalidateProjectWorkspace()
     return saved
+  }
+
+  const prepareAiRewrite = async (): Promise<void> => {
+    const live = useWorkbenchStore.getState()
+    if (!live.dirty) return
+    if (!draft || !live.draft) throw new Error('当前没有可保存的提示词草稿。')
+    const saved = await savePromptDraft(project.id, draft.id, live.draft, live.rowVersion ?? draft.rowVersion)
+    useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
+    setDraftHint(saved)
+    invalidateProjectWorkspace()
   }
 
   const saveCurrentVersion = async (): Promise<{
@@ -562,13 +590,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               setDialogError(null)
               setBlockDialog({ blockId: null, negative, block: null })
             }}
-            onOpenAiRewrite={() => setWorkspaceDialog('ai')}
-            onOpenReverse={() => setWorkspaceDialog('ai')}
+            onOpenAiRewrite={(intent) => setAiRewrite({ intent, autoStart: intent.trim().length > 0 })}
+            onOpenReverse={() => setReverseOpen(true)}
             onOpenFullPrompt={() => {
               setDialogError(null)
               setFullPromptOpen(true)
             }}
-            onOpenReferences={() => setWorkspaceDialog('materials')}
+            onOpenReferences={() => setReferenceGalleryOpen(true)}
             onOpenVersions={() => setWorkspaceDialog('versions')}
             onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
             onRollbackToPromptVersion={() => undefined}
@@ -657,39 +685,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       </Dialog>
 
       <Dialog
-        open={workspaceDialog === 'ai'}
-        title="AI 助手"
-        description="反推和改进建议在临时面板中处理。"
-        onOpenChange={(open) => {
-          if (!open) setWorkspaceDialog(null)
-        }}
-        className="workbench-ai-dialog"
-      >
-        {providersQuery.isError ? (
-          <StudioError
-            error={providersQuery.error}
-            onRetry={() => {
-              void providersQuery.refetch()
-            }}
-          />
-        ) : providersQuery.isPending ? (
-          <StudioLoading label="正在加载模型连接…" />
-        ) : (
-          <PromptAiPanel
-            projectId={project.id}
-            workspace={workspace}
-            references={spec?.materialRefs ?? []}
-            providers={providers}
-            dirty={dirty}
-            initialJob={initialJob}
-            onDraftUpdated={handleDraftUpdated}
-            onJobStarted={setActiveAiJob}
-            onJobResolved={() => setActiveAiJob(null)}
-          />
-        )}
-      </Dialog>
-
-      <Dialog
         open={workspaceDialog === 'versions'}
         title="版本操作"
         description="查看版本链、参考图继承和分支来源。"
@@ -718,6 +713,51 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           />
         </div>
       </Dialog>
+
+      <ReferenceGalleryDialog
+        open={referenceGalleryOpen}
+        spec={displaySpec}
+        readOnly={readOnly}
+        onClose={() => setReferenceGalleryOpen(false)}
+        onChange={(references) => useWorkbenchStore.getState().updateMaterialRefs(references)}
+        onOpenMaterials={() => {
+          setReferenceGalleryOpen(false)
+          setWorkspaceDialog('materials')
+        }}
+        onOpenReverse={() => {
+          setReferenceGalleryOpen(false)
+          setReverseOpen(true)
+        }}
+      />
+
+      <AiRewriteDialog
+        open={aiRewrite !== null}
+        projectId={project.id}
+        workspace={workspace}
+        spec={displaySpec}
+        draftRowVersion={currentDraftRowVersion}
+        providers={providers}
+        initialIntent={aiRewrite?.intent ?? ''}
+        autoStart={aiRewrite?.autoStart ?? false}
+        initialJob={initialJob?.kind === 'suggest' ? initialJob : null}
+        onPrepare={prepareAiRewrite}
+        onClose={() => setAiRewrite(null)}
+        onDraftUpdated={handleDraftUpdated}
+        onJobStarted={(job) => setActiveAiJob(job)}
+        onJobResolved={() => setActiveAiJob(null)}
+      />
+
+      <ReverseDialog
+        open={reverseOpen}
+        projectId={project.id}
+        workspace={workspace}
+        providers={providers}
+        initialJob={initialJob?.kind === 'reverse' ? initialJob : null}
+        onClose={() => setReverseOpen(false)}
+        onDraftUpdated={handleDraftUpdated}
+        onJobStarted={(job) => setActiveAiJob(job)}
+        onJobResolved={() => setActiveAiJob(null)}
+      />
 
       <PromptBlockDialog
         open={blockDialog !== null}
