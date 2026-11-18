@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  effectiveBlockStrength,
   promptReverseOutputSchema,
   promptSpecSchema,
   promptSuggestionOutputSchema,
@@ -193,6 +194,34 @@ describe('PromptSpecV2', () => {
         operations: [{ op: 'replace', blockId: 'x', before: 'a', after: 'a' }]
       })
     ).toThrow(/no-op|unchanged/i)
+  })
+
+  it('accepts blocks without strength and rejects avoid on positive blocks', () => {
+    const parsed = promptSpecSchema.parse(spec)
+    expect(parsed.blocks[0]?.strength).toBeUndefined()
+    expect(parsed.negativeBlocks[0]?.strength).toBeUndefined()
+
+    const must = promptSpecSchema.parse({
+      ...spec,
+      blocks: [{ ...spec.blocks[0], strength: 'must' }]
+    })
+    expect(must.blocks[0]?.strength).toBe('must')
+
+    expect(() =>
+      promptSpecSchema.parse({
+        ...spec,
+        blocks: [{ ...spec.blocks[0], strength: 'avoid' }]
+      })
+    ).toThrow(/avoid/i)
+  })
+
+  it('normalizes effective block strength for positive and negative blocks', () => {
+    const positive = { ...spec.blocks[0]!, strength: undefined }
+    const negative = { ...spec.negativeBlocks[0]!, strength: undefined }
+    expect(effectiveBlockStrength(positive, false)).toBe('prefer')
+    expect(effectiveBlockStrength({ ...positive, strength: 'must' }, false)).toBe('must')
+    expect(effectiveBlockStrength(negative, true)).toBe('avoid')
+    expect(effectiveBlockStrength({ ...positive, strength: 'prefer' }, true)).toBe('avoid')
   })
 })
 

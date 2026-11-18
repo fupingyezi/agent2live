@@ -1,4 +1,5 @@
 import {
+  effectiveBlockStrength,
   hashCanonical,
   promptSpecCoreSchema,
   type ImageCapabilityProfile,
@@ -89,7 +90,12 @@ export function compilePrompt(spec: PromptSpecV2, capability: ImageCapabilityPro
   const dropped: string[] = []
   if (textLength(output) > capability.maxPromptChars) {
     const droppable = positiveBlocks
-      .filter((block) => !block.locked && !MANDATORY_CATEGORIES.has(block.category))
+      .filter(
+        (block) =>
+          !block.locked &&
+          !MANDATORY_CATEGORIES.has(block.category) &&
+          effectiveBlockStrength(block, false) !== 'must'
+      )
       .sort((left, right) => {
         if (left.priority !== right.priority) return left.priority - right.priority
         return left.id.localeCompare(right.id)

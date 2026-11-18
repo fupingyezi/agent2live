@@ -166,3 +166,10 @@ describe('makePromptBlock', () => {
     expect(block.text.trim().length).toBeGreaterThan(0)
   })
 })
+
+describe('makePromptBlock', () => {
+  it('writes explicit strength for positive and negative blocks', () => {
+    expect(makePromptBlock(false).strength).toBe('prefer')
+    expect(makePromptBlock(true).strength).toBe('avoid')
+  })
+})

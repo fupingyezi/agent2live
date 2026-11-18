@@ -106,6 +106,7 @@ export function makePromptBlock(negative: boolean): PromptBlock {
     text: '待填写',
     weight: 1,
     locked: false,
+    strength: negative ? 'avoid' : 'prefer',
     confidence: 1,
     evidence: [],
     source: 'user',

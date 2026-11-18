@@ -95,6 +95,7 @@ export const promptBlockSchema = z
     text: z.string().trim().min(1).max(4000),
     weight: z.number().min(0.1).max(2),
     locked: z.boolean(),
+    strength: requirementStrengthSchema.optional(),
     confidence: z.number().min(0).max(1),
     evidence: z.array(promptEvidenceSchema).max(20),
     source: promptSourceSchema,
@@ -145,6 +146,13 @@ function refinePromptSpecCore(value: z.infer<typeof promptSpecCoreObjectSchema>,
   const requirements = new Map(value.sourceRequirements.map((requirement) => [requirement.id, requirement]))
   const assets = new Set(value.materialRefs.map((material) => material.assetId))
   for (const block of value.blocks) {
+    if (block.strength === 'avoid') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'positive block cannot use avoid strength',
+        path: ['blocks', block.id]
+      })
+    }
     for (const ref of block.requirementRefs) {
       const requirement = requirements.get(ref)
       if (!requirement) {
@@ -225,6 +233,16 @@ export type PromptSpecCore = z.infer<typeof promptSpecCoreSchema>
 export type PromptBlock = z.infer<typeof promptBlockSchema>
 export type PromptRequirement = z.infer<typeof promptRequirementSchema>
 export type PromptMaterialRef = z.infer<typeof promptMaterialRefSchema>
+
+export type RequirementStrength = (typeof REQUIREMENT_STRENGTHS)[number]
+
+export function effectiveBlockStrength(
+  block: Pick<PromptBlock, 'strength'>,
+  negative: boolean
+): RequirementStrength {
+  if (negative) return 'avoid'
+  return block.strength === 'must' ? 'must' : 'prefer'
+}
 
 export const promptOperationSchema = z
   .discriminatedUnion('op', [

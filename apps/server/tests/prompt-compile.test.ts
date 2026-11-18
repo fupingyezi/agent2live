@@ -86,6 +86,44 @@ describe('compilePrompt', () => {
     expect(compiled.warnings).toContain('mandatory_content_exceeds_limit')
   })
 
+  it('never drops must blocks under prompt pressure', () => {
+    const spec = specFixture()
+    const base = spec.blocks[1]!
+    spec.blocks = [
+      {
+        ...base,
+        id: 'hair.must',
+        category: 'hair',
+        label: '发型',
+        text: '银白长发'.repeat(6),
+        strength: 'must',
+        locked: false,
+        priority: 1
+      },
+      {
+        ...base,
+        id: 'style.prefer',
+        category: 'style',
+        label: '风格',
+        text: '超长风格描述'.repeat(20),
+        strength: 'prefer',
+        locked: false,
+        priority: 2
+      }
+    ]
+    spec.negativeBlocks = []
+    const compiled = compilePrompt(spec, {
+      ...capability,
+      maxPromptChars: 20,
+      supportsNegativePrompt: false
+    })
+    expect(compiled.truncated).toBe(true)
+    expect(compiled.prompt).toContain('银白长发')
+    expect(compiled.droppedBlockIds).toContain('style.prefer')
+    expect(compiled.droppedBlockIds).not.toContain('hair.must')
+    expect(compiled.warnings).toContain('mandatory_content_exceeds_limit')
+  })
+
   it('hashes only stable spec content', () => {
     const spec = specFixture()
     const baseline = specContentHash(spec)
