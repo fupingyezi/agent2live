@@ -84,8 +84,8 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
 
     const axePages: AxePageResult[] = []
     const visualPaths: string[] = []
-    const capture = async (name: (typeof UI_PAGES)[number]): Promise<void> => {
-      const shot = await captureVisual(studio.app, page, name)
+    const capture = async (name: (typeof UI_PAGES)[number], prepare?: () => Promise<void>): Promise<void> => {
+      const shot = await captureVisual(studio.app, page, name, prepare)
       await expect(page).toHaveScreenshot(`${name}-1440x900.png`, {
         animations: 'disabled',
         scale: 'css',
@@ -123,7 +123,10 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     const hoverCard = page.locator('[data-testid="character-reference-card"]').nth(1)
     await hoverCard.hover()
     await expect(hoverCard.getByTestId('reference-hover-actions')).toHaveCSS('opacity', '1')
-    await capture('reference-hover')
+    await capture('reference-hover', async () => {
+      await hoverCard.hover()
+      await expect(hoverCard.getByTestId('reference-hover-actions')).toHaveCSS('opacity', '1')
+    })
     const editReference = hoverCard.getByRole('button', { name: '编辑', exact: true })
     await editReference.focus()
     await page.keyboard.press('Enter')
@@ -155,12 +158,12 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     const projectId = new URL(page.url()).hash.match(/[?&]project=([^&]+)/)?.[1]
     expect(projectId).toMatch(/^artp_/)
 
-    await expect(page.locator('.workbench-design-version-tree')).toHaveCSS('width', '220px')
-    await expect(page.locator('.workbench-design-inspector')).toHaveCSS('width', '320px')
-    await expect(page.locator('.workbench-design-topbar')).toHaveCSS('height', '48px')
-    await expect(page.locator('[data-testid="workbench-reference-card"]')).toHaveCount(6)
-    await expect(page.locator('[data-testid="workbench-reference-card"]').first()).toHaveCSS('width', '255px')
-    await expect(page.getByLabel('完整提示词')).toHaveValue(/UI 基线角色/)
+    await expect(page.locator('[data-testid="wb3-topbar"]')).toHaveCSS('height', '60px')
+    await expect(page.locator('[data-testid="wb3-prompt-editor"]')).toHaveCSS('width', '736px')
+    await expect(page.locator('[data-testid="wb3-prompt-block-row"]').first()).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(page.locator('[data-testid="wb3-reference-thumb"]')).toHaveCount(6)
     const creationWorkspace = await api.json<{
       activeDraft: { state: { fullPrompt: string } } | null
     }>('GET', `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`)
@@ -188,37 +191,19 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     })
     await capture('character-card')
     await page.evaluate(
-      ({ projectId, generationId }) => {
-        window.localStorage.setItem(`agent2live:last-generation:${projectId}`, generationId)
-      },
-      { projectId: seeded.projectId, generationId: seeded.generationId }
-    )
-    await page.evaluate(
       (hash) => {
         window.location.hash = hash
       },
-      `#/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(seeded.projectId)}`
+      `#/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(
+        seeded.projectId
+      )}&view=candidates&generation=${encodeURIComponent(seeded.generationId)}`
     )
-
-    await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(
-      page.locator(`[data-testid="workbench-version-node"][data-version-id="${seeded.activeArtVersionId}"]`)
-    ).toHaveAttribute('data-active', 'true')
-    await page.getByRole('button', { name: '候选', exact: true }).click()
-    await expect(page.locator('[data-testid="generation-status"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('[data-testid="candidate-compare"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('[data-testid="candidate-card"] img').first()).toBeVisible({
+    await expect(page.locator('[data-testid="wb3-candidates-view"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(page.getByRole('button', { name: '候选', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    await expect(page.locator('[data-testid="candidate-card"]')).toHaveCSS('width', '427px')
-    await expect(page.locator('[data-testid="candidate-strip"]')).toHaveCSS('width', '350px')
-    await expect(page.locator('[data-testid="candidate-strip"]')).toContainText('4 张')
-    await expect(page.locator('[data-testid="candidate-card"]')).toContainText('候选 A')
+    await expect(page.locator('[data-testid="wb3-generation-params"]')).toContainText('张数 4 张')
+    await expect(page.locator('[data-testid="wb3-candidate-card"]')).toHaveCount(4)
+    await expect(page.locator('[data-testid="wb3-candidate-card"]').first()).toContainText('候选 1')
     await capture('workbench-candidates')
 
     await page.getByRole('button', { name: '设置', exact: true }).click()

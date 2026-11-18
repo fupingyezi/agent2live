@@ -91,13 +91,13 @@ test('creates a character and art project, streams events, and survives reload',
     })
     await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
-    await expect(studio.getByRole('heading', { name: '默认造型', level: 1 })).toBeVisible()
-    await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+    await expect(studio.getByTestId('wb3-topbar')).toContainText('提示词工作台')
+    await expect(studio.locator('[data-testid="wb3-prompt-editor"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.getByTestId('studio-page-topbar')).toHaveCount(1)
-    await expect(studio.getByTestId('studio-page-topbar')).toHaveCSS('height', '48px')
-    await expect(studio.getByTestId('studio-page-topbar')).toHaveAttribute('data-tone', 'editor')
+    await expect(studio.getByTestId('wb3-topbar')).toBeVisible()
+    await expect(studio.getByTestId('wb3-topbar')).toHaveCSS('height', '60px')
+    await expect(studio.getByTestId('wb3-topbar')).toContainText('提示词工作台')
     await expect.poll(() => studio.url()).toContain('project=artp_')
     const projectUrl = studio.url()
 
@@ -109,7 +109,12 @@ test('creates a character and art project, streams events, and survives reload',
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible()
     expect(studio.url()).toBe(projectUrl)
 
-    await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
+    const characterId = decodeURIComponent(
+      new URL(projectUrl).hash.replace(/^#/, '').split('/').filter(Boolean)[1] ?? ''
+    )
+    await studio.evaluate((id) => {
+      window.location.hash = `#/characters/${encodeURIComponent(id)}`
+    }, characterId)
     const projectCard = studio.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })
     await expect(projectCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '50')
     await expect(projectCard.getByRole('link', { name: '打开工作台', exact: true })).toBeVisible()
@@ -239,10 +244,10 @@ test('initializes a character from reference images', async () => {
     })
     await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
-    await expect(studio.locator('[data-testid="prompt-block-list"]')).toBeVisible({ timeout: 20_000 })
-    await expect(studio.locator('[data-testid="workbench-reference-card"]')).toHaveCount(2)
-    await expect(studio.locator('[data-testid="workbench-reference-card"]').first()).toContainText('身份')
-    await expect(studio.locator('[data-testid="workbench-reference-card"]').nth(1)).toContainText('参考')
+    await expect(studio.locator('[data-testid="wb3-prompt-editor"]')).toBeVisible({ timeout: 20_000 })
+    await expect(studio.locator('[data-testid="wb3-reference-thumb"]')).toHaveCount(2)
+    await expect(studio.locator('[data-testid="wb3-reference-thumb"]').first()).toContainText('身份')
+    await expect(studio.locator('[data-testid="wb3-reference-thumb"]').nth(1)).toContainText('参考')
   } finally {
     await app.close()
   }
@@ -379,22 +384,30 @@ test('creates a default art project and prompt draft from text-only setup', asyn
     await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
       timeout: 30_000
     })
+    await expect(studio.page.locator('[data-testid="text-warning"]')).toContainText(
+      '没有配置 DeepSeek 文本模型'
+    )
+    await expect(studio.page.locator('[data-testid="ai-warning"]')).toHaveCount(0)
     await studio.page.getByTestId('open-art-workbench').click()
     await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
       timeout: 30_000
     })
     await expect.poll(() => studio.page.url()).toContain('/art?project=artp_')
-    await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toContainText('霁')
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('霁')
     await expect(studio.page.getByText('新建美术项目', { exact: true })).toHaveCount(0)
-    await expect(studio.page.locator('[data-testid="text-warning"]')).toContainText(
-      '没有配置 DeepSeek 文本模型'
-    )
-    await expect(studio.page.locator('[data-testid="ai-warning"]')).toHaveCount(0)
+    await expect.poll(() => studio.page.url()).toContain('textWarning=no-text-provider')
 
-    await studio.page.getByRole('button', { name: '素材与要求', exact: true }).click()
+    await studio.page
+      .locator('[data-testid="wb3-version-overview"]')
+      .getByRole('button', { name: '查看全部', exact: true })
+      .first()
+      .click()
+    const referenceGallery = studio.page.getByRole('dialog', { name: '参考图' })
+    await expect(referenceGallery).toBeVisible()
+    await referenceGallery.getByRole('button', { name: '素材与要求', exact: true }).click()
     const inputDialog = studio.page.getByRole('dialog', { name: '素材与要求' })
     const inputPanel = inputDialog.locator('[data-testid="prompt-input-panel"]')
     await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
@@ -603,7 +616,7 @@ test('recovers when prompt input submission fails after project creation', async
     await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
       timeout: 30_000
     })
-    await expect(studio.page.locator('[data-testid="prompt-block-list"]')).toBeVisible({
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toBeVisible({
       timeout: 20_000
     })
   } finally {

@@ -8,7 +8,7 @@ import { useJob } from '@studio/hooks'
 import { createProviderFlow } from '@studio/providers'
 import { CharactersPage } from '@studio/routes'
 import { Workbench } from '@studio/workbench'
-import { GenerationPanel } from '@studio/workbench/components'
+import { GenerationDialog } from '@studio/workbench/components'
 
 describe('Studio public module entry points', () => {
   it('resolves stable APIs through the shared path aliases', () => {
@@ -20,6 +20,6 @@ describe('Studio public module entry points', () => {
     expect(createProviderFlow).toBeTypeOf('function')
     expect(CharactersPage).toBeTypeOf('function')
     expect(Workbench).toBeTypeOf('function')
-    expect(GenerationPanel).toBeTypeOf('function')
+    expect(GenerationDialog).toBeTypeOf('function')
   })
 })

@@ -71,8 +71,14 @@ export async function scanAxe(page: Page, name: string): Promise<AxePageResult> 
   }
 }
 
-export async function captureVisual(app: ElectronApplication, page: Page, name: string): Promise<string> {
+export async function captureVisual(
+  app: ElectronApplication,
+  page: Page,
+  name: string,
+  prepare?: () => Promise<void>
+): Promise<string> {
   await resizeToBaseline(app, page)
+  if (prepare) await prepare()
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {

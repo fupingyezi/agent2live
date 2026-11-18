@@ -56,7 +56,7 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     expect(characterId).toMatch(/^chr_/)
 
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByRole('heading', { name: '默认造型', level: 1 })).toBeVisible()
+    await expect(page.locator('[data-testid="wb3-topbar"]')).toContainText('提示词工作台')
 
     const projectId = hashRoute(page).searchParams.get('project')
     expect(projectId).toMatch(/^artp_/)
@@ -280,7 +280,9 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     await expect(page.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
       timeout: 20_000
     })
-    await page.getByRole('link', { name: /返回角色驾驶舱/ }).click()
+    await page.evaluate((id) => {
+      window.location.hash = `#/characters/${encodeURIComponent(id)}`
+    }, characterId)
     await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
 
     const projectCards = page.locator('[data-testid="project-card"]')
@@ -302,10 +304,12 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible()
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(
-      page.locator(`[data-testid="workbench-version-node"][data-version-id="${firstArtVersion.id}"]`)
-    ).toHaveAttribute('data-active', 'true')
+      page.locator(`[data-testid="wb3-art-version-row"][data-version-id="${firstArtVersion.id}"]`)
+    ).toContainText('在用')
 
-    await page.getByRole('link', { name: /返回角色驾驶舱/ }).click()
+    await page.evaluate((id) => {
+      window.location.hash = `#/characters/${encodeURIComponent(id)}`
+    }, characterId)
     await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
     await page
       .locator(`[data-testid="project-card"][data-project-id="${fork.childProject.id}"]`)
@@ -313,9 +317,9 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
       .click()
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(
-      page.locator(`[data-testid="workbench-version-node"][data-version-id="${fork.seedArtVersion!.id}"]`)
-    ).toHaveAttribute('data-active', 'true')
-    await page.getByRole('button', { name: '版本操作', exact: true }).click()
+      page.locator(`[data-testid="wb3-art-version-row"][data-version-id="${fork.seedArtVersion!.id}"]`)
+    ).toContainText('在用')
+    await page.getByRole('button', { name: '管理全部', exact: true }).click()
     const originBar = page.locator('[data-testid="fork-origin-bar"]')
     await expect(originBar).toBeVisible()
     await expect(originBar.locator(`code[title="${projectId}"]`)).toBeVisible()

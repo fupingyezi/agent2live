@@ -1,1012 +1,370 @@
-import { test, expect, _electron as electron, type Page } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import sharp from 'sharp'
+import { test, expect, type Page } from '@playwright/test'
 import { ApiClient, uniqueKey } from './helpers/api'
 import { launchStudio } from './helpers/app'
-import { resizeToBaseline } from './helpers/axe'
 import { goldenPromptState, makePng } from './helpers/seed'
-import { studioPage } from './support/windows'
 
-function hashSearch(url: string): URLSearchParams {
-  const hash = new URL(url).hash
-  const queryIndex = hash.indexOf('?')
-  return new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : '')
+interface ProviderSummary {
+  id: string
 }
 
-async function createMockProvider(page: Page, kind: 'chat' | 'image'): Promise<void> {
+async function createImageProvider(api: ApiClient, maxPromptChars = 20_000): Promise<ProviderSummary> {
+  const response = await api.json<ProviderSummary>('POST', '/api/v1/providers', {
+    headers: { 'idempotency-key': uniqueKey('provider-image') },
+    body: {
+      label: 'Mock 生图',
+      kind: 'image',
+      adapter: 'mock',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        image: {
+          maxReferenceImages: 4,
+          maxPromptChars,
+          supportsNegativePrompt: true,
+          supportsWeightSyntax: true,
+          supportsSeed: true,
+          maxCount: 4,
+          sizes: ['512x896', '1024x1792']
+        }
+      }
+    }
+  })
+  return response.body
+}
+
+async function createChatProvider(api: ApiClient): Promise<ProviderSummary> {
+  const response = await api.json<ProviderSummary>('POST', '/api/v1/providers', {
+    headers: { 'idempotency-key': uniqueKey('provider-chat') },
+    body: {
+      label: 'Mock Chat',
+      kind: 'chat',
+      adapter: 'mock',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        chat: { maxImages: 8, maxPromptChars: 20_000, supportsVision: true }
+      }
+    }
+  })
+  return response.body
+}
+
+async function seedWorkbench(api: ApiClient) {
+  const character = await api.createCharacter('霜', '银白长发 绿色瞳孔')
+  const project = await api.createProject(character.id, '默认造型')
+  const input = await api.uploadPromptInput(project.id, await makePng(), {
+    filename: 'identity.png'
+  })
+  const state = goldenPromptState(input.submission.materials[0]!.assetId)
+  const saved = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
+  const committed = await api.commitPromptDraft(project.id, saved.id, saved.rowVersion)
+  return { character, project, version: committed.version }
+}
+
+async function seedLongPromptWorkbench(api: ApiClient) {
+  const character = await api.createCharacter('霜', '银白长发 绿色瞳孔')
+  const project = await api.createProject(character.id, '默认造型')
+  const input = await api.uploadPromptInput(project.id, await makePng(), {
+    filename: 'identity.png'
+  })
+  const state = goldenPromptState(input.submission.materials[0]!.assetId)
+  const blocks = state.blocks as Array<{ id: string; text: string }>
+  const style = blocks.find((block) => block.id === 'style.rendering')
+  if (!style) throw new Error('seeded prompt is missing the style block')
+  style.text = '非常长的风格描述'.repeat(150)
+  const saved = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
+  const committed = await api.commitPromptDraft(project.id, saved.id, saved.rowVersion)
+  return { character, project, version: committed.version }
+}
+
+async function openWorkbench(page: Page, characterId: string, projectId: string, query = ''): Promise<void> {
   await page.evaluate(
-    async ({ providerKind }) => {
-      const bridge = window.agent2live
-      if (!bridge) throw new Error('preload bridge is unavailable')
-      const info = await bridge.getServerInfo()
-      const capabilities =
-        providerKind === 'chat'
-          ? {
-              schemaVersion: 'provider-capabilities/1',
-              chat: { maxImages: 8, maxPromptChars: 20000, supportsVision: true }
-            }
-          : {
-              schemaVersion: 'provider-capabilities/1',
-              image: {
-                maxReferenceImages: 4,
-                maxPromptChars: 20000,
-                supportsNegativePrompt: true,
-                supportsWeightSyntax: true,
-                supportsSeed: true,
-                maxCount: 4,
-                sizes: ['512x896', '1024x1792']
-              }
-            }
-      const response = await fetch(`${info.baseUrl}/api/v1/providers`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${info.token}`,
-          'content-type': 'application/json',
-          'idempotency-key': `workbench-${providerKind}-provider`
-        },
-        body: JSON.stringify({
-          label: providerKind === 'chat' ? 'Workbench Mock Chat' : 'Workbench Mock Image',
-          kind: providerKind,
-          adapter: 'mock',
-          enabled: true,
-          capabilities
-        })
-      })
-      if (!response.ok) throw new Error(await response.text())
+    (hash) => {
+      window.location.hash = hash
     },
-    { providerKind: kind }
+    `#/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}${query}`
   )
+  await expect(page.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
 }
 
-test('reference version edits create only a PromptVersion and survive reload', async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-workbench-'))
-  const uploadDir = mkdtempSync(join(tmpdir(), 'agent2live-workbench-upload-'))
-  const imagePath = join(uploadDir, 'identity.png')
-  const auxiliaryPath = join(uploadDir, 'auxiliary.png')
-  await sharp({
-    create: {
-      width: 256,
-      height: 256,
-      channels: 4,
-      background: { r: 182, g: 83, b: 60, alpha: 1 }
-    }
-  })
-    .png()
-    .toFile(imagePath)
-  await sharp({
-    create: {
-      width: 256,
-      height: 256,
-      channels: 4,
-      background: { r: 63, g: 176, b: 160, alpha: 1 }
-    }
-  })
-    .png()
-    .toFile(auxiliaryPath)
-
-  const app = await electron.launch({
-    args: ['apps/desktop/out/main/index.js'],
-    env: { ...process.env, AGENT2LIVE_DATA_DIR: dataDir, AGENT2LIVE_E2E: '1' }
-  })
-
+test('renders the v3 prompt workbench and saves block edits as a new version', async () => {
+  const studio = await launchStudio('agent2live-v3-prompt-')
   try {
-    const studio = await studioPage(app)
-    await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="studio-global-status"]')).toContainText('实时已连接', {
-      timeout: 20_000
-    })
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
 
-    await studio.getByRole('link', { name: '新建角色', exact: true }).click()
-    await studio.getByLabel('角色名称').fill('凛')
-    await studio.getByLabel('角色简介').fill('黑发、冷静、带一点疏离感的年轻剑士。')
-    await studio.getByLabel('上传参考图').setInputFiles(imagePath)
-    await studio.getByRole('button', { name: '创建并生成' }).click()
+    await expect(studio.page.locator('[data-testid="wb3-topbar"]')).toContainText('提示词工作台')
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('霜')
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('提示词')
+    const rows = studio.page.locator('[data-testid="wb3-prompt-block-row"]')
+    await expect(rows.first()).toBeVisible({ timeout: 20_000 })
+    await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 1 版')
 
-    await expect(studio.locator('[data-testid="character-created"]')).toBeVisible({
-      timeout: 30_000
-    })
-    await studio.getByTestId('open-art-workbench').click()
-    await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
-    await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    const promptEditor = studio.getByTestId('unified-prompt-inspector')
-    await expect(promptEditor.getByTestId('prompt-block-list')).toBeVisible({
-      timeout: 20_000
-    })
+    await rows.filter({ hasText: '渲染风格' }).click()
+    const dialog = studio.page.getByRole('dialog')
+    await expect(dialog).toContainText('编辑块')
+    await dialog.getByLabel('正文').fill('清爽的日系赛璐璐插画，干净线稿，柔和逆光')
+    await dialog.getByRole('button', { name: '保存为新版本' }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
 
-    await studio.getByRole('button', { name: '素材与要求', exact: true }).click()
-    const inputDialog = studio.getByRole('dialog', { name: '素材与要求' })
-    const inputPanel = inputDialog.locator('[data-testid="prompt-input-panel"]')
-    await expect(inputPanel).toBeVisible()
-    await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
-    await inputPanel.getByRole('button', { name: /(提交|更新)素材与要求/ }).click()
-    await expect(inputDialog).toHaveCount(0)
-
-    await expect(promptEditor.getByTestId('prompt-block-list')).toBeVisible({
-      timeout: 20_000
-    })
-    await expect(studio.getByTestId('workbench-reference-card').first()).toContainText('身份')
-
-    await promptEditor.getByRole('button', { name: '+ 添加块', exact: true }).click()
-    const block = promptEditor.locator('[data-testid="prompt-block"]').last()
-    await expect(block).toBeVisible()
-    await block.getByLabel('块名称').fill('面部')
-    await block.getByLabel('块内容').fill('黑色短发，冷静的灰色眼睛，干净的面部轮廓')
-
-    await expect(promptEditor).toContainText('有未保存修改')
-    await promptEditor.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(promptEditor).toContainText('已创建 v2', { timeout: 20_000 })
-
-    await createMockProvider(studio, 'chat')
-    await createMockProvider(studio, 'image')
-    await studio.reload()
-    await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await expect(promptEditor).toContainText('当前 v2')
-
-    await promptEditor.getByRole('button', { name: 'AI 助手', exact: true }).click()
-    const aiPanel = studio.locator('[data-testid="prompt-ai-panel"]')
-    await expect(aiPanel).toBeVisible()
-    await aiPanel.getByRole('tab', { name: '改进建议' }).click()
-    await expect(aiPanel.getByTestId('ai-request-settings')).toBeHidden()
-    await aiPanel.getByText('模型与改进方向', { exact: true }).click()
-    await expect(aiPanel.getByTestId('ai-request-settings')).toBeVisible()
-    await aiPanel.getByRole('button', { name: '生成建议', exact: true }).click()
-    await expect(aiPanel.getByTestId('ai-job')).toBeVisible()
-    await expect(aiPanel.getByTestId('suggestion-diff')).toBeVisible({ timeout: 30_000 })
-    await aiPanel.getByRole('button', { name: '接受建议', exact: true }).click()
-    await studio.keyboard.press('Escape')
-    await expect(studio.getByRole('dialog', { name: 'AI 助手' })).toHaveCount(0)
-
-    await promptEditor.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(promptEditor).toContainText('已创建 v3', { timeout: 20_000 })
-    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
-    const versionsDialog = studio.getByRole('dialog', { name: '版本操作' })
-    await expect(studio.getByTestId('version-graph')).toContainText('v1')
-    await expect(studio.locator('[data-testid="reference-chain"]')).toContainText('提示词 v3')
-    await studio.keyboard.press('Escape')
-    await expect(versionsDialog).toHaveCount(0)
-
-    await promptEditor.getByRole('button', { name: '生成立绘', exact: true }).click()
-    const generationDialog = studio.getByRole('dialog', { name: '生成立绘' })
-    await expect(generationDialog).toBeVisible()
-    await expect(generationDialog.getByTestId('generation-settings')).toBeVisible()
-    await generationDialog.getByRole('button', { name: '开始生成', exact: true }).click()
-    await expect(generationDialog).toHaveCount(0)
-    const generationPanel = studio.locator('[data-testid="generation-panel"]')
-    await expect(generationPanel).toBeVisible()
-    const generationStatus = generationPanel.getByTestId('generation-status')
-    await expect(generationStatus).toBeVisible()
-    await expect(generationStatus.getByTestId('candidate-compare')).toBeVisible({ timeout: 30_000 })
-    await expect(generationStatus.getByTestId('candidate-stage')).toBeVisible()
-    await expect(generationStatus.getByTestId('candidate-strip')).toBeVisible()
-    await expect(generationStatus.getByTestId('candidate-card')).not.toHaveCount(0)
-    const candidate = generationStatus.getByTestId('candidate-card').first()
-    await expect(candidate.getByRole('img', { name: '生成候选' })).toBeVisible()
-    await studio.getByRole('button', { name: '保存为最新版本', exact: true }).click()
-    const candidateDialog = studio.getByRole('dialog')
-    await expect(candidateDialog).toBeVisible()
-    await candidateDialog.getByRole('button', { name: '接受', exact: true }).click()
-    await expect(studio.locator('[data-testid="workbench-version-node"]')).toHaveCount(1, {
-      timeout: 20_000
-    })
-
-    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
-    const artPanel = studio.locator('[data-testid="art-version-panel"]')
-    await expect(artPanel).toBeVisible()
-    await artPanel.getByRole('button', { name: '手工上传立绘', exact: true }).click()
-    const manualDialog = studio.getByRole('dialog', { name: '手工上传立绘' })
-    await expect(manualDialog).toBeVisible()
-    await manualDialog.getByLabel('选择手工美术图片').setInputFiles(imagePath)
-    await manualDialog.getByRole('button', { name: '创建并激活', exact: true }).click()
-
-    await expect(artPanel).toContainText('active v2')
-    await studio.keyboard.press('Escape')
-    await expect(studio.getByRole('dialog', { name: '版本操作' })).toHaveCount(0)
-
-    const promptReferences = promptEditor.locator('[data-testid="prompt-reference-editor"]')
-    await expect(promptReferences).toBeVisible({ timeout: 20_000 })
-    await expect(promptReferences.getByTestId('reference-row')).toHaveCount(1)
-    await promptReferences.getByLabel('添加参考图片').setInputFiles(auxiliaryPath)
-    await expect(promptReferences.getByTestId('reference-row')).toHaveCount(2, {
-      timeout: 20_000
-    })
-    await promptEditor.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(promptEditor).toContainText('已创建 v4', { timeout: 20_000 })
-    await expect(promptReferences.getByTestId('reference-row')).toHaveCount(2)
-    await expect(studio.locator('[data-testid="workbench-version-node"]')).toHaveCount(2)
-    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
-    await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v2')
-    await studio.keyboard.press('Escape')
-    await expect(studio.getByRole('dialog', { name: '版本操作' })).toHaveCount(0)
-
-    await studio.reload()
-    await expect(studio.locator('[data-testid="studio-ready"]')).toBeVisible()
-    await expect(studio.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
-    await studio.getByRole('button', { name: '版本操作', exact: true }).click()
-    await expect(studio.getByTestId('version-graph')).toContainText('v1')
-    await expect(studio.getByTestId('version-graph')).toContainText('v2')
-    await expect(studio.locator('[data-testid="art-version-panel"]')).toContainText('active v2')
-    await studio.keyboard.press('Escape')
-    await expect(studio.getByRole('dialog', { name: '版本操作' })).toHaveCount(0)
-    await studio
-      .locator('[data-testid="workbench-prompt-version-node"]')
-      .filter({ hasText: '提示词 v4' })
-      .click()
+    await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 2 版')
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('柔和逆光')
     await expect(
-      studio.locator('[data-testid="prompt-reference-editor"]').getByTestId('reference-row')
-    ).toHaveCount(2)
-  } finally {
-    await app.close()
-  }
-})
-
-test('switches version and edits full prompt', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-workbench-versions-')
-
-  try {
-    const api = new ApiClient(studio.endpoint)
-    await api.json('POST', '/api/v1/providers', {
-      headers: { 'idempotency-key': uniqueKey('workbench-deepseek') },
-      body: {
-        label: 'Workbench DeepSeek',
-        kind: 'chat',
-        adapter: 'mock',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-chat',
-        enabled: true,
-        capabilities: {
-          schemaVersion: 'provider-capabilities/1',
-          chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
-        }
-      }
-    })
-    const character = await api.createCharacter('溯', '在旧剧院整理台词的女演员。')
-    const project = await api.createProject(character.id, '默认造型', '两版提示词与立绘。')
-    const input = await api.uploadPromptInput(project.id, await makePng(), {
-      filename: 'version-one.png'
-    })
-    const assetId = input.submission.materials[0]!.assetId
-    const firstState = {
-      ...goldenPromptState(assetId),
-      fullPrompt: 'v1 完整提示词：银白长发少女站在旧剧院舞台中央，清爽赛璐璐画风。'
-    }
-    const firstDraft = await api.savePromptDraft(
-      project.id,
-      input.draft.id,
-      firstState,
-      input.draft.rowVersion
-    )
-    const firstCommit = await api.commitPromptDraft(project.id, firstDraft.id, firstDraft.rowVersion)
-    const firstArtAsset = await api.uploadAsset(await makePng(512, 768, '#b8d7cc'), 'image/png', 'art-v1.png')
-    const firstArt = await api.createManualArtVersion({
-      projectId: project.id,
-      assetId: firstArtAsset.id,
-      promptVersionId: firstCommit.version.id,
-      expectedProjectRowVersion: firstCommit.project.rowVersion
-    })
-
-    const secondDraft = await api.json<{ id: string; rowVersion: number; state: Record<string, unknown> }>(
-      'POST',
-      `/api/v1/art-projects/${project.id}/prompt-drafts`,
-      {
-        headers: { 'idempotency-key': uniqueKey('second-draft') },
-        body: { from: 'active_version' }
-      }
-    )
-    const secondState = {
-      ...secondDraft.body.state,
-      fullPrompt: 'v2 完整提示词：银白长发少女站在旧剧院舞台中央，冷色聚光灯，清爽赛璐璐画风。'
-    }
-    const savedSecond = await api.savePromptDraft(
-      project.id,
-      secondDraft.body.id,
-      secondState,
-      secondDraft.body.rowVersion
-    )
-    const secondCommit = await api.commitPromptDraft(project.id, savedSecond.id, savedSecond.rowVersion)
-    const secondArtAsset = await api.uploadAsset(
-      await makePng(512, 768, '#8fb8d8'),
-      'image/png',
-      'art-v2.png'
-    )
-    const secondArt = await api.createManualArtVersion({
-      projectId: project.id,
-      assetId: secondArtAsset.id,
-      promptVersionId: secondCommit.version.id,
-      expectedProjectRowVersion: secondCommit.project.rowVersion
-    })
-    expect(firstArt.artVersion.id).not.toBe(secondArt.artVersion.id)
-
-    let syncRequest: {
-      source: 'full' | 'blocks'
-      state: { fullPrompt: string }
-    } | null = null
-    await studio.page.route('**/api/v1/art-projects/*/prompt-drafts/*/sync', async (route) => {
-      syncRequest = route.request().postDataJSON() as typeof syncRequest
-      await route.fulfill({
-        status: 202,
-        contentType: 'application/json',
-        body: JSON.stringify({ jobId: 'job_workbench_sync' })
-      })
-    })
-    await studio.page.route('**/api/v1/jobs/job_workbench_sync', async (route) => {
-      expect(syncRequest).not.toBeNull()
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          id: 'job_workbench_sync',
-          type: 'prompt.sync',
-          status: 'succeeded',
-          attempts: 1,
-          maxAttempts: 2,
-          progress: 100,
-          errorCode: null,
-          result: {
-            state: syncRequest!.state,
-            conflicts: [],
-            warnings: []
-          },
-          cancelRequested: false,
-          createdAt: '2026-11-16T00:00:00.000Z',
-          updatedAt: '2026-11-16T00:00:00.000Z'
-        })
-      })
-    })
-
-    await studio.page.evaluate(
-      ({ characterId, projectId }) => {
-        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
-      },
-      { characterId: character.id, projectId: project.id }
-    )
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    const firstNode = studio.page.locator(
-      `[data-testid="workbench-version-node"][data-version-id="${firstArt.artVersion.id}"]`
-    )
-    const secondNode = studio.page.locator(
-      `[data-testid="workbench-version-node"][data-version-id="${secondArt.artVersion.id}"]`
-    )
-    await expect(firstNode).toBeVisible()
-    await expect(secondNode).toBeVisible()
-    await secondNode.click()
-
-    const fullPrompt = studio.page.getByLabel('完整提示词')
-    await expect(fullPrompt).toHaveValue(secondState.fullPrompt)
-    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
-    const blockList = inspector.locator('[data-testid="prompt-block-list"]')
-    await expect(blockList).toBeVisible()
-    const generate = inspector.getByRole('button', { name: '生成立绘', exact: true })
-    await expect(generate).toBeEnabled()
-
-    await fullPrompt.fill('本地改写的完整提示词。')
-    await expect(inspector).toContainText('有未保存修改')
-    await expect(generate).toBeEnabled()
-
-    await firstNode.click()
-    const switchDialog = studio.page.getByRole('dialog', { name: '切换版本' })
-    await expect(switchDialog).toBeVisible()
-    await switchDialog.getByRole('button', { name: '取消', exact: true }).click()
-    await expect(fullPrompt).toHaveValue('本地改写的完整提示词。')
-
-    await inspector.getByRole('button', { name: '保存', exact: true }).click()
-    await expect.poll(() => syncRequest?.source).toBe('full')
-    await expect(inspector).toContainText('已创建 v3')
-
-    await firstNode.click()
-    await expect(studio.page.getByRole('dialog', { name: '切换版本' })).toHaveCount(0)
-    await expect(fullPrompt).toHaveValue(firstState.fullPrompt)
-    await expect(generate).toBeDisabled()
-  } finally {
-    await studio.close()
-  }
-})
-
-test('saves only when the current version changes', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-workbench-save-version-')
-
-  try {
-    const api = new ApiClient(studio.endpoint)
-    const character = await api.createCharacter('序', '用于验证当前版本直接编辑。')
-    const project = await api.createProject(character.id, '默认造型', '默认只有一个版本。')
-    const input = await api.uploadPromptInput(project.id, await makePng(), {
-      filename: 'version-save.png'
-    })
-    const firstState = {
-      ...goldenPromptState(input.submission.materials[0]!.assetId),
-      fullPrompt: 'v1 当前版本可以直接编辑。'
-    }
-    const firstDraft = await api.savePromptDraft(
-      project.id,
-      input.draft.id,
-      firstState,
-      input.draft.rowVersion
-    )
-    const first = await api.commitPromptDraft(project.id, firstDraft.id, firstDraft.rowVersion)
-    await api.json('POST', `/api/v1/art-projects/${project.id}/prompt-drafts`, {
-      headers: { 'idempotency-key': uniqueKey('direct-edit-buffer') },
-      body: { from: 'active_version' }
-    })
-
-    await studio.page.evaluate(
-      ({ characterId, projectId }) => {
-        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
-      },
-      { characterId: character.id, projectId: project.id }
-    )
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
-    const fullPrompt = studio.page.getByLabel('完整提示词')
-    await expect(fullPrompt).toBeEnabled()
-    await expect(inspector).toContainText('提示词 v1')
-    await expect(studio.page.getByText('当前草稿', { exact: true })).toHaveCount(0)
-    await expect(studio.page.getByRole('button', { name: '保存草稿', exact: true })).toHaveCount(0)
-    await expect(studio.page.getByRole('button', { name: '提交版本', exact: true })).toHaveCount(0)
-
-    const promptNodes = studio.page.locator('[data-testid="workbench-prompt-version-node"]')
-    await expect(promptNodes).toHaveCount(1)
-    await inspector.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(inspector).toContainText('无变更')
-    await expect(promptNodes).toHaveCount(1)
-
-    await fullPrompt.fill('v2 当前版本修改后自动生成新版本。')
-    await inspector.getByRole('button', { name: '保存', exact: true }).click()
-    await expect(promptNodes).toHaveCount(2, { timeout: 20_000 })
-    await expect(inspector).toContainText('提示词 v2')
-    const originalVersion = await api.json<{
-      versionNumber: number
-      state: { fullPrompt: string }
-    }>(
-      'GET',
-      `/api/v1/art-projects/${encodeURIComponent(project.id)}/prompt-versions/${encodeURIComponent(first.version.id)}`
-    )
-    expect(originalVersion.body).toMatchObject({
-      versionNumber: 1,
-      state: { fullPrompt: 'v1 当前版本可以直接编辑。' }
-    })
-  } finally {
-    await studio.close()
-  }
-})
-
-test('generation modal keeps settings out of the canvas', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-workbench-generation-modal-')
-
-  try {
-    const api = new ApiClient(studio.endpoint)
-    const character = await api.createCharacter('弦', '整理旧琴谱的年轻乐师。')
-    const project = await api.createProject(character.id, '默认造型', '用于验证生成 Modal。')
-    const input = await api.uploadPromptInput(project.id, await makePng(), {
-      filename: 'generation-modal.png'
-    })
-    const state = {
-      ...goldenPromptState(input.submission.materials[0]!.assetId),
-      fullPrompt: '旧琴谱乐师弦，浅灰长衫，安静坐在窗边。'
-    }
-    const saved = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
-    const committed = await api.commitPromptDraft(project.id, saved.id, saved.rowVersion)
-    await api.json('POST', `/api/v1/art-projects/${project.id}/prompt-drafts`, {
-      headers: { 'idempotency-key': uniqueKey('generation-modal-draft') },
-      body: { from: 'active_version' }
-    })
-    expect(committed.version.id).toMatch(/^pv_/)
-    await createMockProvider(studio.page, 'image')
-
-    await studio.page.evaluate(
-      ({ characterId, projectId }) => {
-        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
-      },
-      { characterId: character.id, projectId: project.id }
-    )
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
-    const generate = inspector.getByRole('button', { name: '生成立绘', exact: true })
-    const fullPrompt = studio.page.getByLabel('完整提示词')
-    await fullPrompt.fill('旧琴谱乐师弦，浅灰长衫，安静坐在窗边，窗外有细雨。')
-    await expect(generate).toBeEnabled()
-
-    await generate.click()
-    const dialog = studio.page.getByRole('dialog', { name: '生成立绘' })
-    await expect(dialog).toBeVisible()
-    await expect(inspector).toContainText('已创建 v2')
-    await expect(dialog.getByLabel('图像模型')).toBeVisible()
-    await expect(dialog.getByLabel('数量')).toBeVisible()
-    await expect(dialog.getByLabel('尺寸')).toBeVisible()
-    await expect(dialog.getByLabel('Seed')).toBeVisible()
-    await expect(studio.page.locator('[data-testid="generation-controls"]')).toHaveCount(0)
-
-    await dialog.getByRole('button', { name: '开始生成', exact: true }).click()
-    await expect(dialog).toHaveCount(0)
-    const generationStatus = studio.page.getByTestId('generation-status')
-    await expect(generationStatus).toBeVisible()
-    await expect(generationStatus.getByTestId('candidate-compare')).toBeVisible({
-      timeout: 30_000
-    })
-    await expect(generationStatus.getByTestId('candidate-card')).not.toHaveCount(0)
-  } finally {
-    await studio.close()
-  }
-})
-
-test('no page tail keeps the workbench in one frame', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-workbench-single-frame-')
-
-  try {
-    const api = new ApiClient(studio.endpoint)
-    const character = await api.createCharacter('砚', '用于验证单屏工作台结构。')
-    const project = await api.createProject(character.id, '默认造型', '单屏结构。')
-    const input = await api.uploadPromptInput(project.id, await makePng(), {
-      filename: 'single-frame.png'
-    })
-    const state = {
-      ...goldenPromptState(input.submission.materials[0]!.assetId),
-      fullPrompt: '单屏工作台中的完整提示词。'
-    }
-    const saved = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
-    await api.commitPromptDraft(project.id, saved.id, saved.rowVersion)
-    await resizeToBaseline(studio.app, studio.page)
-
-    await studio.page.evaluate(
-      ({ characterId, projectId }) => {
-        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
-      },
-      { characterId: character.id, projectId: project.id }
-    )
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    await expect(studio.page.locator('.workbench-functional-dock')).toHaveCount(0)
-    await expect(studio.page.getByLabel('完整提示词')).toBeVisible()
-    await expect(
-      studio.page.locator('[data-testid="unified-prompt-inspector"]').getByTestId('prompt-block-list')
+      studio.page.locator('[data-testid="wb3-prompt-history-row"]').filter({ hasText: '第 2 版' })
     ).toBeVisible()
-    await expect(studio.page.locator('[data-testid="generation-controls"]')).toHaveCount(0)
-    expect(
-      await studio.page.evaluate(() => ({
-        documentHeight: document.documentElement.scrollHeight,
-        viewportHeight: window.innerHeight
-      }))
-    ).toEqual({ documentHeight: 900, viewportHeight: 900 })
   } finally {
     await studio.close()
   }
 })
 
-test('same prompt serves multiple artwork versions and historical artwork activates safely', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-workbench-historical-art-')
-
+test('renames the character and rolls back a prompt version', async () => {
+  const studio = await launchStudio('agent2live-v3-rollback-')
   try {
     const api = new ApiClient(studio.endpoint)
-    const character = await api.createCharacter('岫', '在雪线附近巡山的年轻向导。')
-    const project = await api.createProject(character.id, '默认造型', '用于验证历史立绘切换。')
-    const input = await api.uploadPromptInput(project.id, await makePng(), {
-      filename: 'historical-art-reference.png'
+    const seeded = await seedWorkbench(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+
+    await studio.page.getByRole('button', { name: '改名', exact: true }).click()
+    const rename = studio.page.getByRole('dialog', { name: '改名' })
+    await rename.getByLabel('角色名称').fill('霜·改')
+    await rename.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(rename).toBeHidden({ timeout: 20_000 })
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('霜·改')
+
+    const styleRow = studio.page
+      .locator('[data-testid="wb3-prompt-block-row"]')
+      .filter({ hasText: '渲染风格' })
+    await styleRow.click()
+    const blockDialog = studio.page.getByRole('dialog')
+    await blockDialog.getByLabel('正文').fill('清爽的日系赛璐璐插画，干净线稿，第二版')
+    await blockDialog.getByRole('button', { name: '保存为新版本' }).click()
+    await expect(blockDialog).toBeHidden({ timeout: 30_000 })
+    await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 2 版')
+
+    const firstVersion = studio.page
+      .locator('[data-testid="wb3-prompt-history-row"]')
+      .filter({ hasText: '第 1 版' })
+    await firstVersion.getByRole('button', { name: '回到这版', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 3 版', {
+      timeout: 30_000
     })
-    const state = {
-      ...goldenPromptState(input.submission.materials[0]!.assetId),
-      fullPrompt: '雪线向导岫，厚重披风，清冷山雾背景。'
-    }
-    const draft = await api.savePromptDraft(project.id, input.draft.id, state, input.draft.rowVersion)
-    const committed = await api.commitPromptDraft(project.id, draft.id, draft.rowVersion)
-    const firstAsset = await api.uploadAsset(
-      await makePng(512, 768, '#aec9d8'),
-      'image/png',
-      'historical-v1.png'
-    )
-    const first = await api.createManualArtVersion({
-      projectId: project.id,
-      assetId: firstAsset.id,
-      promptVersionId: committed.version.id,
-      expectedProjectRowVersion: committed.project.rowVersion
+
+    const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
+    await overview.getByRole('button', { name: '查看全部', exact: true }).first().click()
+    const gallery = studio.page.getByRole('dialog', { name: '参考图' })
+    await expect(gallery).toBeVisible()
+    await gallery.getByLabel('权重').fill('1.3')
+    await gallery.getByRole('button', { name: '完成', exact: true }).click()
+    await expect(gallery).toBeHidden()
+    await expect(studio.page.locator('.wb3-actionbar')).toContainText('有未保存修改')
+
+    const secondVersion = studio.page
+      .locator('[data-testid="wb3-prompt-history-row"]')
+      .filter({ hasText: '第 2 版' })
+    await secondVersion.getByRole('button', { name: /第 2 版/ }).click()
+    await expect(studio.page.locator('.wb3-actionbar')).toContainText('历史版本只读')
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('第二版')
+
+    await studio.page
+      .locator('[data-testid="wb3-prompt-history-row"]')
+      .filter({ hasText: '第 1 版' })
+      .getByRole('button', { name: '回到这版', exact: true })
+      .click()
+    const rollbackDialog = studio.page.getByRole('dialog', { name: '回到旧版提示词' })
+    await expect(rollbackDialog).toBeVisible()
+    await rollbackDialog.getByRole('button', { name: '保存当前并回到此版', exact: true }).click()
+    await expect(rollbackDialog).toBeHidden({ timeout: 30_000 })
+
+    await expect(overview).toContainText('第 5 版', { timeout: 30_000 })
+    await expect(studio.page.getByRole('alert')).toHaveCount(0)
+    await overview.getByRole('button', { name: /更早 2 个版本/ }).click()
+    await expect(
+      studio.page.locator('[data-testid="wb3-prompt-history-row"]').filter({ hasText: '第 1 版' })
+    ).toBeVisible()
+    await expect(
+      studio.page.locator('[data-testid="wb3-prompt-history-row"]').filter({ hasText: '第 2 版' })
+    ).toBeVisible()
+    await expect(studio.page.locator('[data-testid="wb3-prompt-history-row"]')).toHaveCount(5)
+  } finally {
+    await studio.close()
+  }
+})
+
+test('applies only the selected AI rewrite operation', async () => {
+  const studio = await launchStudio('agent2live-v3-ai-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await createChatProvider(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+
+    await studio.page.getByRole('button', { name: 'AI 改写', exact: true }).click()
+    const dialog = studio.page.getByRole('dialog')
+    await expect(dialog).toContainText('AI 改写')
+    await dialog.getByLabel('改法').fill('发色偏冷一点')
+    await dialog.getByRole('button', { name: '生成建议', exact: true }).click()
+
+    await expect(dialog.locator('[data-testid="wb3-ai-suggestions"]')).toBeVisible({
+      timeout: 30_000
     })
-    const secondAsset = await api.uploadAsset(
-      await makePng(512, 768, '#8fa9c1'),
-      'image/png',
-      'historical-v2.png'
-    )
-    const second = await api.createManualArtVersion({
-      projectId: project.id,
-      assetId: secondAsset.id,
-      promptVersionId: committed.version.id,
-      expectedProjectRowVersion: first.project.rowVersion
+    const operations = dialog.locator('[data-testid="wb3-ai-operation"]')
+    await expect(operations).toHaveCount(2)
+    await operations.first().getByRole('button', { name: '撤销', exact: true }).click()
+    await dialog.getByRole('button', { name: '应用已选 1 条', exact: true }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
+
+    const styleRow = studio.page
+      .locator('[data-testid="wb3-prompt-block-row"]')
+      .filter({ hasText: '渲染风格' })
+    await expect(styleRow).toContainText('×1.2')
+
+    await studio.page.getByRole('button', { name: '提交为新版本', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 2 版', {
+      timeout: 30_000
     })
-    const versions = await api.getArtVersions(project.id)
-    expect(versions.items.map((version) => version.promptVersionId)).toEqual([
-      committed.version.id,
-      committed.version.id
-    ])
+  } finally {
+    await studio.close()
+  }
+})
+
+test('generates candidates through the dialog and saves one as an art version', async () => {
+  const studio = await launchStudio('agent2live-v3-generate-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await createImageProvider(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+
+    await studio.page.getByRole('button', { name: '生成图片', exact: true }).click()
+    const dialog = studio.page.getByRole('dialog', { name: '生成图片' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('第 1 版')
+    await dialog.getByRole('button', { name: '生成图片', exact: true }).click()
+
+    await expect(studio.page.locator('[data-testid="wb3-candidates-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(studio.page.locator('[data-testid="wb3-generation-params"]')).toContainText('张数 4 张')
+    const cards = studio.page.locator('[data-testid="wb3-candidate-card"]')
+    await expect(cards).toHaveCount(4, { timeout: 30_000 })
+    await cards.first().click()
+    await studio.page.locator('.wb3-actionbar').getByRole('button', { name: '存为立绘', exact: true }).click()
+
+    await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(studio.page.locator('[data-testid="wb3-art-version-item"]').first()).toContainText('第 1 版')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('当前参考')
+  } finally {
+    await studio.close()
+  }
+})
+
+test('warns about blocks dropped from generation and discards a batch', async () => {
+  const studio = await launchStudio('agent2live-v3-dropped-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedLongPromptWorkbench(api)
+    const provider = await createImageProvider(api, 1000)
+    const created = await api.createGeneration({
+      projectId: seeded.project.id,
+      promptVersionId: seeded.version.id,
+      providerConnectionId: provider.id,
+      count: 2,
+      size: '512x896'
+    })
+    await api.waitForGenerationReady(created.generationId)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+
+    const banner = studio.page.locator('[data-testid="wb3-dropped-banner"]')
+    await expect(banner).toBeVisible({ timeout: 20_000 })
+    await expect(banner).toContainText('没有落到第 1 版')
 
     await studio.page.evaluate(
-      ({ characterId, projectId }) => {
-        window.location.hash = `/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(projectId)}`
+      (hash) => {
+        window.location.hash = hash
       },
-      { characterId: character.id, projectId: project.id }
+      `#/characters/${encodeURIComponent(seeded.character.id)}/art?project=${encodeURIComponent(
+        seeded.project.id
+      )}&view=candidates&generation=${encodeURIComponent(created.generationId)}`
     )
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    const firstNode = studio.page.locator(
-      `[data-testid="workbench-version-node"][data-version-id="${first.artVersion.id}"]`
-    )
-    const secondNode = studio.page.locator(
-      `[data-testid="workbench-version-node"][data-version-id="${second.artVersion.id}"]`
-    )
-    await expect(firstNode).toBeVisible()
-    await expect(secondNode).toHaveAttribute('data-active', 'true')
-    await firstNode.click()
-
-    const inspector = studio.page.locator('[data-testid="unified-prompt-inspector"]')
-    await expect(inspector.getByRole('button', { name: '生成立绘', exact: true })).toBeEnabled()
-
-    await studio.page.getByRole('button', { name: '版本操作', exact: true }).click()
-    const artPanel = studio.page.locator('[data-testid="art-version-panel"]')
-    await expect(artPanel).toContainText('active v2')
-    await artPanel.getByLabel('查看版本').selectOption(first.artVersion.id)
-    await artPanel.getByRole('button', { name: '设为当前立绘', exact: true }).click()
-    const activateDialog = studio.page.getByRole('dialog', { name: /设为当前立绘/ })
-    await expect(activateDialog).toContainText('不会改变')
-    await activateDialog.getByRole('button', { name: '切换', exact: true }).click()
-    await expect(artPanel).toContainText('active v1', { timeout: 20_000 })
-    await expect(firstNode).toHaveAttribute('data-active', 'true')
-    await expect(secondNode).toHaveAttribute('data-active', 'false')
-
-    const projectAfter = await api.getProject(project.id)
-    expect(projectAfter.activeVersionId).toBe(first.artVersion.id)
-    expect(projectAfter.activePromptVersionId).toBe(committed.version.id)
-    expect(versions.items.map((version) => version.artworkAssetId)).toEqual([
-      second.artVersion.artworkAssetId,
-      first.artVersion.artworkAssetId
-    ])
-  } finally {
-    await studio.close()
-  }
-})
-
-test('queues a Zhipu vision reverse after creation without applying its result', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-creation-vision-')
-
-  try {
-    const api = new ApiClient(studio.endpoint)
-    const provider = await api.json<{ id: string }>('POST', '/api/v1/providers', {
-      headers: { 'idempotency-key': uniqueKey('provider-zhipu-vision') },
-      body: {
-        label: 'Creation Zhipu Vision',
-        kind: 'chat',
-        adapter: 'mock',
-        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-        model: 'glm-5.3-flash',
-        enabled: true,
-        capabilities: {
-          schemaVersion: 'provider-capabilities/1',
-          chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
-        }
-      }
-    })
-
-    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
-    await studio.page.getByLabel('角色名称').fill('潮')
-    await studio.page.getByLabel('角色简介').fill('在海雾里巡灯的白发少女。')
-    await studio.page.getByLabel('上传参考图').setInputFiles({
-      name: 'identity.png',
-      mimeType: 'image/png',
-      buffer: await makePng(240, 320, '#9ec9bb')
-    })
-
-    const reverseResponsePromise = studio.page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
-    )
-    let reverseRequestCount = 0
-    studio.page.on('request', (request) => {
-      if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/prompt-reverse')) {
-        reverseRequestCount += 1
-      }
-    })
-    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
-    const reverseResponse = await reverseResponsePromise
-    expect(reverseResponse.status()).toBe(202)
-    const reverseRequest = await reverseResponse.json()
-    expect(reverseRequest).toMatchObject({
-      baseDraftRevision: expect.any(Number),
-      baseDraftRowVersion: expect.any(Number),
-      jobId: expect.stringMatching(/^job_/)
-    })
-
-    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
-      timeout: 30_000
-    })
-    expect(reverseRequestCount).toBe(1)
-    await studio.page.getByTestId('open-art-workbench').click()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-    const workbenchParams = hashSearch(studio.page.url())
-    expect(workbenchParams.get('aiKind')).toBe('reverse')
-    expect(workbenchParams.get('aiJob')).toBe(reverseRequest.jobId)
-    const aiPanel = studio.page.getByTestId('prompt-ai-panel')
-    await expect(aiPanel.getByTestId('ai-job')).toContainText(reverseRequest.jobId)
-    await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
-    await studio.page.keyboard.press('Escape')
-    await studio.page.getByRole('button', { name: '素材与要求', exact: true }).click()
-    const inputDialog = studio.page.getByRole('dialog', { name: '素材与要求' })
-    const inputPanel = inputDialog.getByTestId('prompt-input-panel')
-    await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
-    await expect(inputPanel.getByLabel('上传素材图片')).toHaveCount(0)
-    await expect(inputPanel).toContainText('参考图通过独立参考图编辑入口维护')
-    await studio.page.keyboard.press('Escape')
-    await expect(inputDialog).toHaveCount(0)
-    await studio.page.reload()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+    await expect(studio.page.locator('[data-testid="wb3-candidates-view"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.page.getByTestId('prompt-ai-panel').getByTestId('ai-job')).toContainText(
-      reverseRequest.jobId
-    )
-    await expect(studio.page.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
-    expect(reverseRequestCount).toBe(1)
-    const projectId = hashSearch(studio.page.url()).get('project')
-    expect(projectId).toMatch(/^artp_/)
-
-    const workspace = await api.json<{
-      activeDraft: { state: { blocks: Array<{ source: string }> }; rowVersion: number }
-      latestSubmission: { materials: Array<{ assetId: string }> }
-    }>('GET', `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`)
-    expect(workspace.body.activeDraft.rowVersion).toBe(reverseRequest.baseDraftRowVersion)
-    const referenceAssetId = workspace.body.latestSubmission.materials[0]?.assetId
-    expect(referenceAssetId).toMatch(/^ast_/)
-
-    const job = await api.waitForJob(reverseRequest.jobId)
-    const resultId = (job.result as { reverseResultId?: unknown } | null)?.reverseResultId
-    expect(resultId).toMatch(/^prv_/)
-    const reverseResult = await api.json<{
-      status: string
-      state: { materialRefs: Array<{ assetId: string }> }
-    }>('GET', `/api/v1/prompt-reverse-results/${encodeURIComponent(String(resultId))}`)
-    expect(reverseResult.body.status).toBe('ready')
-    expect(reverseResult.body.state.materialRefs.map((material) => material.assetId)).toContain(
-      referenceAssetId
-    )
-    expect(workspace.body.activeDraft.state.blocks.some((block) => block.source === 'vision-model')).toBe(
-      false
-    )
-    expect(provider.status).toBe(201)
-  } finally {
-    await studio.close()
-  }
-})
-
-test('queues a vision reverse after creation with any enabled vision provider', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-creation-openai-vision-')
-
-  try {
-    const api = new ApiClient(studio.endpoint)
-    await api.json('POST', '/api/v1/providers', {
-      headers: { 'idempotency-key': uniqueKey('provider-openai-vision') },
-      body: {
-        label: 'Creation OpenAI Vision',
-        kind: 'chat',
-        adapter: 'mock',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4o-mini',
-        enabled: true,
-        capabilities: {
-          schemaVersion: 'provider-capabilities/1',
-          chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
-        }
-      }
-    })
-
-    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
-    await studio.page.getByLabel('角色名称').fill('澜')
-    await studio.page.getByLabel('角色简介').fill('守在潮汐图前的少女。')
-    await studio.page.getByLabel('上传参考图').setInputFiles({
-      name: 'identity.png',
-      mimeType: 'image/png',
-      buffer: await makePng(240, 320, '#9ec9bb')
-    })
-
-    const reverseResponsePromise = studio.page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
-    )
-    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
-    const reverseResponse = await reverseResponsePromise
-    expect(reverseResponse.status()).toBe(202)
-    const reverseRequest = (await reverseResponse.json()) as { jobId: string }
-
-    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
-      timeout: 30_000
-    })
-    await studio.page.getByTestId('open-art-workbench').click()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-    const workbenchParams = hashSearch(studio.page.url())
-    expect(workbenchParams.get('aiKind')).toBe('reverse')
-    expect(workbenchParams.get('aiJob')).toBe(reverseRequest.jobId)
-  } finally {
-    await studio.close()
-  }
-})
-
-test('keeps creation successful and explains when no vision provider is available', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-creation-no-vision-')
-
-  try {
-    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
-    await studio.page.getByLabel('角色名称').fill('雾')
-    await studio.page.getByLabel('角色简介').fill('值守旧灯塔的沉静记录员。')
-    await studio.page.getByLabel('上传参考图').setInputFiles({
-      name: 'mist.png',
-      mimeType: 'image/png',
-      buffer: await makePng(240, 320, '#9ec9bb')
-    })
-    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
-
-    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
-      timeout: 30_000
-    })
-    expect(hashSearch(studio.page.url()).get('aiWarning')).toBe('no-vision-provider')
-    await studio.page.getByTestId('open-art-workbench').click()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-    expect(hashSearch(studio.page.url()).get('aiWarning')).toBe('no-vision-provider')
-    await expect(studio.page.getByTestId('ai-warning')).toContainText('参考图反推未启动')
-  } finally {
-    await studio.close()
-  }
-})
-
-test('keeps a manually started reverse job available after closing the panel and reloading', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-manual-reverse-')
-
-  try {
-    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
-    await studio.page.getByLabel('角色名称').fill('潮')
-    await studio.page.getByLabel('角色简介').fill('在海雾里巡灯的白发少女。')
-    await studio.page.getByLabel('上传参考图').setInputFiles({
-      name: 'identity.png',
-      mimeType: 'image/png',
-      buffer: await makePng(240, 320, '#9ec9bb')
-    })
-    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
-    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    const api = new ApiClient(studio.endpoint)
-    await api.json('POST', '/api/v1/providers', {
-      headers: { 'idempotency-key': uniqueKey('provider-manual-vision') },
-      body: {
-        label: 'Manual Vision',
-        kind: 'chat',
-        adapter: 'mock',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4o-mini',
-        enabled: true,
-        capabilities: {
-          schemaVersion: 'provider-capabilities/1',
-          chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
-        }
-      }
-    })
-
-    await studio.page.getByTestId('open-art-workbench').click()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
-    })
-
-    await studio.page.getByRole('button', { name: 'AI 助手', exact: true }).click()
-    const aiPanel = studio.page.getByTestId('prompt-ai-panel')
-    await expect(aiPanel).toBeVisible()
-    const reverseResponsePromise = studio.page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
-    )
-    await aiPanel.getByRole('button', { name: '开始反推', exact: true }).click()
-    const reverseResponse = await reverseResponsePromise
-    expect(reverseResponse.status()).toBe(202)
-    const { jobId } = (await reverseResponse.json()) as { jobId: string }
-    expect(jobId).toMatch(/^job_/)
-    await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
-
-    await studio.page.keyboard.press('Escape')
-    await expect(aiPanel).toHaveCount(0)
-    await studio.page.getByRole('button', { name: 'AI 助手', exact: true }).click()
-    const reopenedPanel = studio.page.getByTestId('prompt-ai-panel')
-    await expect(reopenedPanel.getByTestId('ai-job')).toContainText(jobId)
-    await expect(reopenedPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
-
-    await studio.page.reload()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
+    await studio.page.getByRole('button', { name: '丢弃本批', exact: true }).click()
+    const confirm = studio.page.getByRole('dialog', { name: '丢弃本批？' })
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: '丢弃', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="wb3-prompt-view"]')).toBeVisible({
       timeout: 20_000
     })
-    const reloadedPanel = studio.page.getByTestId('prompt-ai-panel')
-    await expect(reloadedPanel.getByTestId('ai-job')).toContainText(jobId)
-    await expect(reloadedPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+
+    const generation = await api.getGeneration(created.generationId)
+    expect(generation.candidates.every((candidate) => candidate.status === 'rejected')).toBe(true)
   } finally {
     await studio.close()
   }
 })
 
-test('starts a manual text-only reverse when there are no reference materials', async () => {
-  test.setTimeout(120_000)
-  const studio = await launchStudio('agent2live-text-reverse-')
-
+test('views art versions and restores the three views from the URL', async () => {
+  const studio = await launchStudio('agent2live-v3-versions-')
   try {
-    await studio.page.getByRole('link', { name: '新建角色', exact: true }).click()
-    await studio.page.getByLabel('角色名称').fill('笺')
-    await studio.page.getByLabel('角色简介').fill('在市集收集旧信件的少女。')
-    await studio.page.getByRole('button', { name: '创建并生成', exact: true }).click()
-    await expect(studio.page.locator('[data-testid="character-created"]')).toBeVisible({
-      timeout: 30_000
-    })
-
     const api = new ApiClient(studio.endpoint)
-    await api.json('POST', '/api/v1/providers', {
-      headers: { 'idempotency-key': uniqueKey('provider-manual-text') },
-      body: {
-        label: 'Manual Text',
-        kind: 'chat',
-        adapter: 'mock',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-flash',
-        enabled: true,
-        capabilities: {
-          schemaVersion: 'provider-capabilities/1',
-          chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
-        }
-      }
+    const seeded = await seedWorkbench(api)
+    const provider = await createImageProvider(api)
+    const created = await api.createGeneration({
+      projectId: seeded.project.id,
+      promptVersionId: seeded.version.id,
+      providerConnectionId: provider.id,
+      count: 1,
+      size: '512x896'
+    })
+    await api.waitForJob(created.jobId)
+    const generation = await api.waitForGenerationReady(created.generationId)
+    const candidate = generation.candidates.find((entry) => entry.status === 'ready')!
+    const project = await api.getProject(seeded.project.id)
+    const manual = await api.createManualArtVersion({
+      projectId: seeded.project.id,
+      assetId: candidate.assetId,
+      promptVersionId: seeded.version.id,
+      expectedProjectRowVersion: project.rowVersion
     })
 
-    await studio.page.getByTestId('open-art-workbench').click()
-    await expect(studio.page.locator('[data-testid="art-workbench"]')).toBeVisible({
-      timeout: 30_000
+    await openWorkbench(
+      studio.page,
+      seeded.character.id,
+      seeded.project.id,
+      `&view=versions&artVersion=${encodeURIComponent(manual.artVersion.id)}`
+    )
+    await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(studio.page.locator('[data-testid="wb3-art-version-list"]')).toContainText('第 1 版')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText(
+      '依据的提示词'
+    )
+    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('当前参考')
+    await studio.page.getByRole('button', { name: '打开分层', exact: true }).click()
+    await expect(studio.page.locator('[data-testid="live2d-placeholder"]')).toBeVisible({
+      timeout: 20_000
     })
 
-    const projectId = hashSearch(studio.page.url()).get('project')
-    expect(projectId).toMatch(/^artp_/)
-    const workspace = await api.json<{ latestSubmission: { materials: unknown[] } }>(
-      'GET',
-      `/api/v1/art-projects/${encodeURIComponent(projectId!)}/prompt`
+    await openWorkbench(
+      studio.page,
+      seeded.character.id,
+      seeded.project.id,
+      `&view=candidates&generation=${encodeURIComponent(created.generationId)}`
     )
-    expect(workspace.body.latestSubmission.materials).toHaveLength(0)
+    await expect(studio.page.locator('[data-testid="wb3-generation-params"]')).toContainText('依据 第 1 版')
+    await studio.page.getByRole('button', { name: /依据 第 1 版/ }).click()
+    await expect(studio.page.locator('[data-testid="wb3-prompt-view"]')).toBeVisible({
+      timeout: 20_000
+    })
 
-    await studio.page.getByRole('button', { name: 'AI 助手', exact: true }).click()
-    const aiPanel = studio.page.getByTestId('prompt-ai-panel')
-    await expect(aiPanel).toBeVisible()
-    const start = aiPanel.getByRole('button', { name: '开始反推', exact: true })
-    await expect(start).toBeEnabled()
-    const reverseResponsePromise = studio.page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/prompt-reverse')
-    )
-    await start.click()
-    const reverseResponse = await reverseResponsePromise
-    expect(reverseResponse.status()).toBe(202)
-    await expect(aiPanel.getByTestId('reverse-review')).toBeVisible({ timeout: 30_000 })
+    await studio.page.reload()
+    await expect(studio.page.locator('[data-testid="wb3-prompt-view"]')).toBeVisible({
+      timeout: 20_000
+    })
   } finally {
     await studio.close()
   }
