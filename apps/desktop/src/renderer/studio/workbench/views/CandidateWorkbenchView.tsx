@@ -18,6 +18,7 @@ export interface CandidateWorkbenchViewProps {
   onSaveSelected(): void
   onDiscard(): void
   onRetry(): void
+  onRetrySlot(): void
   onRegenerate(): void
   onBackToPrompt(): void
   error: string | null
@@ -36,6 +37,7 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
   onSaveSelected,
   onDiscard,
   onRetry,
+  onRetrySlot,
   onRegenerate,
   onBackToPrompt,
   error
@@ -136,6 +138,7 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
             seconds={seconds}
             onSelect={onSelectCandidate}
             onSave={onSaveCandidate}
+            onRetrySlot={onRetrySlot}
           />
         )}
       </div>

@@ -11,6 +11,7 @@ export interface CandidateCardProps {
   saving: boolean
   onSelect(): void
   onSave(): void
+  onRetrySlot(): void
   seconds: number | null
 }
 
@@ -22,6 +23,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({
   saving,
   onSelect,
   onSave,
+  onRetrySlot,
   seconds
 }) => {
   const { url, isLoading, error } = useAssetUrl(candidate?.assetId ?? null)
@@ -78,7 +80,19 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({
             <span>{seconds === null ? '—' : `${seconds} 秒`}</span>
           </>
         ) : (
-          <span>1 张失败</span>
+          <>
+            <span>1 张失败</span>
+            <Button
+              variant="quiet"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation()
+                onRetrySlot()
+              }}
+            >
+              重试这张
+            </Button>
+          </>
         )}
       </footer>
     </article>

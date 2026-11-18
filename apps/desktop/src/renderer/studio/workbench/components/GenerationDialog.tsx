@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   ArtProjectDto,
-  ArtVersionDto,
   CreateGenerationResultDto,
   PromptVersionSummaryDto,
   ProviderConnectionDto
 } from '@studio/api'
 import { ApiError, createGeneration, getPromptVersion, queryKeys } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
 import {
   AsyncButton,
   Button,
+  ChipGroup,
   Dialog,
   EmptyState,
   Field,
@@ -19,9 +21,17 @@ import {
   StatusPill,
   TextField
 } from '@agent2live/design-system'
+import { MATERIAL_ROLE_LABELS } from '../prompt-labels'
 
 interface ImageCapabilities {
   image?: { sizes?: string[]; maxCount?: number; supportsSeed?: boolean }
+}
+
+export interface GenerationDefaults {
+  providerId?: string | null
+  count?: number | null
+  size?: string | null
+  seed?: number | null
 }
 
 function imageCapabilities(provider: ProviderConnectionDto): ImageCapabilities['image'] | undefined {
@@ -41,27 +51,41 @@ function storeGeneration(projectId: string, generationId: string): void {
   }
 }
 
+interface ReferenceThumbProps {
+  assetId: string
+  label: string
+}
+
+const ReferenceThumb: React.FC<ReferenceThumbProps> = ({ assetId, label }) => {
+  const { url } = useAssetUrl(assetId)
+  return (
+    <span className="wb3-generation-reference" title={label}>
+      {url ? <img src={url} alt={`${label}参考图`} /> : <span aria-hidden="true" />}
+    </span>
+  )
+}
+
 export interface GenerationDialogProps {
   open: boolean
   project: ArtProjectDto
   promptVersions: PromptVersionSummaryDto[]
-  artVersions: ArtVersionDto[]
   initialPromptVersionId: string | null
   initialPromptVersionNumber: number | null
-  initialBaseArtVersionId: string | null
+  initialParams?: GenerationDefaults | null
   providers: ProviderConnectionDto[]
   onClose(): void
   onCreated(created: CreateGenerationResultDto): void
 }
 
+const COUNT_OPTIONS = [1, 2, 4, 6, 8]
+
 export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   open,
   project,
   promptVersions,
-  artVersions,
   initialPromptVersionId,
   initialPromptVersionNumber,
-  initialBaseArtVersionId,
+  initialParams = null,
   providers,
   onClose,
   onCreated
@@ -71,61 +95,73 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     () => providers.filter((provider) => provider.enabled && provider.kind === 'image'),
     [providers]
   )
-  const [promptVersionId, setPromptVersionId] = useState(initialPromptVersionId ?? '')
-  const [baseArtVersionId, setBaseArtVersionId] = useState(initialBaseArtVersionId ?? '')
+  const promptVersionId = initialPromptVersionId ?? ''
   const [providerId, setProviderId] = useState('')
-  const [count, setCount] = useState(1)
+  const [count, setCount] = useState(4)
   const [size, setSize] = useState('')
   const [seed, setSeed] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!open) return
-    setPromptVersionId(initialPromptVersionId ?? '')
-    setBaseArtVersionId(initialBaseArtVersionId ?? '')
-    setLocalError(null)
-  }, [open, initialPromptVersionId, initialBaseArtVersionId])
-
-  useEffect(() => {
-    if (!providerId && imageProviders[0]) setProviderId(imageProviders[0].id)
-  }, [providerId, imageProviders])
-
-  const promptQuery = useQuery({
-    queryKey: ['prompt-version-for-generation', project.id, promptVersionId],
-    queryFn: ({ signal }) => getPromptVersion(project.id, promptVersionId, signal),
-    enabled: open && promptVersionId !== ''
-  })
-  const selectedPrompt = promptQuery.data ?? null
   const selectedProvider =
     imageProviders.find((provider) => provider.id === providerId) ?? imageProviders[0] ?? null
   const caps = selectedProvider ? imageCapabilities(selectedProvider) : undefined
   const sizes = caps?.sizes ?? []
-  const maxCount = Math.min(4, caps?.maxCount ?? 1)
+  const maxCount = Math.min(8, caps?.maxCount ?? 1)
+  const countOptions = useMemo(() => {
+    const options = COUNT_OPTIONS.filter((value) => value <= maxCount)
+    if (!options.includes(maxCount)) options.push(maxCount)
+    return [...new Set(options)].sort((left, right) => left - right)
+  }, [maxCount])
 
   useEffect(() => {
-    if (count > maxCount) setCount(maxCount)
-  }, [count, maxCount])
+    if (!open) return
+    setLocalError(null)
+    const nextProvider =
+      imageProviders.find((provider) => provider.id === initialParams?.providerId) ??
+      imageProviders[0] ??
+      null
+    setProviderId(nextProvider?.id ?? '')
+    const nextCaps = nextProvider ? imageCapabilities(nextProvider) : undefined
+    const nextMax = Math.min(8, nextCaps?.maxCount ?? 1)
+    const nextCount = initialParams?.count ?? 4
+    setCount(Math.max(1, Math.min(nextMax, nextCount)))
+    setSize(initialParams?.size ?? nextCaps?.sizes?.[0] ?? '')
+    setSeed(initialParams?.seed === null || initialParams?.seed === undefined ? '' : String(initialParams.seed))
+  }, [open, initialParams?.providerId, initialParams?.count, initialParams?.size, initialParams?.seed])
 
   useEffect(() => {
-    const firstSize = sizes[0]
-    if (firstSize !== undefined && !sizes.includes(size)) setSize(firstSize)
-  }, [size, sizes])
+    if (!countOptions.includes(count)) setCount(countOptions.at(-1) ?? 1)
+  }, [countOptions, count])
+
+  useEffect(() => {
+    if (sizes.length > 0 && !sizes.includes(size)) setSize(sizes[0]!)
+  }, [sizes, size])
+
+  const promptQuery = useQuery({
+    queryKey: queryKeys.promptVersion(project.id, promptVersionId || 'none'),
+    queryFn: ({ signal }) => getPromptVersion(project.id, promptVersionId, signal),
+    enabled: open && promptVersionId !== ''
+  })
+  const selectedPrompt = promptQuery.data ?? null
+  const promptVersionNumber =
+    selectedPrompt?.versionNumber ??
+    promptVersions.find((version) => version.id === promptVersionId)?.versionNumber ??
+    initialPromptVersionNumber
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!promptVersionId) throw new Error('请选择已保存的提示词版本。')
+      if (!promptVersionId) throw new Error('请先选择已保存的提示词版本。')
       if (!selectedProvider) throw new Error('没有可用的图像模型连接。')
       let parsedSeed: number | null | undefined
       if (seed.trim()) {
         const value = Number(seed)
         if (!Number.isInteger(value) || value < 0 || value > 2_147_483_647) {
-          throw new Error('seed 必须是 0 到 2147483647 的整数。')
+          throw new Error('种子必须是 0 到 2147483647 的整数。')
         }
         parsedSeed = value
       }
       return createGeneration(project.id, {
         promptVersionId,
-        baseArtVersionId: baseArtVersionId || null,
         providerConnectionId: selectedProvider.id,
         count,
         ...(size ? { size } : {}),
@@ -135,6 +171,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     onMutate: () => setLocalError(null),
     onSuccess: (created) => {
       storeGeneration(project.id, created.generationId)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) })
       void queryClient.invalidateQueries({
         queryKey: queryKeys.generation(project.id, created.generationId)
       })
@@ -148,139 +185,131 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     }
   })
 
-  const promptOptions = useMemo(() => {
-    const options = promptVersions.map((version) => ({
-      id: version.id,
-      versionNumber: version.versionNumber
-    }))
-    if (initialPromptVersionId !== null && !options.some((option) => option.id === initialPromptVersionId)) {
-      options.unshift({
-        id: initialPromptVersionId,
-        versionNumber: initialPromptVersionNumber ?? 0
-      })
-    }
-    return options
-  }, [initialPromptVersionId, initialPromptVersionNumber, promptVersions])
-
   return (
     <Dialog
       open={open}
-      title="生成立绘"
-      description="参考图来自所选提示词版本；继续创作来源不会自动加入参考图。"
       onOpenChange={(next) => {
         if (!next && !createMutation.isPending) onClose()
       }}
-      className="generation-dialog"
+      title="生成图片"
+      description="提示词版本固定不变；参数只影响本次批次。"
+      busy={createMutation.isPending}
+      className="wb3-generation-dialog"
+      footer={
+        <>
+          <span className="wb3-generation-estimate">生成 {count} 张，约 1 分钟</span>
+          <span className="wb3-dialog-spacer" />
+          <Button variant="quiet" disabled={createMutation.isPending} onClick={onClose}>
+            取消
+          </Button>
+          <AsyncButton
+            variant="primary"
+            busy={createMutation.isPending}
+            busyLabel="提交生成…"
+            disabled={!selectedProvider || !promptVersionId}
+            onClick={() => createMutation.mutate()}
+          >
+            生成图片
+          </AsyncButton>
+        </>
+      }
     >
-      {promptOptions.length === 0 ? (
-        <EmptyState title="还没有提示词版本" description="生成任务必须绑定不可变 PromptVersion。" />
+      {!promptVersionId ? (
+        <EmptyState title="还没有提示词版本" description="先提交一版提示词，再生成图片。" />
       ) : imageProviders.length === 0 ? (
         <EmptyState
           title="没有可用的图像模型"
           description="在设置中添加 Seedream 或兼容图像连接，并启用它。"
+          action={
+            <Button asChild variant="secondary">
+              <Link to="/settings/providers">去设置</Link>
+            </Button>
+          }
         />
       ) : (
-        <div className="generation-dialog-content" data-testid="generation-dialog">
-          <div className="generation-form" data-testid="generation-settings">
-            <Field label="生成输入版本">
-              <Select value={promptVersionId} onValueChange={setPromptVersionId}>
-                {promptOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    提示词 v{option.versionNumber || '—'}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="继续创作来源（可选）" description="只记录来源，不会自动加入参考图。">
-              <Select value={baseArtVersionId} onValueChange={setBaseArtVersionId}>
-                <option value="">不指定</option>
-                {artVersions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    美术 v{version.versionNumber}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="图像模型">
-              <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
-                {imageProviders.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <div className="generation-row">
-              <Field label="数量">
-                <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}>
-                  {Array.from({ length: maxCount }, (_, index) => index + 1).map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {sizes.length > 0 ? (
-                <Field label="尺寸">
-                  <Select value={size} onValueChange={setSize}>
-                    {sizes.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              ) : null}
-              {caps?.supportsSeed ? (
-                <Field label="Seed" description="可选">
-                  <TextField
-                    inputMode="numeric"
-                    value={seed}
-                    placeholder="随机"
-                    onValueChange={(value) => setSeed(value.replace(/[^0-9]/g, ''))}
-                  />
-                </Field>
-              ) : null}
+        <div className="wb3-dialog-stack" data-testid="wb3-generation-dialog">
+          <section className="wb3-generation-prompt">
+            <div>
+              <span>提示词版本</span>
+              <strong>第 {promptVersionNumber ?? '—'} 版</strong>
             </div>
-          </div>
+            <div className="wb3-generation-prompt-meta">
+              {selectedPrompt ? (
+                <StatusPill
+                  label={`${selectedPrompt.state.blocks.length + selectedPrompt.state.negativeBlocks.length} 块 · ${selectedPrompt.references.length} 张参考图`}
+                  tone="accent"
+                />
+              ) : null}
+              <span>固定不变</span>
+            </div>
+          </section>
+
+          <Field label="图片模型">
+            <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
+              {imageProviders.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="张数">
+            <ChipGroup
+              ariaLabel="生成张数"
+              value={String(count)}
+              onValueChange={(value) => setCount(Number(value))}
+              options={countOptions.map((value) => ({ id: String(value), label: `${value} 张` }))}
+            />
+          </Field>
+
+          <Field label="尺寸">
+            <ChipGroup
+              ariaLabel="生成尺寸"
+              value={size}
+              onValueChange={setSize}
+              options={sizes.map((value) => ({ id: value, label: value }))}
+            />
+          </Field>
+
+          <Field label="种子">
+            <div className="wb3-seed-row">
+              <TextField
+                inputMode="numeric"
+                value={seed}
+                placeholder="留空则每次随机"
+                onValueChange={(value) => setSeed(value.replace(/[^0-9]/g, ''))}
+              />
+              <Button variant="secondary" size="sm" onClick={() => setSeed('')}>
+                随机
+              </Button>
+            </div>
+          </Field>
+
+          <Field label={`参考图 取当前版本 ${selectedPrompt?.references.length ?? 0} 张`}>
+            {selectedPrompt && selectedPrompt.references.length > 0 ? (
+              <div className="wb3-generation-references">
+                {selectedPrompt.references.map((reference) => (
+                  <ReferenceThumb
+                    key={reference.assetId}
+                    assetId={reference.assetId}
+                    label={MATERIAL_ROLE_LABELS[reference.role]}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="wb3-overview-muted">该版本没有参考图，本次按文生图生成。</p>
+            )}
+          </Field>
+
           {promptQuery.isError ? (
             <InlineNotice tone="danger">提示词版本加载失败，请关闭后重试。</InlineNotice>
-          ) : selectedPrompt ? (
-            <div className="generation-reference-summary">
-              {selectedPrompt.references.length === 0 ? (
-                <p className="muted">该版本没有参考图，本次按文生图生成。</p>
-              ) : (
-                <>
-                  <StatusPill label={`${selectedPrompt.references.length} 张参考图`} tone="accent" />
-                  <p className="muted">
-                    发送顺序：
-                    {selectedPrompt.references
-                      .map((reference, index) => `${index + 1}. ${reference.role}`)
-                      .join(' → ')}
-                  </p>
-                </>
-              )}
-            </div>
           ) : null}
           {localError ? (
             <div role="alert">
               <InlineNotice tone="danger">{localError}</InlineNotice>
             </div>
           ) : null}
-          <div className="generation-dialog-actions">
-            <Button type="button" variant="quiet" disabled={createMutation.isPending} onClick={onClose}>
-              取消
-            </Button>
-            <AsyncButton
-              type="button"
-              busy={createMutation.isPending}
-              busyLabel="提交生成…"
-              disabled={!selectedProvider || !promptVersionId}
-              onClick={() => createMutation.mutate()}
-            >
-              开始生成
-            </AsyncButton>
-          </div>
         </div>
       )}
     </Dialog>

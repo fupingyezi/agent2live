@@ -10,6 +10,7 @@ export interface CandidateGridProps {
   seconds: number | null
   onSelect(candidateId: string): void
   onSave(candidateId: string): void
+  onRetrySlot(): void
 }
 
 export const CandidateGrid: React.FC<CandidateGridProps> = ({
@@ -19,7 +20,8 @@ export const CandidateGrid: React.FC<CandidateGridProps> = ({
   savingId,
   seconds,
   onSelect,
-  onSave
+  onSave,
+  onRetrySlot
 }) => {
   const slots = Array.from({ length: Math.max(requestedCount, candidates.length) }, (_, index) => {
     return candidates[index] ?? null
@@ -41,6 +43,7 @@ export const CandidateGrid: React.FC<CandidateGridProps> = ({
           onSave={() => {
             if (candidate) onSave(candidate.id)
           }}
+          onRetrySlot={onRetrySlot}
         />
       ))}
     </div>

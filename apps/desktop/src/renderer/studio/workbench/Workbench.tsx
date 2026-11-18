@@ -29,12 +29,12 @@ import {
   ArtVersionPanel,
   ForkDialog,
   ForkOriginBar,
-  GenerationDialog,
   PromptInputPanel,
   ReferenceChainBar,
   VersionGraph,
   type ForkSource
 } from './components'
+import { GenerationDialog, type GenerationDefaults } from './components/GenerationDialog'
 import { parseWorkbenchView, updateWorkbenchView } from './view-state'
 import type { PromptFilter } from './prompt-diagnostics'
 import { WorkbenchTopbar } from './components/WorkbenchTopbar'
@@ -129,6 +129,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
   const [forkSource, setForkSource] = useState<ForkSource | null>(null)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
+  const [generationDefaults, setGenerationDefaults] = useState<GenerationDefaults | null>(null)
   const [generationPromptVersion, setGenerationPromptVersion] = useState<{
     id: string
     versionNumber: number
@@ -600,6 +601,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       id: version.id,
       versionNumber: version.versionNumber
     })
+    setGenerationDefaults(null)
     setGenerationDialogOpen(true)
     return version
   }
@@ -652,6 +654,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       setGenerationPromptVersion({
         id: candidateGeneration.promptVersionId,
         versionNumber: promptVersionNumberForGeneration ?? 0
+      })
+      setGenerationDefaults({
+        providerId: candidateGeneration.providerConnectionId,
+        count: candidateGeneration.count,
+        size: candidateGeneration.size,
+        seed: candidateGeneration.seed
       })
     }
     setGenerationDialogOpen(true)
@@ -844,6 +852,20 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             }}
             onDiscard={discardBatch}
             onRetry={openCandidateGenerationDialog}
+            onRetrySlot={() => {
+              if (!candidateGeneration) return
+              setGenerationPromptVersion({
+                id: candidateGeneration.promptVersionId,
+                versionNumber: promptVersionNumberForGeneration ?? 0
+              })
+              setGenerationDefaults({
+                providerId: candidateGeneration.providerConnectionId,
+                count: 1,
+                size: candidateGeneration.size,
+                seed: candidateGeneration.seed
+              })
+              setGenerationDialogOpen(true)
+            }}
             onRegenerate={openCandidateGenerationDialog}
             onBackToPrompt={() =>
               setView({
@@ -898,18 +920,21 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         open={generationDialogOpen}
         project={project}
         promptVersions={workspace.versions}
-        artVersions={artVersions}
-        initialPromptVersionId={generationPromptVersion?.id ?? null}
-        initialPromptVersionNumber={generationPromptVersion?.versionNumber ?? null}
-        initialBaseArtVersionId={null}
+        initialPromptVersionId={generationPromptVersion?.id ?? selectedPromptVersion?.id ?? null}
+        initialPromptVersionNumber={
+          generationPromptVersion?.versionNumber ?? selectedPromptVersion?.versionNumber ?? null
+        }
+        initialParams={generationDefaults}
         providers={providers}
         onClose={() => {
           setGenerationDialogOpen(false)
           setGenerationPromptVersion(null)
+          setGenerationDefaults(null)
         }}
         onCreated={(created) => {
           setGenerationDialogOpen(false)
           setGenerationPromptVersion(null)
+          setGenerationDefaults(null)
           setView({ view: 'candidates', generationId: created.generationId })
           void queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) })
         }}
