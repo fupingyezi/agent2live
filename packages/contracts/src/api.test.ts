@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  acceptSuggestionInputSchema,
   commitPromptDraftInputSchema,
   createForkInputSchema,
   createGenerationInputSchema,
@@ -279,5 +280,20 @@ describe('API schemas', () => {
         adapter: 'openai-compatible'
       })
     ).toThrow(/adapter/)
+  })
+
+  it('accepts optional operation indexes for partial suggestion acceptance', () => {
+    expect(acceptSuggestionInputSchema.parse({ expectedDraftRowVersion: 3 })).toEqual({
+      expectedDraftRowVersion: 3
+    })
+    expect(
+      acceptSuggestionInputSchema.parse({ expectedDraftRowVersion: 3, operationIndexes: [0, 2] })
+    ).toEqual({ expectedDraftRowVersion: 3, operationIndexes: [0, 2] })
+    expect(() =>
+      acceptSuggestionInputSchema.parse({ expectedDraftRowVersion: 3, operationIndexes: [] })
+    ).toThrow()
+    expect(() =>
+      acceptSuggestionInputSchema.parse({ expectedDraftRowVersion: 3, operationIndexes: [1, 1] })
+    ).toThrow(/unique/i)
   })
 })

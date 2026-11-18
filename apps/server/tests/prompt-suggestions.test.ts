@@ -142,7 +142,7 @@ describe('prompt suggestions', () => {
         baseDraftRowVersion: number
       }>()
       expect(suggestion.status).toBe('proposed')
-      expect(suggestion.operations).toHaveLength(1)
+      expect(suggestion.operations).toHaveLength(2)
 
       const accepted = await ctx.app.inject({
         method: 'POST',
@@ -164,6 +164,10 @@ describe('prompt suggestions', () => {
       expect(hair?.locked).toBe(true)
       expect(hair?.text).toContain('银灰色短发')
       expect(JSON.stringify(acceptedBody.draft.state.blocks)).not.toContain('谨慎')
+      const styled = acceptedBody.draft.state.blocks.find((block) => block.id === 'style.rendering') as
+        | { weight?: number }
+        | undefined
+      expect(styled?.weight).toBeGreaterThan(1)
     } finally {
       await ctx.close()
     }
@@ -302,6 +306,68 @@ describe('prompt suggestions', () => {
       })
       expect(accept.statusCode).toBe(409)
       expect(accept.json()).toMatchObject({ error: { code: 'PROMPT_SUGGESTION_RESOLVED' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('accepts only the selected suggestion operation', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await prepareDraft(ctx)
+      const connection = await createMockChat(ctx)
+      const created = await enqueueDraftSuggestion(
+        ctx,
+        prepared.project.id,
+        prepared.draft.id,
+        connection.id,
+        'suggest-key-partial-0001'
+      )
+      await ctx.services.jobs.tick()
+      const completed = await suggestionFromJob(ctx, created.json<{ jobId: string }>().jobId)
+      expect(completed.status).toBe('succeeded')
+
+      const accepted = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-suggestions/${completed.result.suggestionId}/accept`,
+        headers: ctx.auth,
+        payload: { expectedDraftRowVersion: prepared.saved.rowVersion, operationIndexes: [1] }
+      })
+      expect(accepted.statusCode).toBe(200)
+      const body = accepted.json<{
+        draft: { state: { blocks: Array<{ id: string; weight: number }> } }
+      }>()
+      expect(body.draft.state.blocks.some((block) => block.id.startsWith('ai.suggestion.mock'))).toBe(false)
+      const style = body.draft.state.blocks.find((block) => block.id === 'style.rendering')
+      expect(style?.weight).toBeGreaterThan(1)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects out-of-range suggestion operation indexes', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await prepareDraft(ctx)
+      const connection = await createMockChat(ctx)
+      const created = await enqueueDraftSuggestion(
+        ctx,
+        prepared.project.id,
+        prepared.draft.id,
+        connection.id,
+        'suggest-key-partial-0002'
+      )
+      await ctx.services.jobs.tick()
+      const completed = await suggestionFromJob(ctx, created.json<{ jobId: string }>().jobId)
+      expect(completed.status).toBe('succeeded')
+
+      const accepted = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-suggestions/${completed.result.suggestionId}/accept`,
+        headers: ctx.auth,
+        payload: { expectedDraftRowVersion: prepared.saved.rowVersion, operationIndexes: [99] }
+      })
+      expect(accepted.statusCode).toBe(400)
     } finally {
       await ctx.close()
     }

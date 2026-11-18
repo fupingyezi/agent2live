@@ -76,28 +76,36 @@ function mockSuggestion(envelope: MockSuggestionEnvelope): string {
     id = `ai.suggestion.mock.${suffix}`
     suffix += 1
   }
-  return JSON.stringify({
-    operations: [
-      {
-        op: 'add',
-        block: {
-          id,
-          category: 'style',
-          label: 'AI 建议',
-          text: envelope.intent.slice(0, 4000),
-          weight: 1,
-          locked: false,
-          confidence: 0.5,
-          evidence: [],
-          source: 'ai-suggestion',
-          priority: 10,
-          requirementRefs: [],
-          materialRefs: []
-        }
+  const weighted = envelope.blocks.find((block) => !block.locked)
+  const operations: Array<Record<string, unknown>> = [
+    {
+      op: 'add',
+      block: {
+        id,
+        category: 'style',
+        label: 'AI 建议',
+        text: envelope.intent.slice(0, 4000),
+        weight: 1,
+        locked: false,
+        confidence: 0.5,
+        evidence: [],
+        source: 'ai-suggestion',
+        priority: 10,
+        requirementRefs: [],
+        materialRefs: []
       }
-    ],
-    warnings: []
-  })
+    }
+  ]
+  if (weighted) {
+    operations.push({
+      op: 'setWeight',
+      blockId: weighted.id,
+      before: weighted.weight,
+      after: Math.min(2, Math.round((weighted.weight + 0.2) * 10) / 10),
+      reason: '提高权重'
+    })
+  }
+  return JSON.stringify({ operations, warnings: [] })
 }
 
 export function structuredMockResponse(text: string): string | null {

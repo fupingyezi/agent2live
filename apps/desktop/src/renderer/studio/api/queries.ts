@@ -334,11 +334,15 @@ export function getPromptSuggestion(
 
 export function acceptPromptSuggestion(
   suggestionId: string,
-  expectedDraftRowVersion: number | null
+  expectedDraftRowVersion: number | null,
+  operationIndexes?: number[]
 ): Promise<{ suggestion: PromptSuggestionDto; draft: PromptDraftDto }> {
   return api.request(`/api/v1/prompt-suggestions/${encodeURIComponent(suggestionId)}/accept`, {
     method: 'POST',
-    body: { expectedDraftRowVersion }
+    body: {
+      expectedDraftRowVersion,
+      ...(operationIndexes === undefined ? {} : { operationIndexes })
+    }
   })
 }
 

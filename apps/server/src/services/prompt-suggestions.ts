@@ -252,12 +252,25 @@ export class PromptSuggestionService {
   accept(
     suggestionId: string,
     expectedDraftRowVersion: number | null,
-    ids: RequestIds
+    ids: RequestIds,
+    operationIndexes?: number[]
   ): { suggestion: PromptSuggestionDto; draft: PromptDraftDto } {
     const suggestion = this.get(suggestionId)
     if (suggestion.status !== 'proposed') {
       throw new AppError('PROMPT_SUGGESTION_RESOLVED', { status: suggestion.status })
     }
+    const selectedOperations =
+      operationIndexes === undefined
+        ? suggestion.operations
+        : operationIndexes.map((index) => {
+            const operation = suggestion.operations[index]
+            if (!operation) {
+              throw new AppError('REQUEST_INVALID', {
+                reason: `operation index ${index} is out of range`
+              })
+            }
+            return operation
+          })
 
     let base: PromptSpecV2
     let version: PromptVersionDto | null = null
@@ -306,7 +319,7 @@ export class PromptSuggestionService {
 
     let next: PromptSpecV2
     try {
-      next = applyPromptOperations(base, suggestion.operations, {
+      next = applyPromptOperations(base, selectedOperations, {
         source: 'ai-suggestion',
         respectLockAll: true
       })
@@ -380,7 +393,9 @@ export class PromptSuggestionService {
         traceId: ids.traceId,
         metadata: {
           base: baseLabel(suggestion.baseKind),
-          operations: suggestion.operations.length
+          operations: selectedOperations.length,
+          totalOperations: suggestion.operations.length,
+          operationIndexes: (operationIndexes ?? suggestion.operations.map((_, index) => index)).join(',')
         }
       })
       events.append({

@@ -50,7 +50,12 @@ export function registerPromptSuggestionRoutes(
   app.post('/api/v1/prompt-suggestions/:suggestionId/accept', async (request) => {
     const suggestionId = (request.params as { suggestionId: string }).suggestionId
     const input = acceptSuggestionInputSchema.parse(request.body ?? {})
-    return services.promptSuggestions.accept(suggestionId, input.expectedDraftRowVersion, idsOf(request))
+    return services.promptSuggestions.accept(
+      suggestionId,
+      input.expectedDraftRowVersion,
+      idsOf(request),
+      input.operationIndexes
+    )
   })
 
   app.post('/api/v1/prompt-suggestions/:suggestionId/reject', async (request) => {

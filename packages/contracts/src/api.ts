@@ -296,9 +296,16 @@ export const listPromptReverseResultsQuerySchema = z
 
 export const acceptSuggestionInputSchema = z
   .object({
-    expectedDraftRowVersion: z.number().int().positive().nullable()
+    expectedDraftRowVersion: z.number().int().positive().nullable(),
+    operationIndexes: z.array(z.number().int().nonnegative()).min(1).max(200).optional()
   })
   .strict()
+  .refine(
+    (value) =>
+      value.operationIndexes === undefined ||
+      new Set(value.operationIndexes).size === value.operationIndexes.length,
+    { message: 'operationIndexes must be unique' }
+  )
 
 export const createManualArtVersionInputSchema = z
   .object({
