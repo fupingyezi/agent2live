@@ -76,7 +76,13 @@ function mockSuggestion(envelope: MockSuggestionEnvelope): string {
     id = `ai.suggestion.mock.${suffix}`
     suffix += 1
   }
-  const weighted = envelope.blocks.find((block) => !block.locked)
+  const weighted = envelope.blocks
+    .filter((block) => !block.locked)
+    .map((block) => ({
+      block,
+      after: Math.min(2, Math.round((block.weight + 0.2) * 10) / 10)
+    }))
+    .find((entry) => entry.after !== entry.block.weight)
   const operations: Array<Record<string, unknown>> = [
     {
       op: 'add',
@@ -99,9 +105,9 @@ function mockSuggestion(envelope: MockSuggestionEnvelope): string {
   if (weighted) {
     operations.push({
       op: 'setWeight',
-      blockId: weighted.id,
-      before: weighted.weight,
-      after: Math.min(2, Math.round((weighted.weight + 0.2) * 10) / 10),
+      blockId: weighted.block.id,
+      before: weighted.block.weight,
+      after: weighted.after,
       reason: '提高权重'
     })
   }

@@ -120,6 +120,74 @@ describe('mock providers', () => {
     expect(parsed.operations[0]).toMatchObject({ op: 'add', block: { source: 'ai-suggestion' } })
   })
 
+  it('appends a valid weight increase for the first unlocked suggestion block', async () => {
+    const provider = createMockChatProvider()
+    const envelope = {
+      purpose: 'prompt.suggestion',
+      intent: '提高权重',
+      blocks: [
+        { id: 'style.rendering', weight: 1, locked: false },
+        { id: 'subject.identity', weight: 1, locked: true }
+      ]
+    }
+    const marker = `AGENT2LIVE_MOCK_INPUT=${Buffer.from(JSON.stringify(envelope)).toString('base64url')}`
+    const result = await provider.generate(
+      { messages: [{ role: 'user', content: `suggest\n${marker}` }] },
+      { requestId: 'suggest-weight' }
+    )
+    const parsed = promptSuggestionOutputSchema.parse(JSON.parse(result.text))
+    expect(parsed.operations).toHaveLength(2)
+    expect(parsed.operations[0]).toMatchObject({ op: 'add' })
+    expect(parsed.operations[1]).toMatchObject({
+      op: 'setWeight',
+      blockId: 'style.rendering',
+      before: 1,
+      after: 1.2
+    })
+  })
+
+  it('skips unlocked blocks already at maximum weight when choosing the weight increase', async () => {
+    const provider = createMockChatProvider()
+    const envelope = {
+      purpose: 'prompt.suggestion',
+      intent: '提高权重',
+      blocks: [
+        { id: 'style.rendering', weight: 2, locked: false },
+        { id: 'background.simple', weight: 1.5, locked: false }
+      ]
+    }
+    const marker = `AGENT2LIVE_MOCK_INPUT=${Buffer.from(JSON.stringify(envelope)).toString('base64url')}`
+    const result = await provider.generate(
+      { messages: [{ role: 'user', content: `suggest\n${marker}` }] },
+      { requestId: 'suggest-weight-max' }
+    )
+    const parsed = promptSuggestionOutputSchema.parse(JSON.parse(result.text))
+    expect(parsed.operations).toHaveLength(2)
+    expect(parsed.operations[1]).toMatchObject({
+      op: 'setWeight',
+      blockId: 'background.simple',
+      before: 1.5,
+      after: 1.7
+    })
+  })
+
+  it('returns only the add operation when every unlocked block is at maximum weight', async () => {
+    const provider = createMockChatProvider()
+    const envelope = {
+      purpose: 'prompt.suggestion',
+      intent: '提高权重',
+      blocks: [{ id: 'style.rendering', weight: 2, locked: false }]
+    }
+    const marker = `AGENT2LIVE_MOCK_INPUT=${Buffer.from(JSON.stringify(envelope)).toString('base64url')}`
+    const result = await provider.generate(
+      { messages: [{ role: 'user', content: `suggest\n${marker}` }] },
+      { requestId: 'suggest-weight-noop' }
+    )
+    const parsed = promptSuggestionOutputSchema.parse(JSON.parse(result.text))
+    expect(parsed.operations).toHaveLength(1)
+    expect(parsed.operations[0]).toMatchObject({ op: 'add' })
+  })
+
   it('falls back when a suggestion marker envelope is malformed', async () => {
     const provider = createMockChatProvider()
     const envelopes = [

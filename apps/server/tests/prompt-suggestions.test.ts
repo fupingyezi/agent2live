@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { PromptOperation } from '@agent2live/contracts'
 import { createTestApp } from './helpers/app'
 import { multipartPayload, seedProject, specWithAsset } from './helpers/seed-prompt'
 import { png } from './helpers/files'
@@ -110,6 +111,50 @@ async function enqueueDraftSuggestion(
 async function suggestionFromJob(ctx: Ctx, jobId: string) {
   const job = await ctx.app.inject({ method: 'GET', url: `/api/v1/jobs/${jobId}`, headers: ctx.auth })
   return job.json<{ status: string; result: { suggestionId: string } }>()
+}
+
+async function suggestionOperations(ctx: Ctx, suggestionId: string): Promise<PromptOperation[]> {
+  const detail = await ctx.app.inject({
+    method: 'GET',
+    url: `/api/v1/prompt-suggestions/${suggestionId}`,
+    headers: ctx.auth
+  })
+  return detail.json<{ operations: PromptOperation[] }>().operations
+}
+
+function dependentSuggestionOperations(): PromptOperation[] {
+  return [
+    {
+      op: 'add',
+      block: {
+        id: 'ai.suggestion.mock.dependent',
+        category: 'style',
+        label: 'AI 建议',
+        text: '增加柔和逆光',
+        weight: 1,
+        locked: false,
+        confidence: 0.5,
+        evidence: [],
+        source: 'ai-suggestion',
+        priority: 10,
+        requirementRefs: [],
+        materialRefs: []
+      }
+    },
+    {
+      op: 'setWeight',
+      blockId: 'ai.suggestion.mock.dependent',
+      before: 1,
+      after: 1.2,
+      reason: '提高权重'
+    }
+  ]
+}
+
+function setSuggestionOperations(ctx: Ctx, suggestionId: string, operations: PromptOperation[]): void {
+  ctx.db
+    .prepare('update prompt_suggestions set operations_json = ? where id = ?')
+    .run(JSON.stringify(operations), suggestionId)
 }
 
 describe('prompt suggestions', () => {
@@ -326,12 +371,18 @@ describe('prompt suggestions', () => {
       await ctx.services.jobs.tick()
       const completed = await suggestionFromJob(ctx, created.json<{ jobId: string }>().jobId)
       expect(completed.status).toBe('succeeded')
+      const operations = await suggestionOperations(ctx, completed.result.suggestionId)
+      const setWeightIndex = operations.findIndex((operation) => operation.op === 'setWeight')
+      expect(setWeightIndex).toBeGreaterThanOrEqual(0)
 
       const accepted = await ctx.app.inject({
         method: 'POST',
         url: `/api/v1/prompt-suggestions/${completed.result.suggestionId}/accept`,
         headers: ctx.auth,
-        payload: { expectedDraftRowVersion: prepared.saved.rowVersion, operationIndexes: [1] }
+        payload: {
+          expectedDraftRowVersion: prepared.saved.rowVersion,
+          operationIndexes: [setWeightIndex]
+        }
       })
       expect(accepted.statusCode).toBe(200)
       const body = accepted.json<{
@@ -368,6 +419,107 @@ describe('prompt suggestions', () => {
         payload: { expectedDraftRowVersion: prepared.saved.rowVersion, operationIndexes: [99] }
       })
       expect(accepted.statusCode).toBe(400)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('applies reversed operation indexes in suggestion order', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await prepareDraft(ctx)
+      const connection = await createMockChat(ctx)
+      const created = await enqueueDraftSuggestion(
+        ctx,
+        prepared.project.id,
+        prepared.draft.id,
+        connection.id,
+        'suggest-key-partial-0003'
+      )
+      await ctx.services.jobs.tick()
+      const completed = await suggestionFromJob(ctx, created.json<{ jobId: string }>().jobId)
+      expect(completed.status).toBe('succeeded')
+      const operations = dependentSuggestionOperations()
+      setSuggestionOperations(ctx, completed.result.suggestionId, operations)
+      const addIndex = operations.findIndex((operation) => operation.op === 'add')
+      const setWeightIndex = operations.findIndex((operation) => operation.op === 'setWeight')
+      expect(addIndex).toBeGreaterThanOrEqual(0)
+      expect(setWeightIndex).toBeGreaterThanOrEqual(0)
+
+      const accepted = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-suggestions/${completed.result.suggestionId}/accept`,
+        headers: ctx.auth,
+        payload: {
+          expectedDraftRowVersion: prepared.saved.rowVersion,
+          operationIndexes: [setWeightIndex, addIndex]
+        }
+      })
+      expect(accepted.statusCode).toBe(200)
+      const body = accepted.json<{
+        suggestion: { status: string }
+        draft: { state: { blocks: Array<{ id: string; weight: number }> } }
+      }>()
+      expect(body.suggestion.status).toBe('accepted')
+      const added = body.draft.state.blocks.find((block) => block.id === 'ai.suggestion.mock.dependent')
+      expect(added?.weight).toBe(1.2)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects a selected subset that depends on an unselected operation without going stale', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await prepareDraft(ctx)
+      const connection = await createMockChat(ctx)
+      const created = await enqueueDraftSuggestion(
+        ctx,
+        prepared.project.id,
+        prepared.draft.id,
+        connection.id,
+        'suggest-key-partial-0004'
+      )
+      await ctx.services.jobs.tick()
+      const completed = await suggestionFromJob(ctx, created.json<{ jobId: string }>().jobId)
+      expect(completed.status).toBe('succeeded')
+      const operations = dependentSuggestionOperations()
+      setSuggestionOperations(ctx, completed.result.suggestionId, operations)
+      const setWeightIndex = operations.findIndex((operation) => operation.op === 'setWeight')
+      expect(setWeightIndex).toBeGreaterThanOrEqual(0)
+
+      const accepted = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-suggestions/${completed.result.suggestionId}/accept`,
+        headers: ctx.auth,
+        payload: {
+          expectedDraftRowVersion: prepared.saved.rowVersion,
+          operationIndexes: [setWeightIndex]
+        }
+      })
+      expect(accepted.statusCode).toBe(400)
+      expect(accepted.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+
+      const detail = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/prompt-suggestions/${completed.result.suggestionId}`,
+        headers: ctx.auth
+      })
+      expect(detail.json()).toMatchObject({ status: 'proposed' })
+
+      const workspace = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${prepared.project.id}/prompt`,
+        headers: ctx.auth
+      })
+      const activeDraft = workspace.json<{
+        activeDraft: {
+          rowVersion: number
+          state: { blocks: Array<{ id: string }> }
+        } | null
+      }>().activeDraft
+      expect(activeDraft?.rowVersion).toBe(prepared.saved.rowVersion)
+      expect(activeDraft?.state.blocks.some((block) => block.id.startsWith('ai.suggestion.mock'))).toBe(false)
     } finally {
       await ctx.close()
     }

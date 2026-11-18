@@ -259,18 +259,19 @@ export class PromptSuggestionService {
     if (suggestion.status !== 'proposed') {
       throw new AppError('PROMPT_SUGGESTION_RESOLVED', { status: suggestion.status })
     }
-    const selectedOperations =
+    const appliedIndexes =
       operationIndexes === undefined
-        ? suggestion.operations
-        : operationIndexes.map((index) => {
-            const operation = suggestion.operations[index]
-            if (!operation) {
-              throw new AppError('REQUEST_INVALID', {
-                reason: `operation index ${index} is out of range`
-              })
-            }
-            return operation
-          })
+        ? suggestion.operations.map((_, index) => index)
+        : [...operationIndexes].sort((left, right) => left - right)
+    const selectedOperations = appliedIndexes.map((index) => {
+      const operation = suggestion.operations[index]
+      if (!operation) {
+        throw new AppError('REQUEST_INVALID', {
+          reason: `operation index ${index} is out of range`
+        })
+      }
+      return operation
+    })
 
     let base: PromptSpecV2
     let version: PromptVersionDto | null = null
@@ -325,6 +326,11 @@ export class PromptSuggestionService {
       })
     } catch (error) {
       if (error instanceof AppError && error.code === 'PROMPT_OPERATION_STALE') {
+        if (operationIndexes !== undefined) {
+          throw new AppError('REQUEST_INVALID', {
+            reason: 'selected operations cannot be applied to the current base'
+          })
+        }
         this.markStale(suggestionId, ids)
       }
       throw error
@@ -395,7 +401,7 @@ export class PromptSuggestionService {
           base: baseLabel(suggestion.baseKind),
           operations: selectedOperations.length,
           totalOperations: suggestion.operations.length,
-          operationIndexes: (operationIndexes ?? suggestion.operations.map((_, index) => index)).join(',')
+          operationIndexes: appliedIndexes.join(',')
         }
       })
       events.append({
