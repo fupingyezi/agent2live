@@ -7,7 +7,9 @@ import type {
   PromptVersionSummaryDto
 } from '@studio/api'
 import type { PromptSpecV2 } from '@studio/api'
+import { Button } from '@agent2live/design-system'
 import type { PromptFilter } from '../prompt-diagnostics'
+import { blockLabelById } from '../prompt-diagnostics'
 import { PromptEditorCard } from '../components/prompt/PromptEditorCard'
 import { VersionOverviewCard } from '../components/prompt/VersionOverviewCard'
 
@@ -37,6 +39,7 @@ export interface PromptWorkbenchViewProps {
   onOpenReferences(): void
   onOpenVersions(): void
   onSelectPromptVersion(versionId: string): void
+  onRegenerate(): void
   onRollbackToPromptVersion(versionId: string): void
   onViewArtVersion(versionId: string): void
   onSubmitVersion(): void
@@ -68,44 +71,64 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
   onOpenReferences,
   onOpenVersions,
   onSelectPromptVersion,
+  onRegenerate,
   onRollbackToPromptVersion,
   onViewArtVersion,
   onSubmitVersion
 }) => {
+  const droppedIds = latestGeneration?.droppedBlockIds ?? []
+  const droppedLabels =
+    spec && droppedIds.length > 0 ? droppedIds.slice(0, 6).map((id) => blockLabelById(id, spec)) : []
+
   return (
-    <div className="wb3-prompt-layout" data-testid="wb3-prompt-view">
-      <PromptEditorCard
-        characterTitle={characterTitle}
-        characterSummary={characterSummary}
-        spec={spec}
-        referenceCount={referenceCount}
-        readOnly={readOnly}
-        dirty={dirty}
-        canCommit={canCommit}
-        filter={filter}
-        droppedBlockIds={latestGeneration?.droppedBlockIds ?? []}
-        submitting={submitting}
-        error={error}
-        onFilterChange={onFilterChange}
-        onRename={onRename}
-        onOpenBlock={onOpenBlock}
-        onNewBlock={onNewBlock}
-        onOpenAiRewrite={onOpenAiRewrite}
-        onOpenReverse={onOpenReverse}
-        onOpenFullPrompt={onOpenFullPrompt}
-        onSubmitVersion={onSubmitVersion}
-      />
-      <VersionOverviewCard
-        project={project}
-        promptVersion={promptVersion}
-        promptVersions={promptVersions}
-        artVersions={artVersions}
-        onOpenReferences={onOpenReferences}
-        onOpenVersions={onOpenVersions}
-        onSelectPromptVersion={onSelectPromptVersion}
-        onRollback={onRollbackToPromptVersion}
-        onViewArtVersion={onViewArtVersion}
-      />
+    <div className="wb3-prompt-wrap" data-testid="wb3-prompt-view">
+      {droppedLabels.length > 0 ? (
+        <div className="wb3-banner" role="alert" data-testid="wb3-dropped-banner">
+          <span className="wb3-banner-dot" aria-hidden="true" />
+          <span>
+            {droppedIds.length} 个块没有落到第 {promptVersion?.versionNumber ?? '—'} 版：
+            {droppedLabels.join('、')}
+            {droppedIds.length > droppedLabels.length ? ' 等' : ''}
+          </span>
+          <Button variant="quiet" size="sm" onClick={onRegenerate}>
+            重新生成
+          </Button>
+        </div>
+      ) : null}
+      <div className="wb3-prompt-layout">
+        <PromptEditorCard
+          characterTitle={characterTitle}
+          characterSummary={characterSummary}
+          spec={spec}
+          referenceCount={referenceCount}
+          readOnly={readOnly}
+          dirty={dirty}
+          canCommit={canCommit}
+          filter={filter}
+          droppedBlockIds={latestGeneration?.droppedBlockIds ?? []}
+          submitting={submitting}
+          error={error}
+          onFilterChange={onFilterChange}
+          onRename={onRename}
+          onOpenBlock={onOpenBlock}
+          onNewBlock={onNewBlock}
+          onOpenAiRewrite={onOpenAiRewrite}
+          onOpenReverse={onOpenReverse}
+          onOpenFullPrompt={onOpenFullPrompt}
+          onSubmitVersion={onSubmitVersion}
+        />
+        <VersionOverviewCard
+          project={project}
+          promptVersion={promptVersion}
+          promptVersions={promptVersions}
+          artVersions={artVersions}
+          onOpenReferences={onOpenReferences}
+          onOpenVersions={onOpenVersions}
+          onSelectPromptVersion={onSelectPromptVersion}
+          onRollback={onRollbackToPromptVersion}
+          onViewArtVersion={onViewArtVersion}
+        />
+      </div>
     </div>
   )
 }

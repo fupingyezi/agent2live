@@ -5522,3 +5522,46 @@ label.new-character-drop-zone {
   color: var(--a2l-color-text-muted);
   font-size: var(--a2l-text-caption-size);
 }
+
+.wb3-prompt-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.wb3-prompt-wrap .wb3-prompt-layout {
+  flex: 1 1 auto;
+}
+
+.wb3-banner {
+  display: flex;
+  min-height: 38px;
+  margin: var(--a2l-space-4) var(--a2l-space-8) 0;
+  padding: 0 var(--a2l-space-3);
+  align-items: center;
+  color: var(--a2l-color-danger);
+  background: var(--a2l-color-danger-border);
+  border-radius: var(--a2l-radius-sm);
+  font-size: var(--a2l-text-meta-size);
+  gap: var(--a2l-space-2);
+}
+
+.wb3-banner-dot {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.wb3-banner button {
+  margin-left: auto;
+}
+
+.wb3-dialog-actions {
+  display: flex;
+  padding-top: var(--a2l-space-3);
+  flex-direction: column;
+  gap: var(--a2l-space-2);
+}

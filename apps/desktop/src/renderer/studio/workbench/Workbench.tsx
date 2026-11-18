@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ArtProjectDto, CharacterDto, PromptBlock, PromptDraftDto } from '@studio/api'
+import type { ArtProjectDto, CharacterDto, PromptBlock, PromptDraftDto, PromptVersionDto } from '@studio/api'
 import {
   ApiError,
   commitPromptDraft,
@@ -11,6 +11,7 @@ import {
   getPromptWorkspace,
   isTerminalJobStatus,
   listArtVersions,
+  listGenerations,
   listProviders,
   queryKeys,
   requestPromptSync,
@@ -133,6 +134,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [filter, setFilter] = useState<PromptFilter>('all')
   const [versionSubmitting, setVersionSubmitting] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
+  const [pendingRollback, setPendingRollback] = useState<PromptVersionDto | null>(null)
+  const [rollbackBusy, setRollbackBusy] = useState(false)
   const [blockDialog, setBlockDialog] = useState<{
     blockId: string | null
     negative: boolean
@@ -187,6 +190,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     queryKey: queryKeys.artVersions(project.id),
     queryFn: ({ signal }) => listArtVersions(project.id, signal)
   })
+  const generationsQuery = useQuery({
+    queryKey: queryKeys.generations(project.id),
+    queryFn: ({ signal }) => listGenerations(project.id, 20, signal)
+  })
 
   const workspace = workspaceQuery.data ?? null
   const artVersions = versionsQuery.data ?? []
@@ -195,6 +202,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     useWorkbenchStore((state) => state.rowVersion) ?? workspace?.activeDraft?.rowVersion ?? null
 
   const selectedPromptVersionId = viewState.promptVersionId ?? workspace?.activePromptVersion?.id ?? null
+  const latestGeneration = useMemo(() => {
+    const items = generationsQuery.data ?? []
+    return items.find((generation) => generation.promptVersionId === selectedPromptVersionId) ?? null
+  }, [generationsQuery.data, selectedPromptVersionId])
   const promptVersionQuery = useQuery({
     queryKey: queryKeys.promptVersion(project.id, selectedPromptVersionId ?? 'none'),
     queryFn: ({ signal }) => getPromptVersion(project.id, selectedPromptVersionId!, signal),
@@ -427,6 +438,70 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     }
   }
 
+  async function executeRollback(target: PromptVersionDto, saveFirst: boolean): Promise<void> {
+    setRollbackBusy(true)
+    setVersionError(null)
+    try {
+      if (saveFirst) {
+        await saveCurrentVersion()
+      } else {
+        useWorkbenchStore.getState().cancelLocalChanges()
+      }
+      const live = useWorkbenchStore.getState()
+      let draftId = live.draftId
+      let rowVersion = live.rowVersion
+      if (!draftId || rowVersion === null) {
+        const created = await createPromptDraft(project.id, {
+          from: 'version',
+          versionId: target.id
+        })
+        draftId = created.id
+        rowVersion = created.rowVersion
+      } else {
+        const saved = await savePromptDraft(project.id, draftId, target.state, rowVersion)
+        rowVersion = saved.rowVersion
+      }
+      const committed = await commitPromptDraft(project.id, draftId, rowVersion, true)
+      queryClient.setQueryData(queryKeys.project(project.id), committed.project)
+      const nextBuffer = await createPromptDraft(project.id, {
+        from: 'version',
+        versionId: committed.version.id
+      })
+      setDraftHint(nextBuffer)
+      applyServerDraft(draftSnapshot(nextBuffer))
+      setView({ view: 'prompt', promptVersionId: committed.version.id })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.promptVersions(project.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.characters })
+      ])
+      setPendingRollback(null)
+    } catch (reason) {
+      setVersionError(errorMessage(reason))
+    } finally {
+      setRollbackBusy(false)
+    }
+  }
+
+  const requestRollback = (versionId: string): void => {
+    if (versionId === project.activePromptVersionId) {
+      setView({ view: 'prompt', promptVersionId: versionId })
+      return
+    }
+    setVersionError(null)
+    getPromptVersion(project.id, versionId)
+      .then((version) => {
+        if (useWorkbenchStore.getState().dirty) {
+          setPendingRollback(version)
+        } else {
+          void executeRollback(version, false)
+        }
+      })
+      .catch((reason) => setVersionError(errorMessage(reason)))
+  }
+
   const openGenerationDialog = async (): Promise<{
     versionNumber: number
     created: boolean
@@ -574,7 +649,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             dirty={dirty}
             canCommit={canCommit}
             filter={filter}
-            latestGeneration={null}
+            latestGeneration={latestGeneration}
             submitting={versionSubmitting}
             error={versionError}
             onFilterChange={setFilter}
@@ -605,7 +680,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             onOpenReferences={() => setReferenceGalleryOpen(true)}
             onOpenVersions={() => setWorkspaceDialog('versions')}
             onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
-            onRollbackToPromptVersion={() => undefined}
+            onRegenerate={() => {
+              void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
+            }}
+            onRollbackToPromptVersion={requestRollback}
             onViewArtVersion={() => undefined}
             onSubmitVersion={handleSubmitVersion}
           />
@@ -817,6 +895,45 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         }}
         onSave={saveRename}
       />
+
+      <Dialog
+        open={pendingRollback !== null}
+        title="回到旧版提示词"
+        description="会新建一个版本，旧版本保持不变。"
+        onOpenChange={(open) => {
+          if (!open && !rollbackBusy) setPendingRollback(null)
+        }}
+      >
+        <p>当前有未保存的提示词修改。</p>
+        {versionError ? (
+          <div role="alert">
+            <InlineNotice tone="danger">{versionError}</InlineNotice>
+          </div>
+        ) : null}
+        <div className="wb3-dialog-actions">
+          <Button
+            variant="primary"
+            disabled={rollbackBusy}
+            onClick={() => {
+              if (pendingRollback) void executeRollback(pendingRollback, true)
+            }}
+          >
+            保存当前并回到此版
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={rollbackBusy}
+            onClick={() => {
+              if (pendingRollback) void executeRollback(pendingRollback, false)
+            }}
+          >
+            放弃修改并回到此版
+          </Button>
+          <Button variant="quiet" disabled={rollbackBusy} onClick={() => setPendingRollback(null)}>
+            取消
+          </Button>
+        </div>
+      </Dialog>
 
       {forkSource ? (
         <ForkDialog
