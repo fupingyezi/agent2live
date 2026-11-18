@@ -22,6 +22,7 @@ import {
   TextField
 } from '@agent2live/design-system'
 import { MATERIAL_ROLE_LABELS } from '../prompt-labels'
+import { clampGenerationCount, generationCountOptions } from '../generation-params'
 
 interface ImageCapabilities {
   image?: { sizes?: string[]; maxCount?: number; supportsSeed?: boolean }
@@ -73,11 +74,11 @@ export interface GenerationDialogProps {
   initialPromptVersionNumber: number | null
   initialParams?: GenerationDefaults | null
   providers: ProviderConnectionDto[]
+  providersLoading: boolean
+  providersError: string | null
   onClose(): void
   onCreated(created: CreateGenerationResultDto): void
 }
-
-const COUNT_OPTIONS = [1, 2, 4, 6, 8]
 
 export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   open,
@@ -87,6 +88,8 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   initialPromptVersionNumber,
   initialParams = null,
   providers,
+  providersLoading,
+  providersError,
   onClose,
   onCreated
 }) => {
@@ -106,12 +109,12 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     imageProviders.find((provider) => provider.id === providerId) ?? imageProviders[0] ?? null
   const caps = selectedProvider ? imageCapabilities(selectedProvider) : undefined
   const sizes = caps?.sizes ?? []
+  const seedSupported = caps?.supportsSeed !== false
   const maxCount = Math.min(8, caps?.maxCount ?? 1)
-  const countOptions = useMemo(() => {
-    const options = COUNT_OPTIONS.filter((value) => value <= maxCount)
-    if (!options.includes(maxCount)) options.push(maxCount)
-    return [...new Set(options)].sort((left, right) => left - right)
-  }, [maxCount])
+  const countOptions = useMemo(
+    () => generationCountOptions(maxCount, initialParams?.count),
+    [maxCount, initialParams?.count]
+  )
 
   useEffect(() => {
     if (!open) return
@@ -123,15 +126,30 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     setProviderId(nextProvider?.id ?? '')
     const nextCaps = nextProvider ? imageCapabilities(nextProvider) : undefined
     const nextMax = Math.min(8, nextCaps?.maxCount ?? 1)
-    const nextCount = initialParams?.count ?? 4
-    setCount(Math.max(1, Math.min(nextMax, nextCount)))
+    setCount(clampGenerationCount(initialParams?.count, nextMax))
     setSize(initialParams?.size ?? nextCaps?.sizes?.[0] ?? '')
-    setSeed(initialParams?.seed === null || initialParams?.seed === undefined ? '' : String(initialParams.seed))
-  }, [open, initialParams?.providerId, initialParams?.count, initialParams?.size, initialParams?.seed])
+    const nextSeedSupported = nextCaps?.supportsSeed !== false
+    setSeed(
+      nextSeedSupported && initialParams?.seed !== null && initialParams?.seed !== undefined
+        ? String(initialParams.seed)
+        : ''
+    )
+  }, [
+    open,
+    providersLoading,
+    initialParams?.providerId,
+    initialParams?.count,
+    initialParams?.size,
+    initialParams?.seed
+  ])
 
   useEffect(() => {
-    if (!countOptions.includes(count)) setCount(countOptions.at(-1) ?? 1)
-  }, [countOptions, count])
+    setCount((current) => clampGenerationCount(current, maxCount))
+  }, [maxCount])
+
+  useEffect(() => {
+    if (!seedSupported && seed !== '') setSeed('')
+  }, [seedSupported, seed])
 
   useEffect(() => {
     if (sizes.length > 0 && !sizes.includes(size)) setSize(sizes[0]!)
@@ -153,7 +171,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       if (!promptVersionId) throw new Error('请先选择已保存的提示词版本。')
       if (!selectedProvider) throw new Error('没有可用的图像模型连接。')
       let parsedSeed: number | null | undefined
-      if (seed.trim()) {
+      if (seedSupported && seed.trim()) {
         const value = Number(seed)
         if (!Number.isInteger(value) || value < 0 || value > 2_147_483_647) {
           throw new Error('种子必须是 0 到 2147483647 的整数。')
@@ -185,6 +203,9 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     }
   })
 
+  const formReady =
+    promptVersionId !== '' && !providersLoading && providersError === null && imageProviders.length > 0
+
   return (
     <Dialog
       open={open}
@@ -197,7 +218,9 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       className="wb3-generation-dialog"
       footer={
         <>
-          <span className="wb3-generation-estimate">生成 {count} 张，约 1 分钟</span>
+          {formReady ? (
+            <span className="wb3-generation-estimate">生成 {count} 张，约 1 分钟</span>
+          ) : null}
           <span className="wb3-dialog-spacer" />
           <Button variant="quiet" disabled={createMutation.isPending} onClick={onClose}>
             取消
@@ -206,7 +229,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             variant="primary"
             busy={createMutation.isPending}
             busyLabel="提交生成…"
-            disabled={!selectedProvider || !promptVersionId}
+            disabled={!formReady || !selectedProvider}
             onClick={() => createMutation.mutate()}
           >
             生成图片
@@ -216,6 +239,12 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     >
       {!promptVersionId ? (
         <EmptyState title="还没有提示词版本" description="先提交一版提示词，再生成图片。" />
+      ) : providersLoading ? (
+        <EmptyState title="正在加载图像模型" description="正在读取已启用的 Provider 连接。" />
+      ) : providersError ? (
+        <div role="alert">
+          <InlineNotice tone="danger">{providersError}</InlineNotice>
+        </div>
       ) : imageProviders.length === 0 ? (
         <EmptyState
           title="没有可用的图像模型"
@@ -240,7 +269,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
                   tone="accent"
                 />
               ) : null}
-              <span>固定不变</span>
+              <span className="wb3-generation-fixed">固定不变</span>
             </div>
           </section>
 
@@ -272,22 +301,27 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             />
           </Field>
 
-          <Field label="种子">
-            <div className="wb3-seed-row">
-              <TextField
-                inputMode="numeric"
-                value={seed}
-                placeholder="留空则每次随机"
-                onValueChange={(value) => setSeed(value.replace(/[^0-9]/g, ''))}
-              />
-              <Button variant="secondary" size="sm" onClick={() => setSeed('')}>
-                随机
-              </Button>
-            </div>
-          </Field>
+          {seedSupported ? (
+            <Field label="种子">
+              <div className="wb3-seed-row">
+                <TextField
+                  aria-label="种子"
+                  inputMode="numeric"
+                  value={seed}
+                  placeholder="留空则每次随机"
+                  onValueChange={(value) => setSeed(value.replace(/[^0-9]/g, ''))}
+                />
+                <Button variant="secondary" size="sm" onClick={() => setSeed('')}>
+                  随机
+                </Button>
+              </div>
+            </Field>
+          ) : null}
 
           <Field label={`参考图 取当前版本 ${selectedPrompt?.references.length ?? 0} 张`}>
-            {selectedPrompt && selectedPrompt.references.length > 0 ? (
+            {promptQuery.isPending ? (
+              <p className="wb3-overview-muted">正在加载参考图…</p>
+            ) : promptQuery.isError ? null : selectedPrompt && selectedPrompt.references.length > 0 ? (
               <div className="wb3-generation-references">
                 {selectedPrompt.references.map((reference) => (
                   <ReferenceThumb

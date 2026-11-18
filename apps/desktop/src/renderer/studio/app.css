@@ -5734,7 +5734,8 @@ label.new-character-drop-zone {
   gap: 2px;
 }
 
-.wb3-generation-prompt span {
+.wb3-generation-prompt > div:first-child > span,
+.wb3-generation-fixed {
   color: var(--a2l-color-text-muted);
   font-size: var(--a2l-text-caption-size);
 }

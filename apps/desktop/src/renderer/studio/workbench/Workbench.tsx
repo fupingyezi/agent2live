@@ -649,19 +649,19 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       .finally(() => setDiscarding(false))
   }
 
-  const openCandidateGenerationDialog = (): void => {
-    if (candidateGeneration) {
-      setGenerationPromptVersion({
-        id: candidateGeneration.promptVersionId,
-        versionNumber: promptVersionNumberForGeneration ?? 0
-      })
-      setGenerationDefaults({
-        providerId: candidateGeneration.providerConnectionId,
-        count: candidateGeneration.count,
-        size: candidateGeneration.size,
-        seed: candidateGeneration.seed
-      })
-    }
+  const openCandidateGenerationDialog = (overrides?: Partial<GenerationDefaults>): void => {
+    if (!candidateGeneration) return
+    setGenerationPromptVersion({
+      id: candidateGeneration.promptVersionId,
+      versionNumber: promptVersionNumberForGeneration ?? 0
+    })
+    setGenerationDefaults({
+      providerId: candidateGeneration.providerConnectionId,
+      count: candidateGeneration.count,
+      size: candidateGeneration.size,
+      seed: candidateGeneration.seed,
+      ...overrides
+    })
     setGenerationDialogOpen(true)
   }
 
@@ -851,22 +851,9 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               if (selectedCandidateId) saveCandidate(selectedCandidateId)
             }}
             onDiscard={discardBatch}
-            onRetry={openCandidateGenerationDialog}
-            onRetrySlot={() => {
-              if (!candidateGeneration) return
-              setGenerationPromptVersion({
-                id: candidateGeneration.promptVersionId,
-                versionNumber: promptVersionNumberForGeneration ?? 0
-              })
-              setGenerationDefaults({
-                providerId: candidateGeneration.providerConnectionId,
-                count: 1,
-                size: candidateGeneration.size,
-                seed: candidateGeneration.seed
-              })
-              setGenerationDialogOpen(true)
-            }}
-            onRegenerate={openCandidateGenerationDialog}
+            onRetry={() => openCandidateGenerationDialog()}
+            onRetrySlot={() => openCandidateGenerationDialog({ count: 1 })}
+            onRegenerate={() => openCandidateGenerationDialog()}
             onBackToPrompt={() =>
               setView({
                 view: 'prompt',
@@ -926,6 +913,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         }
         initialParams={generationDefaults}
         providers={providers}
+        providersLoading={providersQuery.isPending}
+        providersError={
+          providersQuery.isError
+            ? (errorMessage(providersQuery.error) ?? '模型连接加载失败，请在设置中检查。')
+            : null
+        }
         onClose={() => {
           setGenerationDialogOpen(false)
           setGenerationPromptVersion(null)
@@ -936,7 +929,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           setGenerationPromptVersion(null)
           setGenerationDefaults(null)
           setView({ view: 'candidates', generationId: created.generationId })
-          void queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) })
         }}
       />
 
