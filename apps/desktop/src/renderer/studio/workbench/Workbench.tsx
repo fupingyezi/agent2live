@@ -121,7 +121,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [filter, setFilter] = useState<PromptFilter>('all')
   const [versionSubmitting, setVersionSubmitting] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
-  const [blockDialog, setBlockDialog] = useState<{ blockId: string | null; negative: boolean } | null>(null)
+  const [blockDialog, setBlockDialog] = useState<{
+    blockId: string | null
+    negative: boolean
+    block: PromptBlock | null
+  } | null>(null)
   const [fullPromptOpen, setFullPromptOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [dialogSaving, setDialogSaving] = useState(false)
@@ -409,22 +413,33 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     return version
   }
 
-  const activeBlock =
-    blockDialog?.blockId && displaySpec
-      ? ([...displaySpec.blocks, ...displaySpec.negativeBlocks].find(
-          (block) => block.id === blockDialog.blockId
-        ) ?? null)
+  const findDisplayBlock = (blockId: string): PromptBlock | null =>
+    displaySpec
+      ? ([...displaySpec.blocks, ...displaySpec.negativeBlocks].find((block) => block.id === blockId) ?? null)
       : null
 
-  const commitDialogSave = async (apply: () => void, close: () => void): Promise<void> => {
+  const commitDialogSave = async (
+    apply: () => void,
+    close: () => void,
+    restore?: () => void
+  ): Promise<void> => {
     if (readOnly) return
     setDialogSaving(true)
     setDialogError(null)
+    let applied = false
     try {
       apply()
+      applied = true
       await saveCurrentVersion()
       close()
     } catch (reason) {
+      if (applied && restore) {
+        try {
+          restore()
+        } catch {
+          // Restoring the pre-apply block is best effort; the save error below stays visible.
+        }
+      }
       setDialogError(errorMessage(reason))
     } finally {
       setDialogSaving(false)
@@ -432,16 +447,20 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }
 
   const saveBlock = (block: PromptBlock): void => {
+    const original = blockDialog?.block ?? null
     void commitDialogSave(
       () => useWorkbenchStore.getState().replaceBlock(block),
-      () => setBlockDialog(null)
+      () => setBlockDialog(null),
+      original ? () => useWorkbenchStore.getState().replaceBlock(original) : undefined
     )
   }
 
   const deleteBlock = (blockId: string): void => {
+    const original = blockDialog?.block ?? null
     void commitDialogSave(
       () => useWorkbenchStore.getState().removeBlock(blockId),
-      () => setBlockDialog(null)
+      () => setBlockDialog(null),
+      original ? () => useWorkbenchStore.getState().replaceBlock(original) : undefined
     )
   }
 
@@ -537,11 +556,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             }}
             onOpenBlock={(blockId, negative) => {
               setDialogError(null)
-              setBlockDialog({ blockId, negative })
+              setBlockDialog({ blockId, negative, block: findDisplayBlock(blockId) })
             }}
             onNewBlock={(negative) => {
               setDialogError(null)
-              setBlockDialog({ blockId: null, negative })
+              setBlockDialog({ blockId: null, negative, block: null })
             }}
             onOpenAiRewrite={() => setWorkspaceDialog('ai')}
             onOpenReverse={() => setWorkspaceDialog('ai')}
@@ -703,7 +722,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       <PromptBlockDialog
         open={blockDialog !== null}
         spec={displaySpec}
-        block={activeBlock}
+        block={blockDialog?.block ?? null}
         negative={blockDialog?.negative ?? false}
         readOnly={readOnly}
         saving={dialogSaving}

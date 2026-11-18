@@ -18,6 +18,10 @@ import { PROMPT_CATEGORY_LABELS } from '../../prompt-diagnostics'
 
 const WEIGHT_OPTIONS = [0.8, 1, 1.3, 1.5, 2]
 
+function weightLabel(weight: number): string {
+  return Number.isInteger(weight) ? weight.toFixed(1) : String(weight)
+}
+
 interface ReferenceOptionProps {
   assetId: string
   label: string
@@ -163,7 +167,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!next && !saving) onClose()
+          if (!next && !saving && !confirmDelete) onClose()
         }}
         title={`${block ? '编辑块' : '新增块'} ${block ? block.label : ''}`}
         description="保存后当前版本不变，另起一版。"
@@ -172,7 +176,11 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
         footer={
           <>
             {block && onDelete ? (
-              <Button variant="danger" disabled={disabled} onClick={() => setConfirmDelete(true)}>
+              <Button
+                variant="danger"
+                disabled={disabled || block.locked || (spec?.lockAll ?? false)}
+                onClick={() => setConfirmDelete(true)}
+              >
                 删除块
               </Button>
             ) : null}
@@ -207,8 +215,9 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
               onValueChange={(label) => update({ label })}
             />
           </Field>
-          <Field label="正文">
+          <Field id="wb3-block-text" label="正文">
             <Textarea
+              id="wb3-block-text"
               rows={5}
               maxLength={4000}
               value={draft.text}
@@ -221,12 +230,12 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
             <ChipField label="权重">
               <ChipGroup
                 ariaLabel="块权重"
-                value={draft.weight.toFixed(1)}
+                value={String(draft.weight)}
                 disabled={disabled}
                 onValueChange={(value) => update({ weight: Number(value) })}
                 options={weightOptions.map((weight) => ({
-                  id: weight.toFixed(1),
-                  label: weight.toFixed(1)
+                  id: String(weight),
+                  label: weightLabel(weight)
                 }))}
               />
             </ChipField>
