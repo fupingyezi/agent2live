@@ -5365,6 +5365,10 @@ label.new-character-drop-zone {
   width: min(760px, calc(100vw - 48px));
 }
 
+.wb3-reference-dialog {
+  width: min(720px, calc(100vw - 48px));
+}
+
 .wb3-ai-form {
   display: flex;
   flex-direction: column;

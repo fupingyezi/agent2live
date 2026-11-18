@@ -23,6 +23,10 @@ export interface ReverseDialogProps {
   projectId: string
   workspace: PromptWorkspaceDto
   providers: ProviderConnectionDto[]
+  providersLoading: boolean
+  providersError: string | null
+  dirty: boolean
+  draftRowVersion: number | null
   initialJob: ReverseJob | null
   onClose(): void
   onDraftUpdated(draft: PromptDraftDto): void
@@ -41,6 +45,10 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
   projectId,
   workspace,
   providers,
+  providersLoading,
+  providersError,
+  dirty,
+  draftRowVersion,
   initialJob,
   onClose,
   onDraftUpdated,
@@ -88,8 +96,16 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
     enabled: Boolean(resultId)
   })
 
+  const failed = job?.status === 'failed' || job?.status === 'cancelled' || job?.status === 'unknown_outcome'
+  const noResult = terminal && job?.status === 'succeeded' && !resultId
+  const needsRetry = failed || noResult
+
   const start = (): void => {
-    if (!providerId) return
+    if (!providerId || dirty) return
+    if (needsRetry) {
+      setActiveJob(null)
+      onJobResolved()
+    }
     setBusy(true)
     setError(null)
     requestPromptReverse(projectId, providerId)
@@ -102,16 +118,16 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
       .finally(() => setBusy(false))
   }
 
-  const failed = job?.status === 'failed' || job?.status === 'cancelled' || job?.status === 'unknown_outcome'
+  const close = (): void => {
+    onJobResolved()
+    onClose()
+  }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) {
-          onJobResolved()
-          onClose()
-        }
+        if (!next) close()
       }}
       title="读参考图生成"
       description="用视觉模型把参考图反推成提示词块。"
@@ -120,23 +136,33 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
       footer={
         <>
           <span className="wb3-dialog-spacer" />
-          <Button variant="quiet" disabled={busy} onClick={onClose}>
+          <Button variant="quiet" disabled={busy} onClick={close}>
             关闭
           </Button>
           <AsyncButton
             variant="primary"
             busy={busy}
             busyLabel="提交任务…"
-            disabled={!providerId || activeJob !== null}
+            disabled={
+              !providerId ||
+              dirty ||
+              providersLoading ||
+              Boolean(providersError) ||
+              (activeJob !== null && !needsRetry)
+            }
             onClick={start}
           >
-            {failed ? '重试' : '开始反推'}
+            {needsRetry ? '重试' : '开始反推'}
           </AsyncButton>
         </>
       }
     >
       <div className="wb3-dialog-stack">
-        {available.length === 0 ? (
+        {providersError ? (
+          <InlineNotice tone="danger">{providersError}</InlineNotice>
+        ) : providersLoading ? (
+          <InlineNotice tone="info">正在加载模型连接…</InlineNotice>
+        ) : available.length === 0 ? (
           <EmptyState
             title="没有可用的视觉聊天连接"
             description={
@@ -147,7 +173,11 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
           />
         ) : (
           <Field label="视觉模型">
-            <Select value={providerId} disabled={busy || activeJob !== null} onValueChange={setProviderId}>
+            <Select
+              value={providerId}
+              disabled={busy || (activeJob !== null && !needsRetry)}
+              onValueChange={setProviderId}
+            >
               {available.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.label}
@@ -156,6 +186,8 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
             </Select>
           </Field>
         )}
+
+        {dirty ? <InlineNotice tone="warning">先保存或撤销未保存的提示词修改，再反推。</InlineNotice> : null}
 
         {activeJob ? (
           <div className="job-banner">
@@ -177,11 +209,17 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
           </div>
         ) : null}
 
+        {noResult ? (
+          <div role="alert">
+            <InlineNotice tone="danger">任务结束但没有返回反推结果，请重试。</InlineNotice>
+          </div>
+        ) : null}
+
         {resultQuery.data ? (
           <ReverseReview
             result={resultQuery.data}
-            activeDraftRowVersion={workspace.activeDraft?.rowVersion ?? null}
-            disabled={false}
+            activeDraftRowVersion={draftRowVersion}
+            disabled={dirty}
             onResolved={(draft) => {
               if (draft) onDraftUpdated(draft)
               void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(projectId) })

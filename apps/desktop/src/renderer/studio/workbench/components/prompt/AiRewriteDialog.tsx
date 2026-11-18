@@ -35,6 +35,8 @@ export interface AiRewriteDialogProps {
   spec: PromptSpecV2 | null
   draftRowVersion: number | null
   providers: ProviderConnectionDto[]
+  providersLoading: boolean
+  providersError: string | null
   initialIntent: string
   autoStart: boolean
   initialJob: SuggestJob | null
@@ -139,6 +141,8 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   spec,
   draftRowVersion,
   providers,
+  providersLoading,
+  providersError,
   initialIntent,
   autoStart,
   initialJob,
@@ -163,10 +167,14 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   useEffect(() => {
     if (!open) return
     setIntent(initialIntent)
-    setActiveJob(initialJob)
     setSelected(new Set())
     setLocalError(null)
-  }, [open, initialIntent, initialJob?.jobId])
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setActiveJob(initialJob)
+  }, [open, initialJob?.jobId])
 
   useEffect(() => {
     if (!chatProviders.some((provider) => provider.id === providerId)) {
@@ -230,14 +238,27 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
       return
     }
     if (!autoStart || startedRef.current) return
-    if (initialJob) {
+    if (providersLoading || providersError) return
+    if (chatProviders.length === 0) {
       startedRef.current = true
       return
     }
-    if (intent.trim().length === 0 || startMutation.isPending) return
+    if (!providerId || !chatProviders.some((provider) => provider.id === providerId)) return
+    if (intent !== initialIntent || intent.trim().length === 0) return
+    if (startMutation.isPending) return
     startedRef.current = true
     startMutation.mutate()
-  }, [open, autoStart, initialJob?.jobId, intent])
+  }, [
+    open,
+    autoStart,
+    initialJob?.jobId,
+    intent,
+    initialIntent,
+    providersLoading,
+    providersError,
+    chatProviders,
+    providerId
+  ])
 
   const applyMutation = useMutation({
     mutationFn: async () => {
@@ -275,8 +296,20 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
     startMutation.mutate()
   }
 
+  const close = (): void => {
+    onJobResolved()
+    onClose()
+  }
+
   const progress = job?.progress ?? 0
-  const canStart = chatProviders.length > 0 && intent.trim().length > 0 && !startMutation.isPending
+  const noResult = terminal && job?.status === 'succeeded' && !suggestionId
+  const needsRetry = failed || noResult
+  const canStart =
+    chatProviders.length > 0 &&
+    intent.trim().length > 0 &&
+    !startMutation.isPending &&
+    !providersLoading &&
+    !providersError
   const proposalReady = suggestion?.status === 'proposed'
   const disabledRows = !proposalReady || applyMutation.isPending
 
@@ -284,10 +317,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) {
-          onJobResolved()
-          onClose()
-        }
+        if (!next) close()
       }}
       title="AI 改写"
       description="说一句要改的地方，AI 会给出逐条改动建议。"
@@ -305,7 +335,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 全部拒绝
               </Button>
               <span className="wb3-dialog-spacer" />
-              <Button variant="quiet" disabled={applyMutation.isPending} onClick={onClose}>
+              <Button variant="quiet" disabled={applyMutation.isPending} onClick={close}>
                 关闭
               </Button>
               <AsyncButton
@@ -321,7 +351,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
           ) : (
             <>
               <span className="wb3-dialog-spacer" />
-              <Button variant="quiet" disabled={startMutation.isPending} onClick={onClose}>
+              <Button variant="quiet" disabled={startMutation.isPending} onClick={close}>
                 关闭
               </Button>
               <AsyncButton
@@ -329,9 +359,9 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 busy={startMutation.isPending}
                 busyLabel="提交任务…"
                 disabled={!canStart}
-                onClick={() => startMutation.mutate()}
+                onClick={needsRetry ? retry : () => startMutation.mutate()}
               >
-                {failed ? '重试' : '生成建议'}
+                {needsRetry ? '重试' : '生成建议'}
               </AsyncButton>
             </>
           )}
@@ -339,7 +369,11 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
       }
     >
       <div className="wb3-dialog-stack">
-        {chatProviders.length === 0 ? (
+        {providersError ? (
+          <InlineNotice tone="danger">{providersError}</InlineNotice>
+        ) : providersLoading ? (
+          <InlineNotice tone="info">正在加载模型连接…</InlineNotice>
+        ) : chatProviders.length === 0 ? (
           <EmptyState title="没有可用的聊天模型" description="在设置中添加并启用一个聊天连接。" />
         ) : (
           <div className="wb3-ai-form">
@@ -347,7 +381,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
               <TextField
                 value={intent}
                 maxLength={2000}
-                disabled={startMutation.isPending || (activeJob !== null && !failed)}
+                disabled={startMutation.isPending || (activeJob !== null && !needsRetry)}
                 placeholder="比如：发色偏冷一点，旗袍纹样讲具体"
                 onValueChange={setIntent}
               />
@@ -356,7 +390,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
               <Field label="聊天模型">
                 <Select
                   value={providerId}
-                  disabled={startMutation.isPending || (activeJob !== null && !failed)}
+                  disabled={startMutation.isPending || (activeJob !== null && !needsRetry)}
                   onValueChange={setProviderId}
                 >
                   {chatProviders.map((provider) => (
@@ -402,6 +436,12 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
           </div>
         ) : null}
 
+        {noResult ? (
+          <div role="alert">
+            <InlineNotice tone="danger">任务结束但没有返回建议，请重试。</InlineNotice>
+          </div>
+        ) : null}
+
         {suggestion ? (
           <section className="wb3-ai-suggestions" data-testid="wb3-ai-suggestions">
             <header className="wb3-ai-suggestions-head">
@@ -409,7 +449,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
               <StatusPill
                 label={
                   proposalReady
-                    ? `已接收 ${selected.size} 条 · 剩 ${suggestion.operations.length - selected.size} 条`
+                    ? `已选 ${selected.size} 条 · 剩 ${suggestion.operations.length - selected.size} 条`
                     : '已应用'
                 }
                 tone={proposalReady ? 'accent' : 'success'}

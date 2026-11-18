@@ -256,7 +256,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     if (!initialJob || initializedJob.current === initialJob.jobId) return
     initializedJob.current = initialJob.jobId
     if (initialJob.kind === 'suggest') {
-      setAiRewrite({ intent: '', autoStart: false })
+      setAiRewrite((current) => current ?? { intent: '', autoStart: false })
     } else {
       setReverseOpen(true)
     }
@@ -590,8 +590,14 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               setDialogError(null)
               setBlockDialog({ blockId: null, negative, block: null })
             }}
-            onOpenAiRewrite={(intent) => setAiRewrite({ intent, autoStart: intent.trim().length > 0 })}
-            onOpenReverse={() => setReverseOpen(true)}
+            onOpenAiRewrite={(intent) => {
+              setActiveAiJob(null)
+              setAiRewrite({ intent, autoStart: intent.trim().length > 0 })
+            }}
+            onOpenReverse={() => {
+              setActiveAiJob(null)
+              setReverseOpen(true)
+            }}
             onOpenFullPrompt={() => {
               setDialogError(null)
               setFullPromptOpen(true)
@@ -725,6 +731,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           setWorkspaceDialog('materials')
         }}
         onOpenReverse={() => {
+          setActiveAiJob(null)
           setReferenceGalleryOpen(false)
           setReverseOpen(true)
         }}
@@ -737,6 +744,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         spec={displaySpec}
         draftRowVersion={currentDraftRowVersion}
         providers={providers}
+        providersLoading={providersQuery.isPending}
+        providersError={
+          providersQuery.isError
+            ? (errorMessage(providersQuery.error) ?? '模型连接加载失败，请在设置中检查。')
+            : null
+        }
         initialIntent={aiRewrite?.intent ?? ''}
         autoStart={aiRewrite?.autoStart ?? false}
         initialJob={initialJob?.kind === 'suggest' ? initialJob : null}
@@ -752,6 +765,14 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         projectId={project.id}
         workspace={workspace}
         providers={providers}
+        providersLoading={providersQuery.isPending}
+        providersError={
+          providersQuery.isError
+            ? (errorMessage(providersQuery.error) ?? '模型连接加载失败，请在设置中检查。')
+            : null
+        }
+        dirty={dirty}
+        draftRowVersion={currentDraftRowVersion}
         initialJob={initialJob?.kind === 'reverse' ? initialJob : null}
         onClose={() => setReverseOpen(false)}
         onDraftUpdated={handleDraftUpdated}
