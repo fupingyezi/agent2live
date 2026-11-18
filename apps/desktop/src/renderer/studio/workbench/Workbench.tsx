@@ -1,13 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type {
-  ArtProjectDto,
-  ArtVersionDto,
-  PromptDraftDto,
-  PromptMaterialRef,
-  PromptVersionDto
-} from '@studio/api'
+import type { ArtProjectDto, PromptDraftDto } from '@studio/api'
 import {
   ApiError,
   commitPromptDraft,
@@ -22,28 +16,28 @@ import {
   requestPromptSync,
   savePromptDraft
 } from '@studio/api'
-import { AsyncButton, Button, Dialog, InlineNotice } from '@agent2live/design-system'
-import { StudioError, StudioLoading, StudioPageTopbar } from '@studio/components'
-import { useAssetUrl } from '@studio/hooks'
+import { Button, Dialog, EmptyState, InlineNotice } from '@agent2live/design-system'
+import { StudioError, StudioLoading } from '@studio/components'
 import { findDefaultTextProvider } from '@studio/providers'
-import characterEmptyArt from '@studio/assets/empty-states/character-empty.png'
 import { useWorkbenchStore } from './store'
 import {
   ArtVersionPanel,
   ForkDialog,
   ForkOriginBar,
   GenerationDialog,
-  GenerationPanel,
   PromptAiPanel,
   PromptInputPanel,
   ReferenceChainBar,
-  UnifiedPromptInspector,
   VersionGraph,
-  WorkbenchVersionRail,
   type ActiveAiJob,
   type ForkSource,
   type InitialPromptJob
 } from './components'
+import { parseWorkbenchView, updateWorkbenchView } from './view-state'
+import type { PromptFilter } from './prompt-diagnostics'
+import { WorkbenchTopbar } from './components/WorkbenchTopbar'
+import { WorkbenchActionBar } from './components/WorkbenchActionBar'
+import { PromptWorkbenchView } from './views/PromptWorkbenchView'
 
 function draftSnapshot(draft: PromptDraftDto): {
   draftId: string
@@ -85,44 +79,10 @@ async function waitForPromptSync(jobId: string) {
   throw new Error('提示词同步超时')
 }
 
-const MATERIAL_LABELS: Record<PromptMaterialRef['role'], string> = {
-  identity_reference: '身份',
-  style_reference: '画风',
-  outfit_reference: '服装',
-  color_reference: '配色',
-  background_reference: '背景',
-  pose_reference: '姿势',
-  sketch: '草图',
-  texture: '材质',
-  other: '参考'
-}
-
-interface DesignReferenceCardProps {
-  reference: PromptMaterialRef
-  index: number
-}
-
-const DesignReferenceCard: React.FC<DesignReferenceCardProps> = ({ reference, index }) => {
-  const { url } = useAssetUrl(reference.assetId)
-  return (
-    <article className="workbench-design-reference-card" data-testid="workbench-reference-card">
-      <div className="workbench-design-reference-image">
-        {url ? <img src={url} alt={MATERIAL_LABELS[reference.role]} /> : <span aria-hidden="true" />}
-        <span className="workbench-design-reference-role">{MATERIAL_LABELS[reference.role]}</span>
-      </div>
-      <p>
-        参考 {index + 1}
-        {' · '}
-        {reference.note ||
-          (reference.role === 'other' ? '补充参考' : `${MATERIAL_LABELS[reference.role]}参考`)}
-      </p>
-    </article>
-  )
-}
-
 export interface WorkbenchProps {
   project: ArtProjectDto
   characterTitle: string
+  characterSummary?: string | null
   textWarning?: string | null
   aiWarning?: string | null
 }
@@ -130,6 +90,7 @@ export interface WorkbenchProps {
 export const Workbench: React.FC<WorkbenchProps> = ({
   project,
   characterTitle,
+  characterSummary = null,
   textWarning = null,
   aiWarning = null
 }) => {
@@ -139,36 +100,29 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const hydrate = useWorkbenchStore((state) => state.hydrate)
   const applyServerDraft = useWorkbenchStore((state) => state.applyServerDraft)
   const resetStore = useWorkbenchStore((state) => state.reset)
-  const storeDraftId = useWorkbenchStore((state) => state.draftId)
   const storeDraft = useWorkbenchStore((state) => state.draft)
   const storeRowVersion = useWorkbenchStore((state) => state.rowVersion)
   const dirty = useWorkbenchStore((state) => state.dirty)
   const lastEdited = useWorkbenchStore((state) => state.lastEdited)
-  const cancelLocalChanges = useWorkbenchStore((state) => state.cancelLocalChanges)
 
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
-  const [selectedPromptVersion, setSelectedPromptVersion] = useState<PromptVersionDto | null>(null)
-  const [selection, setSelection] = useState<
-    { kind: 'prompt'; versionId: string } | { kind: 'art'; versionId: string } | null
-  >(null)
-  const [pendingSelection, setPendingSelection] = useState<
-    { kind: 'art'; version: ArtVersionDto } | { kind: 'prompt'; versionId: string } | null
-  >(null)
-  const [selectionBusy, setSelectionBusy] = useState(false)
-  const [switchBusy, setSwitchBusy] = useState(false)
-  const [selectionError, setSelectionError] = useState<string | null>(null)
   const [forkSource, setForkSource] = useState<ForkSource | null>(null)
-  const [designView, setDesignView] = useState<'references' | 'candidates' | 'parallel'>('references')
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
-  const [createdGenerationId, setCreatedGenerationId] = useState<string | null>(null)
   const [generationPromptVersion, setGenerationPromptVersion] = useState<{
     id: string
     versionNumber: number
   } | null>(null)
-  const [candidateSaveRequest, setCandidateSaveRequest] = useState(0)
   const [workspaceDialog, setWorkspaceDialog] = useState<'materials' | 'ai' | 'versions' | null>(null)
+  const [filter, setFilter] = useState<PromptFilter>('all')
+  const [versionSubmitting, setVersionSubmitting] = useState(false)
+  const [versionError, setVersionError] = useState<string | null>(null)
   const initializedJob = useRef<string | null>(null)
-  const initializedSelection = useRef(false)
+  const hydratedDraftId = useRef<string | null>(null)
+  const draftRequested = useRef(false)
+  const viewState = parseWorkbenchView(searchParams)
+  const setView = (patch: Parameters<typeof updateWorkbenchView>[1]): void => {
+    setSearchParams((current) => updateWorkbenchView(current, patch), { replace: true })
+  }
   const aiKind = searchParams.get('aiKind')
   const aiJob = searchParams.get('aiJob')
   const initialJob: InitialPromptJob | null =
@@ -212,88 +166,60 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const artVersions = versionsQuery.data ?? []
   const providers = providersQuery.data ?? []
 
-  const matchingDraft = useCallback(
-    (promptVersionId: string | null): PromptDraftDto | null => {
-      const current = draftHint ?? workspace?.activeDraft ?? null
-      return current?.baseVersionId === promptVersionId ? current : null
-    },
-    [draftHint, workspace?.activeDraft]
-  )
-
-  const showPromptVersion = useCallback(
-    async (versionId: string, nextSelection: typeof selection): Promise<void> => {
-      setSelectionBusy(true)
-      setSelectionError(null)
-      try {
-        const promptVersion = await getPromptVersion(project.id, versionId)
-        setSelectedPromptVersion(promptVersion)
-        const attached = matchingDraft(promptVersion.id)
-        if (attached) {
-          applyServerDraft(draftSnapshot(attached))
-        } else if (project.activePromptVersionId === promptVersion.id && !workspace?.activeDraft) {
-          const created = await createPromptDraft(project.id, {
-            from: 'version',
-            versionId: promptVersion.id
-          })
-          setDraftHint(created)
-          applyServerDraft(draftSnapshot(created))
-          void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
-          void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
-        } else {
-          hydrate({
-            draftId: null,
-            revision: null,
-            rowVersion: null,
-            draft: promptVersion.state
-          })
-          if (workspace?.activeDraft) {
-            setSelectionError('当前还有基于其它提示词版本的活动编辑内容。该版本暂为只读。')
-          }
-        }
-        setSelection(nextSelection)
-      } catch (reason) {
-        setSelectionError(errorMessage(reason))
-      } finally {
-        setSelectionBusy(false)
-      }
-    },
-    [
-      applyServerDraft,
-      draftSnapshot,
-      hydrate,
-      matchingDraft,
-      project.activePromptVersionId,
-      project.id,
-      queryClient,
-      workspace?.activeDraft
-    ]
-  )
+  const selectedPromptVersionId = viewState.promptVersionId ?? workspace?.activePromptVersion?.id ?? null
+  const promptVersionQuery = useQuery({
+    queryKey: queryKeys.promptVersion(project.id, selectedPromptVersionId ?? 'none'),
+    queryFn: ({ signal }) => getPromptVersion(project.id, selectedPromptVersionId!, signal),
+    enabled: Boolean(selectedPromptVersionId)
+  })
+  const selectedPromptVersion =
+    promptVersionQuery.data ??
+    (workspace && selectedPromptVersionId === workspace.activePromptVersion?.id
+      ? (workspace.activePromptVersion ?? null)
+      : null)
+  const editingActiveVersion =
+    selectedPromptVersionId !== null && selectedPromptVersionId === project.activePromptVersionId
+  const displaySpec = editingActiveVersion
+    ? (storeDraft ?? selectedPromptVersion?.state ?? null)
+    : (selectedPromptVersion?.state ?? null)
+  const readOnly = selectedPromptVersionId !== null && !editingActiveVersion
 
   useEffect(() => {
-    if (initializedSelection.current || !workspace || versionsQuery.isPending) return
-    initializedSelection.current = true
-    const activeArt =
-      artVersions.find((version) => version.id === project.activeVersionId) ?? artVersions[0] ?? null
-    if (activeArt) {
-      void showPromptVersion(activeArt.promptVersionId, {
-        kind: 'art',
-        versionId: activeArt.id
-      })
-    } else if (workspace.activePromptVersion) {
-      void showPromptVersion(workspace.activePromptVersion.id, {
-        kind: 'prompt',
-        versionId: workspace.activePromptVersion.id
-      })
+    if (!workspace) return
+    if (workspace.activeDraft) {
+      if (hydratedDraftId.current === workspace.activeDraft.id) return
+      hydratedDraftId.current = workspace.activeDraft.id
+      applyServerDraft(draftSnapshot(workspace.activeDraft))
+      return
     }
-  }, [artVersions, project.activeVersionId, showPromptVersion, versionsQuery.isPending, workspace])
+    if (!workspace.activePromptVersion) return
+    const key = `version:${workspace.activePromptVersion.id}`
+    if (hydratedDraftId.current === key) return
+    hydratedDraftId.current = key
+    hydrate({
+      draftId: null,
+      revision: null,
+      rowVersion: null,
+      draft: workspace.activePromptVersion.state
+    })
+  }, [applyServerDraft, hydrate, workspace?.activeDraft?.id, workspace?.activePromptVersion?.id])
 
   useEffect(() => {
-    if (selectedPromptVersion || !workspace?.activePromptVersion || dirty) return
-    void showPromptVersion(workspace.activePromptVersion.id, {
-      kind: 'prompt',
-      versionId: workspace.activePromptVersion.id
-    })
-  }, [dirty, selectedPromptVersion, showPromptVersion, workspace?.activePromptVersion])
+    if (!workspace || workspace.activeDraft || !workspace.activePromptVersion || draftRequested.current) {
+      return
+    }
+    draftRequested.current = true
+    createPromptDraft(project.id, 'active_version')
+      .then((created) => {
+        setDraftHint(created)
+        applyServerDraft(draftSnapshot(created))
+        void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
+      })
+      .catch((reason) => {
+        setVersionError(errorMessage(reason))
+        draftRequested.current = false
+      })
+  }, [applyServerDraft, project.id, queryClient, workspace?.activeDraft, workspace?.activePromptVersion?.id])
 
   useEffect(() => {
     if (!initialJob || initializedJob.current === initialJob.jobId) return
@@ -333,28 +259,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }
 
   const activeDraft = workspace.activeDraft ?? draftHint
-  const draft = selectedPromptVersion === null ? activeDraft : matchingDraft(selectedPromptVersion.id)
+  const draft = editingActiveVersion ? activeDraft : null
   const spec = storeDraft
   const submission = workspace.latestSubmission
   const draftRowVersion = spec ? storeRowVersion : (draft?.rowVersion ?? null)
-  const generationWorkspace = (
-    <GenerationPanel
-      project={project}
-      workspace={workspace}
-      preferredGenerationId={createdGenerationId}
-      candidateSaveRequest={candidateSaveRequest}
-      onAccepted={(mutation) => {
-        queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
-        setDesignView('references')
-      }}
-    />
-  )
-  const activeVersion = artVersions.find((version) => version.id === project.activeVersionId) ?? null
-  const selectedArtVersion =
-    selection?.kind === 'art'
-      ? (artVersions.find((version) => version.id === selection.versionId) ?? null)
-      : null
-  const hasSelectedPromptVersion = selectedPromptVersion !== null
 
   const invalidateProjectWorkspace = (): void => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
@@ -404,33 +312,31 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     versionNumber: number
     created: boolean
   }> => {
-    if (!draft || !storeDraft || !selectedPromptVersion) {
+    if (!draft || !storeDraft || !workspace.activePromptVersion) {
       throw new Error('当前没有可保存的提示词版本。')
     }
-    if (!dirty && draft.contentHash === selectedPromptVersion.contentHash) {
+    if (!dirty && draft.contentHash === workspace.activePromptVersion.contentHash) {
       return {
-        id: selectedPromptVersion.id,
-        versionNumber: selectedPromptVersion.versionNumber,
+        id: workspace.activePromptVersion.id,
+        versionNumber: workspace.activePromptVersion.versionNumber,
         created: false
       }
     }
-    setSelectionError(null)
+    setVersionError(null)
     const saved = dirty ? await persistPromptEdit() : draft
     if (dirty) {
       useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
     }
-    if (saved.contentHash === selectedPromptVersion.contentHash) {
+    if (saved.contentHash === workspace.activePromptVersion.contentHash) {
       return {
-        id: selectedPromptVersion.id,
-        versionNumber: selectedPromptVersion.versionNumber,
+        id: workspace.activePromptVersion.id,
+        versionNumber: workspace.activePromptVersion.versionNumber,
         created: false
       }
     }
-
     const committed = await commitPromptDraft(project.id, saved.id, saved.rowVersion, true)
     queryClient.setQueryData(queryKeys.project(project.id), committed.project)
-    setSelectedPromptVersion(committed.version)
-    setSelection({ kind: 'prompt', versionId: committed.version.id })
+    setView({ view: 'prompt', promptVersionId: committed.version.id })
     try {
       const nextBuffer = await createPromptDraft(project.id, {
         from: 'version',
@@ -446,7 +352,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         rowVersion: null,
         draft: committed.version.state
       })
-      setSelectionError(errorMessage(reason))
+      setVersionError(errorMessage(reason))
     }
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
@@ -478,68 +384,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       id: version.id,
       versionNumber: version.versionNumber
     })
-    setDesignView('candidates')
     setGenerationDialogOpen(true)
     return version
-  }
-
-  const performSelection = async (
-    target: { kind: 'art'; version: ArtVersionDto } | { kind: 'prompt'; versionId: string }
-  ): Promise<void> => {
-    if (target.kind === 'prompt') {
-      await showPromptVersion(target.versionId, {
-        kind: 'prompt',
-        versionId: target.versionId
-      })
-    } else {
-      await showPromptVersion(target.version.promptVersionId, {
-        kind: 'art',
-        versionId: target.version.id
-      })
-    }
-  }
-
-  const requestSelection = (
-    target: { kind: 'art'; version: ArtVersionDto } | { kind: 'prompt'; versionId: string }
-  ): void => {
-    if (selectionBusy) return
-    if (
-      (target.kind === 'art' && selection?.kind === 'art' && selection.versionId === target.version.id) ||
-      (target.kind === 'prompt' && selectedPromptVersion?.id === target.versionId)
-    ) {
-      return
-    }
-    if (dirty) {
-      setSelectionError(null)
-      setPendingSelection(target)
-      return
-    }
-    void performSelection(target)
-  }
-
-  const saveAndSwitch = async (): Promise<void> => {
-    if (!pendingSelection) return
-    setSwitchBusy(true)
-    setSelectionError(null)
-    try {
-      await saveCurrentVersion()
-      const target = pendingSelection
-      setPendingSelection(null)
-      await performSelection(target)
-    } catch (reason) {
-      setSelectionError(errorMessage(reason))
-    } finally {
-      setSwitchBusy(false)
-    }
-  }
-
-  const discardAndSwitch = async (): Promise<void> => {
-    if (!pendingSelection) return
-    const target = pendingSelection
-    setSelectionError(null)
-    cancelLocalChanges()
-    setPendingSelection(null)
-    await performSelection(target)
   }
 
   const handleSubmitted = (result: { draft: PromptDraftDto; warnings: string[] }): void => {
@@ -563,174 +409,98 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     )
   }
 
+  const title =
+    viewState.view === 'candidates'
+      ? '立绘工作台'
+      : viewState.view === 'versions'
+        ? '立绘版本'
+        : '提示词工作台'
+
+  const handleSubmitVersion = (): void => {
+    setVersionSubmitting(true)
+    setVersionError(null)
+    saveCurrentVersion()
+      .catch((reason) => setVersionError(errorMessage(reason)))
+      .finally(() => setVersionSubmitting(false))
+  }
+
   return (
-    <section className="workbench workbench-redesigned" data-testid="workbench">
-      <div className="workbench-design">
-        <WorkbenchVersionRail
-          project={project}
-          characterTitle={characterTitle}
-          artVersions={artVersions}
-          promptVersions={workspace.versions}
-          selectedPromptVersionId={selectedPromptVersion?.id ?? null}
-          selectedArtVersionId={selection?.kind === 'art' ? selection.versionId : null}
-          busy={selectionBusy}
-          onSelectPromptVersion={(version) => requestSelection({ kind: 'prompt', versionId: version.id })}
-          onSelectVersion={(version) => requestSelection({ kind: 'art', version })}
-          onOpenMaterials={() => setWorkspaceDialog('materials')}
-          onOpenVersions={() => setWorkspaceDialog('versions')}
-        />
-
-        <div className="workbench-design-canvas">
-          <StudioPageTopbar
-            className="workbench-design-topbar"
-            breadcrumb=""
-            tone="editor"
-            actions={
-              <div className="workbench-design-viewbar">
-                <div className="workbench-design-view-switch" role="group" aria-label="工作台视图">
-                  <button
-                    type="button"
-                    aria-pressed={designView === 'references'}
-                    onClick={() => {
-                      setDesignView('references')
-                    }}
-                  >
-                    参考图
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={designView === 'candidates'}
-                    onClick={() => {
-                      setDesignView('candidates')
-                    }}
-                  >
-                    候选
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={designView === 'parallel'}
-                    onClick={() => {
-                      setDesignView('parallel')
-                    }}
-                  >
-                    并排
-                  </button>
-                </div>
-                <span className="workbench-design-view-meta">
-                  {designView === 'references' ? `${spec?.materialRefs.length ?? 0} 张参考` : '候选待选'}
-                </span>
-              </div>
-            }
+    <section className="wb3-page" data-testid="workbench">
+      <WorkbenchTopbar title={title} />
+      <div className="wb3-body">
+        {viewState.view === 'prompt' ? (
+          <PromptWorkbenchView
+            project={project}
+            characterTitle={characterTitle}
+            characterSummary={characterSummary}
+            promptVersion={selectedPromptVersion}
+            promptVersions={workspace.versions}
+            artVersions={artVersions}
+            spec={displaySpec}
+            referenceCount={displaySpec?.materialRefs.length ?? 0}
+            readOnly={readOnly}
+            dirty={dirty}
+            filter={filter}
+            latestGeneration={null}
+            submitting={versionSubmitting}
+            error={versionError}
+            onFilterChange={setFilter}
+            onRename={() => undefined}
+            onOpenBlock={() => undefined}
+            onNewBlock={() => undefined}
+            onOpenAiRewrite={() => setWorkspaceDialog('ai')}
+            onOpenReverse={() => setWorkspaceDialog('ai')}
+            onOpenFullPrompt={() => setWorkspaceDialog('ai')}
+            onOpenReferences={() => setWorkspaceDialog('materials')}
+            onOpenVersions={() => setWorkspaceDialog('versions')}
+            onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
+            onRollbackToPromptVersion={() => undefined}
+            onViewArtVersion={() => undefined}
+            onSubmitVersion={handleSubmitVersion}
           />
-
-          {textWarning || aiWarning ? (
-            <div className="workbench-inline-warnings">
-              {textWarning ? (
-                <div data-testid="text-warning">
-                  <InlineNotice tone="warning">
-                    {textWarning === 'no-text-provider'
-                      ? '没有配置 DeepSeek 文本模型，已保留设定生成的当前版本；可在角色描述中继续优化。'
-                      : '文本优化未完成，已保留可编辑的角色设定和提示词版本。'}
-                  </InlineNotice>
-                </div>
-              ) : null}
-              {aiWarning ? (
-                <div data-testid="ai-warning">
-                  <InlineNotice tone="warning">
-                    {aiWarning === 'no-vision-provider'
-                      ? '没有可用的支持视觉输入的聊天连接，参考图反推未启动；创建和提示词版本已完成。'
-                      : '参考图反推未能启动；创建和提示词版本已完成，可以在 AI 助手中重试。'}
-                  </InlineNotice>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="workbench-design-stage" data-view={designView} data-testid="workbench-design-stage">
-            {designView === 'references' ? (
-              <div className="workbench-design-reference-grid">
-                {spec?.materialRefs.length ? (
-                  spec.materialRefs.map((reference, index) => (
-                    <DesignReferenceCard key={reference.assetId} reference={reference} index={index} />
-                  ))
-                ) : (
-                  <div className="workbench-design-empty">
-                    <img src={characterEmptyArt} alt="等待出图的看板娘" />
-                    <strong>还没有参考图</strong>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="workbench-design-generation">{generationWorkspace}</div>
-            )}
+        ) : (
+          <div className="wb3-placeholder">
+            <EmptyState
+              title={viewState.view === 'candidates' ? '候选视图建设中' : '立绘版本视图建设中'}
+              description="后续 Task 会接入完整交互。"
+              action={
+                <Button
+                  variant="secondary"
+                  onClick={() => setView({ view: 'prompt', promptVersionId: null })}
+                >
+                  返回提示词
+                </Button>
+              }
+            />
           </div>
-
-          <div className="workbench-design-task">
-            <span className="workbench-design-task-dot" />
-            <span>
-              {designView === 'references'
-                ? artVersions.length > 0
-                  ? `当前在用 v${activeVersion?.versionNumber ?? '—'}`
-                  : '参考已就绪，等待生成'
-                : `${artVersions.length} 个美术版本，候选待选`}
-            </span>
-          </div>
-          <footer className="workbench-design-actions">
-            {designView === 'references' ? (
-              <Link
-                className="workbench-design-secondary-action"
-                aria-label="返回档案（返回角色驾驶舱）"
-                to={`/characters/${encodeURIComponent(project.characterId)}`}
-              >
-                返回档案
-              </Link>
-            ) : (
-              <button
-                type="button"
-                className="workbench-design-secondary-action"
-                disabled={!hasSelectedPromptVersion}
-                onClick={() => {
-                  void openGenerationDialog()
-                }}
-              >
-                重新生成
-              </button>
-            )}
-            <button
-              type="button"
-              className="workbench-design-primary-action"
-              disabled={designView === 'references' && !hasSelectedPromptVersion}
-              onClick={() => {
-                if (designView === 'references') {
-                  void openGenerationDialog()
-                } else {
-                  setCandidateSaveRequest((request) => request + 1)
-                }
-              }}
-            >
-              {designView === 'references' ? '生成' : '保存为最新版本'}
-            </button>
-          </footer>
-        </div>
-
-        <UnifiedPromptInspector
-          project={project}
-          selectedArtVersion={selectedArtVersion}
-          selectedPromptVersion={selectedPromptVersion}
-          draft={draft}
-          spec={spec}
-          requirements={spec?.sourceRequirements ?? []}
-          dirty={dirty}
-          onSave={saveCurrentVersion}
-          onOpenAi={() => setWorkspaceDialog('ai')}
-          onGenerate={openGenerationDialog}
-        />
-        {selectionError ? (
-          <div className="workbench-selection-notice" role="alert">
-            <InlineNotice tone="danger">{selectionError}</InlineNotice>
-          </div>
-        ) : null}
+        )}
       </div>
+      <WorkbenchActionBar
+        status={
+          readOnly
+            ? '历史版本只读'
+            : dirty
+              ? '有未保存修改'
+              : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版 · ${
+                  (displaySpec?.blocks.length ?? 0) + (displaySpec?.negativeBlocks.length ?? 0)
+                } 块`
+        }
+      >
+        <Button
+          variant="primary"
+          disabled={readOnly || !selectedPromptVersion || (displaySpec?.blocks.length ?? 0) === 0}
+          onClick={() => {
+            void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
+          }}
+        >
+          生成图片
+        </Button>
+      </WorkbenchActionBar>
+      {versionError ? (
+        <div className="workbench-selection-notice" role="alert">
+          <InlineNotice tone="danger">{versionError}</InlineNotice>
+        </div>
+      ) : null}
 
       <GenerationDialog
         open={generationDialogOpen}
@@ -739,66 +509,19 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         artVersions={artVersions}
         initialPromptVersionId={generationPromptVersion?.id ?? null}
         initialPromptVersionNumber={generationPromptVersion?.versionNumber ?? null}
-        initialBaseArtVersionId={selectedArtVersion?.id ?? null}
+        initialBaseArtVersionId={null}
         providers={providers}
         onClose={() => {
           setGenerationDialogOpen(false)
           setGenerationPromptVersion(null)
         }}
         onCreated={(created) => {
-          setCreatedGenerationId(created.generationId)
           setGenerationDialogOpen(false)
           setGenerationPromptVersion(null)
-          setDesignView('candidates')
+          setView({ view: 'candidates', generationId: created.generationId })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) })
         }}
       />
-
-      <Dialog
-        open={pendingSelection !== null}
-        title="切换版本"
-        description="当前提示词有未保存修改。"
-        onOpenChange={(open) => {
-          if (!open && !switchBusy) setPendingSelection(null)
-        }}
-      >
-        <p>保存后会先同步完整提示词与颗粒化提示词，再切换到目标版本。</p>
-        {selectionError ? (
-          <div role="alert">
-            <InlineNotice tone="danger">{selectionError}</InlineNotice>
-          </div>
-        ) : null}
-        <div className="workbench-switch-dialog-actions">
-          <AsyncButton
-            type="button"
-            busy={switchBusy}
-            busyLabel="保存中…"
-            disabled={switchBusy}
-            onClick={() => {
-              void saveAndSwitch()
-            }}
-          >
-            保存并切换
-          </AsyncButton>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={switchBusy}
-            onClick={() => {
-              void discardAndSwitch()
-            }}
-          >
-            放弃并切换
-          </Button>
-          <Button
-            type="button"
-            variant="quiet"
-            disabled={switchBusy}
-            onClick={() => setPendingSelection(null)}
-          >
-            取消
-          </Button>
-        </div>
-      </Dialog>
 
       <Dialog
         open={workspaceDialog === 'materials'}
@@ -864,7 +587,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         className="workbench-versions-dialog"
       >
         <div className="workbench-versions-dialog-content">
-          <ReferenceChainBar project={project} activePromptVersion={workspace!.activePromptVersion} />
+          <ReferenceChainBar project={project} activePromptVersion={workspace.activePromptVersion} />
           <ForkOriginBar project={project} />
           <VersionGraph
             project={project}
