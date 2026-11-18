@@ -1,5 +1,10 @@
 import type { FastifyInstance } from 'fastify'
-import { createGenerationInputSchema, hashCanonical, newId } from '@agent2live/contracts'
+import {
+  createGenerationInputSchema,
+  generationListQuerySchema,
+  hashCanonical,
+  newId
+} from '@agent2live/contracts'
 import { buildGenerationRequest } from '../generation/request'
 import { IMAGE_GENERATION_JOB_TYPE } from '../jobs/image-generation'
 import type { JobEngine } from '../jobs/engine'
@@ -51,4 +56,22 @@ export function registerGenerationRoutes(
   app.get('/api/v1/generations/:generationId', async (request) =>
     deps.generations.get((request.params as { generationId: string }).generationId)
   )
+
+  app.get('/api/v1/art-projects/:id/generations', async (request) => {
+    const projectId = (request.params as { id: string }).id
+    const query = generationListQuerySchema.parse(request.query)
+    return deps.generations.list(projectId, query.limit)
+  })
+
+  app.post('/api/v1/generations/:generationId/discard', async (request) => {
+    const generationId = (request.params as { generationId: string }).generationId
+    const key = requireIdempotencyKey(request)
+    const result = deps.idempotency.run(
+      `generation.discard:${generationId}`,
+      key,
+      hashCanonical({ generationId }),
+      () => ({ status: 200, body: deps.generations.discard(generationId, idsOf(request)) })
+    )
+    return result.response.body
+  })
 }

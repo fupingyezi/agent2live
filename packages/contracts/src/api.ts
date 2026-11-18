@@ -261,7 +261,7 @@ export const createGenerationInputSchema = z
     promptVersionId: z.string().min(1).max(64),
     baseArtVersionId: z.string().min(1).max(64).nullable().optional(),
     providerConnectionId: z.string().min(1).max(64),
-    count: z.number().int().min(1).max(4).default(1),
+    count: z.number().int().min(1).max(8).default(1),
     size: z
       .string()
       .regex(/^\d{3,4}x\d{3,4}$/)
@@ -323,6 +323,12 @@ export const activateArtVersionInputSchema = z
 export const artVersionListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(50)
+  })
+  .strict()
+
+export const generationListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).default(20)
   })
   .strict()
 
@@ -696,6 +702,11 @@ export interface GenerationDto {
   errorCode: string | null
   errorMessage: string | null
   progress: number | null
+  count: number
+  size: string
+  seed: number | null
+  droppedBlockIds: string[]
+  compiledWarnings: string[]
   request: unknown
   requestHash: string
   candidates: GenerationCandidateDto[]

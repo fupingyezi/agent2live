@@ -613,4 +613,99 @@ describe('generation jobs', () => {
       await ctx.close()
     }
   })
+
+  it('exposes generation parameters, compile diagnostics and project history', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await committedPrompt(ctx)
+      const connection = await mockImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${prepared.project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'gen-dto-0001' },
+        payload: {
+          promptVersionId: prepared.version.id,
+          providerConnectionId: connection.id,
+          count: 2,
+          size: '512x896',
+          seed: 42
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const generationId = created.json<{ generationId: string }>().generationId
+      await ctx.services.jobs.tick()
+      const detail = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${generationId}`,
+        headers: ctx.auth
+      })
+      const dto = detail.json<{
+        count: number
+        size: string
+        seed: number | null
+        droppedBlockIds: string[]
+        compiledWarnings: string[]
+      }>()
+      expect(dto.count).toBe(2)
+      expect(dto.size).toBe('512x896')
+      expect(dto.seed).toBe(42)
+      expect(Array.isArray(dto.droppedBlockIds)).toBe(true)
+      expect(Array.isArray(dto.compiledWarnings)).toBe(true)
+
+      const list = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/art-projects/${prepared.project.id}/generations?limit=10`,
+        headers: ctx.auth
+      })
+      expect(list.statusCode).toBe(200)
+      const items = list.json<{ items: Array<{ id: string }> }>().items
+      expect(items.map((item) => item.id)).toContain(generationId)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('discards ready candidates and stays idempotent', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await committedPrompt(ctx)
+      const connection = await mockImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${prepared.project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'gen-discard-0001' },
+        payload: {
+          promptVersionId: prepared.version.id,
+          providerConnectionId: connection.id,
+          count: 2,
+          size: '512x896'
+        }
+      })
+      const generationId = created.json<{ generationId: string }>().generationId
+      await ctx.services.jobs.tick()
+
+      const first = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/generations/${generationId}/discard`,
+        headers: { ...ctx.auth, 'idempotency-key': 'gen-discard-0002' },
+        payload: {}
+      })
+      expect(first.statusCode).toBe(200)
+      expect(
+        first
+          .json<{ candidates: Array<{ status: string }> }>()
+          .candidates.every((candidate) => candidate.status === 'rejected')
+      ).toBe(true)
+
+      const second = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/generations/${generationId}/discard`,
+        headers: { ...ctx.auth, 'idempotency-key': 'gen-discard-0002' },
+        payload: {}
+      })
+      expect(second.statusCode).toBe(200)
+    } finally {
+      await ctx.close()
+    }
+  })
 })

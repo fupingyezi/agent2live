@@ -31,9 +31,18 @@ describe('API schemas', () => {
       createGenerationInputSchema.parse({
         promptVersionId: 'pv_1',
         providerConnectionId: 'conn_1',
-        count: 5
+        count: 9
       })
     ).toThrow()
+  })
+
+  it('accepts up to eight generation images', () => {
+    const parsed = createGenerationInputSchema.parse({
+      promptVersionId: 'pv_1',
+      providerConnectionId: 'conn_1',
+      count: 8
+    })
+    expect(parsed.count).toBe(8)
   })
 
   it('accepts only an artwork asset when creating a manual art version', () => {

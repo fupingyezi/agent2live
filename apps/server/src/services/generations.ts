@@ -310,6 +310,11 @@ export class GenerationService {
       errorCode: parseErrorCode(job.error_json),
       errorMessage: parseErrorMessage(job.error_json),
       progress: checkpoint.progress,
+      count: request.count,
+      size: request.size,
+      seed: request.seed,
+      droppedBlockIds: request.compiled.droppedBlockIds,
+      compiledWarnings: request.compiled.warnings,
       request,
       requestHash: row.request_hash,
       candidates: candidateRows.map((candidate) => ({
@@ -325,6 +330,52 @@ export class GenerationService {
       createdAt: row.created_at,
       updatedAt: job.updated_at
     }
+  }
+
+  list(projectId: string, limit: number): { items: GenerationDto[] } {
+    this.deps.projects.get(projectId)
+    const rows = this.deps.db
+      .prepare(
+        `select id from generation_jobs
+         where art_project_id = ?
+         order by created_at desc
+         limit ?`
+      )
+      .all(projectId, limit) as Array<{ id: string }>
+    return { items: rows.map((row) => this.get(row.id)) }
+  }
+
+  discard(generationId: string, ids: RequestIds): GenerationDto {
+    const generation = this.get(generationId)
+    withEvents(this.deps.db, this.deps.events, (events) => {
+      const changed = this.deps.db
+        .prepare(
+          `update generation_candidates
+           set status = 'rejected'
+           where generation_job_id = ? and status = 'ready'`
+        )
+        .run(generationId)
+      if (changed.changes === 0) return
+      this.deps.audit.append({
+        actor: { kind: 'local-user' },
+        action: 'generation.discarded',
+        targetType: 'generation_job',
+        targetId: generationId,
+        outcome: 'success',
+        requestId: ids.requestId,
+        traceId: ids.traceId,
+        metadata: { candidateCount: changed.changes }
+      })
+      events.append({
+        type: 'generation.discarded',
+        scopeKind: 'project',
+        scopeId: generation.artProjectId,
+        payload: { generationId, candidateCount: changed.changes },
+        requestId: ids.requestId,
+        traceId: ids.traceId
+      })
+    })
+    return this.get(generationId)
   }
 
   async run(

@@ -81,6 +81,18 @@ export function deleteCharacter(characterId: string, rowVersion: number): Promis
   })
 }
 
+export function updateCharacter(
+  characterId: string,
+  input: { title?: string; summary?: string | null },
+  ifMatch: number
+): Promise<CharacterDto> {
+  return api.request<CharacterDto>(`/api/v1/characters/${encodeURIComponent(characterId)}`, {
+    method: 'PATCH',
+    body: input,
+    ifMatch
+  })
+}
+
 export async function getCharacterLineage(
   characterId: string,
   signal?: AbortSignal
@@ -404,6 +416,29 @@ export function getGeneration(generationId: string, signal?: AbortSignal): Promi
     `/api/v1/generations/${encodeURIComponent(generationId)}`,
     withSignal(signal)
   )
+}
+
+export async function listGenerations(
+  projectId: string,
+  limit = 20,
+  signal?: AbortSignal
+): Promise<GenerationDto[]> {
+  const response = await api.request<{ items: GenerationDto[] }>(
+    `/api/v1/art-projects/${encodeURIComponent(projectId)}/generations?limit=${limit}`,
+    withSignal(signal)
+  )
+  return response.items
+}
+
+export function discardGeneration(
+  generationId: string,
+  idempotencyKey = newIdempotencyKey()
+): Promise<GenerationDto> {
+  return api.request<GenerationDto>(`/api/v1/generations/${encodeURIComponent(generationId)}/discard`, {
+    method: 'POST',
+    body: {},
+    idempotencyKey
+  })
 }
 
 export function acceptGenerationCandidate(
