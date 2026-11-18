@@ -85,6 +85,10 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     const axePages: AxePageResult[] = []
     const visualPaths: string[] = []
     const capture = async (name: (typeof UI_PAGES)[number], prepare?: () => Promise<void>): Promise<void> => {
+      await page.mouse.move(0, 0)
+      await page.evaluate(() => {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      })
       const shot = await captureVisual(studio.app, page, name, prepare)
       await expect(page).toHaveScreenshot(`${name}-1440x900.png`, {
         animations: 'disabled',
@@ -121,10 +125,13 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await capture('new-character-full')
 
     const hoverCard = page.locator('[data-testid="character-reference-card"]').nth(1)
+    const hoverPreview = hoverCard.getByRole('button', { name: '预览', exact: true })
     await hoverCard.hover()
+    await hoverPreview.focus()
     await expect(hoverCard.getByTestId('reference-hover-actions')).toHaveCSS('opacity', '1')
     await capture('reference-hover', async () => {
       await hoverCard.hover()
+      await hoverPreview.focus()
       await expect(hoverCard.getByTestId('reference-hover-actions')).toHaveCSS('opacity', '1')
     })
     const editReference = hoverCard.getByRole('button', { name: '编辑', exact: true })
@@ -204,7 +211,23 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await expect(page.locator('[data-testid="wb3-generation-params"]')).toContainText('张数 4 张')
     await expect(page.locator('[data-testid="wb3-candidate-card"]')).toHaveCount(4)
     await expect(page.locator('[data-testid="wb3-candidate-card"]').first()).toContainText('候选 1')
+    await expect(page.locator('[data-testid="wb3-candidate-card"]').first()).toHaveCSS('width', '318.75px')
     await capture('workbench-candidates')
+
+    await page.evaluate(
+      (hash) => {
+        window.location.hash = hash
+      },
+      `#/characters/${encodeURIComponent(characterId)}/art?project=${encodeURIComponent(
+        seeded.projectId
+      )}&view=versions&artVersion=${encodeURIComponent(seeded.activeArtVersionId)}`
+    )
+    await expect(page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(page.locator('[data-testid="wb3-art-version-list"]')).toHaveCSS('width', '336px')
+    await expect(page.locator('[data-testid="wb3-art-version-viewer"]')).toHaveCSS('width', '715px')
+    await expect(page.locator('[data-testid="wb3-art-version-inspector"]')).toHaveCSS('width', '324px')
 
     await page.getByRole('button', { name: '设置', exact: true }).click()
     await expect(page.locator('[data-testid="providers-page"]')).toBeVisible()

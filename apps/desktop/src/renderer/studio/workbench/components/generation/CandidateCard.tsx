@@ -11,6 +11,7 @@ export interface CandidateCardProps {
   saving: boolean
   onSelect(): void
   onSave(): void
+  onView(): void
   onRetrySlot(): void
   seconds: number | null
 }
@@ -23,6 +24,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({
   saving,
   onSelect,
   onSave,
+  onView,
   onRetrySlot,
   seconds
 }) => {
@@ -45,7 +47,14 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({
             存为立绘
           </Button>
         ) : accepted ? (
-          <StatusPill label="已存为立绘" tone="success" />
+          <>
+            <StatusPill label="已存为立绘" tone="success" />
+            {candidate?.acceptedArtVersionId ? (
+              <Button variant="quiet" size="sm" onClick={onView}>
+                查看
+              </Button>
+            ) : null}
+          </>
         ) : null}
       </header>
       <button

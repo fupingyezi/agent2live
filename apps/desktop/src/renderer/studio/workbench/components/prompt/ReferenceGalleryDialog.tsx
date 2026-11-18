@@ -33,10 +33,10 @@ export const ReferenceGalleryDialog: React.FC<ReferenceGalleryDialogProps> = ({
       className="wb3-reference-dialog"
       footer={
         <>
-          <Button variant="quiet" onClick={onOpenMaterials}>
+          <Button variant="quiet" disabled={readOnly} onClick={onOpenMaterials}>
             素材与要求
           </Button>
-          <Button variant="quiet" onClick={onOpenReverse}>
+          <Button variant="quiet" disabled={readOnly} onClick={onOpenReverse}>
             读参考图反推
           </Button>
           <span className="wb3-dialog-spacer" />

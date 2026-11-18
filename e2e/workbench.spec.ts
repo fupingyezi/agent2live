@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { ApiClient, uniqueKey } from './helpers/api'
 import { launchStudio } from './helpers/app'
+import { resizeToBaseline } from './helpers/axe'
 import { goldenPromptState, makePng } from './helpers/seed'
 
 interface ProviderSummary {
@@ -401,6 +402,317 @@ test('views art versions and restores the three views from the URL', async () =>
     await expect(studio.page.locator('[data-testid="wb3-prompt-view"]')).toBeVisible({
       timeout: 20_000
     })
+  } finally {
+    await studio.close()
+  }
+})
+
+test('edits and saves the full prompt', async () => {
+  const studio = await launchStudio('agent2live-v3-full-prompt-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+    await expect(studio.page.locator('[data-testid="wb3-prompt-block-row"]').first()).toBeVisible({
+      timeout: 20_000
+    })
+
+    await studio.page.getByRole('button', { name: '完整提示词', exact: true }).click()
+    const dialog = studio.page.getByRole('dialog', { name: '完整提示词' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByLabel('提示词正文').fill('完整提示词测试句子：银白长发，清爽赛璐璐。')
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(dialog).toBeHidden({ timeout: 30_000 })
+
+    const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
+    await expect(overview).toContainText('第 2 版', { timeout: 30_000 })
+    await studio.page.getByRole('button', { name: '完整提示词', exact: true }).click()
+    await expect(
+      studio.page.getByRole('dialog', { name: '完整提示词' }).getByLabel('提示词正文')
+    ).toHaveValue(/完整提示词测试句子/)
+  } finally {
+    await studio.close()
+  }
+})
+
+test('applies a reverse suggestion from the reference gallery', async () => {
+  const studio = await launchStudio('agent2live-v3-reverse-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await createChatProvider(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+    await expect(studio.page.locator('[data-testid="wb3-prompt-block-row"]').first()).toBeVisible({
+      timeout: 20_000
+    })
+
+    const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
+    await overview.getByRole('button', { name: '查看全部', exact: true }).first().click()
+    const gallery = studio.page.getByRole('dialog', { name: '参考图' })
+    await expect(gallery).toBeVisible()
+    await gallery.getByRole('button', { name: '读参考图反推', exact: true }).click()
+
+    const reverse = studio.page.getByRole('dialog', { name: '读参考图生成' })
+    await expect(reverse).toBeVisible()
+    await reverse.getByRole('button', { name: '开始反推', exact: true }).click()
+    const review = reverse.locator('[data-testid="reverse-review"]')
+    await expect(review).toBeVisible({ timeout: 60_000 })
+    await review.getByRole('button', { name: '应用修改', exact: true }).click()
+    const confirm = studio.page.getByRole('dialog', { name: '应用反推结果？' })
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: '应用', exact: true }).click()
+
+    await expect(studio.page.getByRole('dialog')).toHaveCount(0, { timeout: 30_000 })
+    await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('人物身份')
+    const submit = studio.page.getByRole('button', { name: '提交为新版本', exact: true })
+    await expect(submit).toBeEnabled()
+    await submit.click()
+    await expect(overview).toContainText('第 2 版', { timeout: 30_000 })
+  } finally {
+    await studio.close()
+  }
+})
+
+test('retries a missing candidate slot with a one-image generation', async () => {
+  const studio = await launchStudio('agent2live-v3-slot-retry-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    const provider = await createImageProvider(api)
+    const created = await api.createGeneration({
+      projectId: seeded.project.id,
+      promptVersionId: seeded.version.id,
+      providerConnectionId: provider.id,
+      count: 2,
+      size: '512x896'
+    })
+    await api.waitForGenerationReady(created.generationId)
+
+    await studio.page.route('**/api/v1/generations/*', async (route) => {
+      const response = await route.fetch()
+      const body = (await response.json()) as { id?: string; count?: number }
+      if (body.id === created.generationId) body.count = 4
+      await route.fulfill({ response, json: body })
+    })
+
+    await openWorkbench(
+      studio.page,
+      seeded.character.id,
+      seeded.project.id,
+      `&view=candidates&generation=${encodeURIComponent(created.generationId)}`
+    )
+    await expect(studio.page.locator('[data-testid="wb3-candidates-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    const cards = studio.page.locator('[data-testid="wb3-candidate-card"]')
+    await expect(cards).toHaveCount(4)
+    const failed = cards.filter({ hasText: '重试这张' })
+    await expect(failed).toHaveCount(2)
+
+    await failed.first().getByRole('button', { name: '重试这张', exact: true }).click()
+    const dialog = studio.page.getByRole('dialog', { name: '生成图片' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('生成 1 张，约 1 分钟')
+    await expect(
+      dialog.getByRole('group', { name: '生成张数' }).getByRole('button', { name: '1 张', exact: true })
+    ).toHaveAttribute('aria-pressed', 'true')
+  } finally {
+    await studio.close()
+  }
+})
+
+test('activates an older art version after confirmation', async () => {
+  const studio = await launchStudio('agent2live-v3-activation-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    const provider = await createImageProvider(api)
+    const created = await api.createGeneration({
+      projectId: seeded.project.id,
+      promptVersionId: seeded.version.id,
+      providerConnectionId: provider.id,
+      count: 1,
+      size: '512x896'
+    })
+    await api.waitForJob(created.jobId)
+    const generation = await api.waitForGenerationReady(created.generationId)
+    const candidate = generation.candidates.find((entry) => entry.status === 'ready')!
+    const beforeFirst = await api.getProject(seeded.project.id)
+    const first = await api.createManualArtVersion({
+      projectId: seeded.project.id,
+      assetId: candidate.assetId,
+      promptVersionId: seeded.version.id,
+      expectedProjectRowVersion: beforeFirst.rowVersion
+    })
+    const beforeSecond = await api.getProject(seeded.project.id)
+    const second = await api.createManualArtVersion({
+      projectId: seeded.project.id,
+      assetId: candidate.assetId,
+      promptVersionId: seeded.version.id,
+      expectedProjectRowVersion: beforeSecond.rowVersion
+    })
+    expect(beforeSecond.activeVersionId).toBe(first.artVersion.id)
+
+    await openWorkbench(
+      studio.page,
+      seeded.character.id,
+      seeded.project.id,
+      `&view=versions&artVersion=${encodeURIComponent(first.artVersion.id)}`
+    )
+    await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    const firstItem = studio.page.locator(
+      `[data-testid="wb3-art-version-item"][data-version-id="${first.artVersion.id}"]`
+    )
+    const secondItem = studio.page.locator(
+      `[data-testid="wb3-art-version-item"][data-version-id="${second.artVersion.id}"]`
+    )
+    await expect(secondItem).toContainText('在用')
+    await expect(firstItem).not.toContainText('在用')
+
+    await studio.page
+      .locator('.wb3-actionbar')
+      .getByRole('button', { name: '设为当前参考', exact: true })
+      .click()
+    const confirm = studio.page.getByRole('dialog', { name: '设为当前参考？' })
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: '设为当前参考', exact: true }).click()
+    await expect(confirm).toBeHidden({ timeout: 30_000 })
+    await expect(firstItem).toContainText('在用', { timeout: 30_000 })
+    await expect(secondItem).not.toContainText('在用')
+    await expect
+      .poll(async () => (await api.getProject(seeded.project.id)).activeVersionId)
+      .toBe(first.artVersion.id)
+  } finally {
+    await studio.close()
+  }
+})
+
+test('keeps the prompt view free of outer page scrolling at 1440x900', async () => {
+  const studio = await launchStudio('agent2live-v3-scroll-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await resizeToBaseline(studio.app, studio.page)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+    await expect(studio.page.locator('[data-testid="wb3-prompt-block-row"]').first()).toBeVisible({
+      timeout: 20_000
+    })
+
+    await expect
+      .poll(() => studio.page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight))
+      .toBe(0)
+    const metrics = await studio.page.evaluate(() => {
+      const content = document.querySelector('.studio-content')
+      return {
+        viewport: window.innerHeight,
+        document: document.documentElement.scrollHeight,
+        contentClient: content?.clientHeight ?? null,
+        contentScroll: content?.scrollHeight ?? null
+      }
+    })
+    expect(metrics.viewport).toBe(900)
+    expect(metrics.document).toBe(metrics.viewport)
+    expect(metrics.contentClient).not.toBeNull()
+    expect(metrics.contentScroll).toBe(metrics.contentClient)
+  } finally {
+    await studio.close()
+  }
+})
+
+test('confirms rollback when a clean draft is ahead of the active version', async () => {
+  const studio = await launchStudio('agent2live-v3-ahead-rollback-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await createChatProvider(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+    const rows = studio.page.locator('[data-testid="wb3-prompt-block-row"]')
+    await expect(rows.first()).toBeVisible({ timeout: 20_000 })
+
+    await rows.filter({ hasText: '渲染风格' }).click()
+    const blockDialog = studio.page.getByRole('dialog', { name: /编辑块/ })
+    await blockDialog.getByLabel('正文').fill('清爽的日系赛璐璐插画，干净线稿，第二版')
+    await blockDialog.getByRole('button', { name: '保存为新版本' }).click()
+    await expect(blockDialog).toBeHidden({ timeout: 30_000 })
+    const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
+    await expect(overview).toContainText('第 2 版', { timeout: 30_000 })
+
+    await studio.page.getByRole('button', { name: 'AI 改写', exact: true }).click()
+    const aiDialog = studio.page.getByRole('dialog', { name: 'AI 改写' })
+    await aiDialog.getByLabel('改法').fill('发色偏冷一点')
+    await aiDialog.getByRole('button', { name: '生成建议', exact: true }).click()
+    await expect(aiDialog.locator('[data-testid="wb3-ai-suggestions"]')).toBeVisible({
+      timeout: 30_000
+    })
+    await aiDialog.getByRole('button', { name: '应用已选 2 条', exact: true }).click()
+    await expect(aiDialog).toBeHidden({ timeout: 30_000 })
+
+    const firstVersion = studio.page
+      .locator('[data-testid="wb3-prompt-history-row"]')
+      .filter({ hasText: '第 1 版' })
+    await firstVersion.getByRole('button', { name: '回到这版', exact: true }).click()
+    const rollbackDialog = studio.page.getByRole('dialog', { name: '回到旧版提示词' })
+    await expect(rollbackDialog).toBeVisible()
+    await rollbackDialog.getByRole('button', { name: '放弃修改并回到此版', exact: true }).click()
+    await expect(rollbackDialog).toBeHidden({ timeout: 30_000 })
+    await expect(overview).toContainText('第 3 版', { timeout: 30_000 })
+
+    const versions = (
+      await api.json<{ items: Array<{ id: string; versionNumber: number }> }>(
+        'GET',
+        `/api/v1/art-projects/${encodeURIComponent(seeded.project.id)}/prompt-versions`
+      )
+    ).body.items
+    const rolledBack = versions.find((version) => version.versionNumber === 3)
+    expect(rolledBack, 'rollback creates version 3').toBeTruthy()
+    const detail = (
+      await api.json<{ state: { blocks: Array<{ id: string; text: string }> } }>(
+        'GET',
+        `/api/v1/art-projects/${encodeURIComponent(seeded.project.id)}/prompt-versions/${encodeURIComponent(
+          rolledBack!.id
+        )}`
+      )
+    ).body
+    const rolledBackStyle = detail.state.blocks.find((block) => block.id === 'style.rendering')?.text ?? ''
+    expect(rolledBackStyle).toContain('清爽的日系赛璐璐插画')
+    expect(rolledBackStyle).toContain('干净线稿')
+    expect(rolledBackStyle).not.toContain('第二版')
+  } finally {
+    await studio.close()
+  }
+})
+
+test('preserves unsaved prompt edits across workbench remounts', async () => {
+  const studio = await launchStudio('agent2live-v3-hydration-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+    await expect(studio.page.locator('[data-testid="wb3-prompt-block-row"]').first()).toBeVisible({
+      timeout: 20_000
+    })
+
+    const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
+    await overview.getByRole('button', { name: '查看全部', exact: true }).first().click()
+    const gallery = studio.page.getByRole('dialog', { name: '参考图' })
+    await expect(gallery).toBeVisible()
+    await gallery.getByLabel('权重').fill('1.3')
+    await gallery.getByRole('button', { name: '完成', exact: true }).click()
+    await expect(studio.page.locator('.wb3-actionbar')).toContainText('有未保存修改')
+
+    await studio.page.evaluate((characterId) => {
+      window.location.hash = `#/characters/${encodeURIComponent(characterId)}`
+    }, seeded.character.id)
+    await expect(studio.page.getByRole('heading', { name: '霜', level: 1 })).toBeVisible({
+      timeout: 20_000
+    })
+
+    await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
+    await expect(studio.page.locator('.wb3-actionbar')).toContainText('有未保存修改')
+    await overview.getByRole('button', { name: '查看全部', exact: true }).first().click()
+    await expect(studio.page.getByRole('dialog', { name: '参考图' }).getByLabel('权重')).toHaveValue('1.3')
   } finally {
     await studio.close()
   }

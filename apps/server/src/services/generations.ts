@@ -81,7 +81,7 @@ interface JobRow {
 export type { GenerationCandidateDto }
 
 export type GenerationDto = Omit<ContractGenerationDto, 'request'> & {
-  request: GenerationRequest
+  request: GenerationRequest | null
 }
 
 function parseCheckpoint(json: string | null): { progress: number | null } {
@@ -292,11 +292,11 @@ export class GenerationService {
     const assets = this.deps.assets.listByIds(candidateRows.map((candidate) => candidate.asset_id))
     const byId = new Map(assets.map((asset) => [asset.id, asset]))
     const checkpoint = parseCheckpoint(job.checkpoint_json)
-    let request: GenerationRequest
+    let request: GenerationRequest | null = null
     try {
       request = generationRequestSchema.parse(JSON.parse(row.request_json))
     } catch {
-      throw new AppError('SYS_INTERNAL', { reason: 'generation request snapshot is invalid' })
+      request = null
     }
     return {
       id: row.id,
@@ -310,11 +310,11 @@ export class GenerationService {
       errorCode: parseErrorCode(job.error_json),
       errorMessage: parseErrorMessage(job.error_json),
       progress: checkpoint.progress,
-      count: request.count,
-      size: request.size,
-      seed: request.seed,
-      droppedBlockIds: request.compiled.droppedBlockIds,
-      compiledWarnings: request.compiled.warnings,
+      count: request?.count ?? 1,
+      size: request?.size ?? '',
+      seed: request?.seed ?? null,
+      droppedBlockIds: request?.compiled.droppedBlockIds ?? [],
+      compiledWarnings: request?.compiled.warnings ?? [],
       request,
       requestHash: row.request_hash,
       candidates: candidateRows.map((candidate) => ({

@@ -9,6 +9,8 @@ export interface PromptBlockGroupViewProps {
   collapsed: boolean
   shadowed: Set<string>
   dropped: Set<string>
+  lockAll: boolean
+  busy: boolean
   onToggle(): void
   onOpenBlock(blockId: string, negative: boolean): void
 }
@@ -27,6 +29,8 @@ export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
   collapsed,
   shadowed,
   dropped,
+  lockAll,
+  busy,
   onToggle,
   onOpenBlock
 }) => {
@@ -59,6 +63,7 @@ export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
                 data-testid="wb3-prompt-block-row"
                 data-block-id={block.id}
                 data-category={block.category}
+                disabled={busy}
                 onClick={() => onOpenBlock(block.id, group.negative)}
               >
                 <span className="wb3-block-dot" data-category={block.category} aria-hidden="true" />
@@ -77,7 +82,7 @@ export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
                   {group.negative || strength === 'avoid' ? (
                     <span className="wb3-badge wb3-badge-warning">避免</span>
                   ) : null}
-                  {block.locked ? <span className="wb3-badge">锁</span> : null}
+                  {block.locked || lockAll ? <span className="wb3-badge">锁</span> : null}
                 </span>
               </button>
             )

@@ -25,8 +25,10 @@ export interface PromptEditorCardProps {
   readOnly: boolean
   dirty: boolean
   canCommit: boolean
+  busy: boolean
   filter: PromptFilter
   droppedBlockIds: string[]
+  promptVersionError: string | null
   submitting: boolean
   error: string | null
   onFilterChange(filter: PromptFilter): void
@@ -47,8 +49,10 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   readOnly,
   dirty,
   canCommit,
+  busy,
   filter,
   droppedBlockIds,
+  promptVersionError,
   submitting,
   error,
   onFilterChange,
@@ -81,6 +85,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   }, [filter, total, spec, spec?.blocks.length, spec?.negativeBlocks.length])
 
   const submitIntent = (): void => {
+    if (busy) return
     const value = intent.trim()
     if (value.length === 0) return
     onOpenAiRewrite(value)
@@ -95,7 +100,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
           <span>{characterSummary || '未填写简介'}</span>
         </div>
         {onRename ? (
-          <Button variant="quiet" size="sm" disabled={readOnly} onClick={onRename}>
+          <Button variant="quiet" size="sm" disabled={readOnly || busy} onClick={onRename}>
             改名
           </Button>
         ) : null}
@@ -110,19 +115,19 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
         </div>
         <div className="wb3-prompt-heading-actions">
           {onOpenFullPrompt ? (
-            <Button variant="quiet" size="sm" disabled={readOnly} onClick={onOpenFullPrompt}>
+            <Button variant="quiet" size="sm" disabled={readOnly || busy} onClick={onOpenFullPrompt}>
               完整提示词
             </Button>
           ) : null}
           <Button
             variant="quiet"
             size="sm"
-            disabled={readOnly}
+            disabled={readOnly || busy}
             onClick={() => onOpenAiRewrite(intent.trim())}
           >
             AI 改写
           </Button>
-          <Button variant="secondary" size="sm" disabled={readOnly} onClick={() => onNewBlock(false)}>
+          <Button variant="secondary" size="sm" disabled={readOnly || busy} onClick={() => onNewBlock(false)}>
             新增块
           </Button>
         </div>
@@ -132,7 +137,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
         <TextField
           aria-label="AI 改写指令"
           value={intent}
-          disabled={readOnly}
+          disabled={readOnly || busy}
           placeholder="说一句要改的地方，比如发色偏冷一点"
           onValueChange={setIntent}
           onKeyDown={(event) => {
@@ -142,7 +147,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
         <Button
           variant="primary"
           size="sm"
-          disabled={readOnly || intent.trim().length === 0 || !spec}
+          disabled={readOnly || busy || intent.trim().length === 0 || !spec}
           onClick={submitIntent}
         >
           生成建议
@@ -182,7 +187,13 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
 
       <div className="wb3-prompt-scroll">
         {spec === null ? (
-          <InlineNotice tone="info">正在载入提示词…</InlineNotice>
+          promptVersionError ? (
+            <div role="alert">
+              <InlineNotice tone="danger">{promptVersionError}</InlineNotice>
+            </div>
+          ) : (
+            <InlineNotice tone="info">正在载入提示词…</InlineNotice>
+          )
         ) : total === 0 ? (
           <EmptyState
             icon={<img className="wb3-empty-illustration" src={characterEmptyArt} alt="" />}
@@ -190,10 +201,10 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
             description={`读 ${referenceCount} 张参考图生成一版，或自己写第一块`}
             action={
               <div className="wb3-empty-actions">
-                <Button variant="primary" onClick={onOpenReverse}>
+                <Button variant="primary" disabled={busy} onClick={onOpenReverse}>
                   读参考图生成
                 </Button>
-                <Button variant="secondary" onClick={() => onNewBlock(false)}>
+                <Button variant="secondary" disabled={busy} onClick={() => onNewBlock(false)}>
                   手动写一版
                 </Button>
               </div>
@@ -207,6 +218,8 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
               collapsed={collapsed[group.id] ?? false}
               shadowed={shadowed}
               dropped={dropped}
+              lockAll={spec.lockAll}
+              busy={busy}
               onToggle={() => setCollapsed((current) => ({ ...current, [group.id]: !current[group.id] }))}
               onOpenBlock={onOpenBlock}
             />
@@ -227,7 +240,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
           size="sm"
           busy={submitting}
           busyLabel="提交中…"
-          disabled={readOnly || !canCommit || submitting}
+          disabled={readOnly || !canCommit || submitting || busy}
           onClick={onSubmitVersion}
         >
           提交为新版本

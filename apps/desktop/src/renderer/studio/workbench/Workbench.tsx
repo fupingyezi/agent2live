@@ -158,10 +158,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [renameOpen, setRenameOpen] = useState(false)
   const [dialogSaving, setDialogSaving] = useState(false)
   const [dialogError, setDialogError] = useState<string | null>(null)
+  const [saveBusy, setSaveBusy] = useState(false)
   const initializedJob = useRef<string | null>(null)
   const hydratedDraftId = useRef<string | null>(null)
   const draftRequested = useRef(false)
   const rollbackRequesting = useRef(false)
+  const saveLock = useRef(false)
   const viewState = parseWorkbenchView(searchParams)
   const setView = (patch: Parameters<typeof updateWorkbenchView>[1]): void => {
     setSearchParams((current) => updateWorkbenchView(current, patch), { replace: true })
@@ -211,7 +213,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const generationDetailQuery = useQuery({
     queryKey: queryKeys.generation(project.id, viewState.generationId ?? 'none'),
     queryFn: ({ signal }) => getGeneration(viewState.generationId!, signal),
-    enabled: Boolean(viewState.generationId),
+    enabled: Boolean(viewState.generationId) && viewState.view === 'candidates',
     refetchInterval: (query) => {
       const status = query.state.data?.status
       return status && TERMINAL_GENERATION_STATUSES.has(status) ? false : 1500
@@ -219,6 +221,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   })
 
   const workspace = workspaceQuery.data ?? null
+  const generationDetail =
+    generationDetailQuery.data && generationDetailQuery.data.artProjectId === project.id
+      ? generationDetailQuery.data
+      : null
   const artVersions = versionsQuery.data ?? []
   const selectedArtVersionId =
     artVersions.find((version) => version.id === viewState.artVersionId)?.id ??
@@ -235,18 +241,25 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const currentDraftRowVersion =
     useWorkbenchStore((state) => state.rowVersion) ?? workspace?.activeDraft?.rowVersion ?? null
 
-  const candidateGeneration = useMemo(
-    () =>
-      generationDetailQuery.data ??
-      (() => {
-        const items = generationsQuery.data ?? []
-        if (viewState.generationId) {
-          return items.find((generation) => generation.id === viewState.generationId) ?? null
-        }
-        return items[0] ?? null
-      })(),
-    [generationDetailQuery.data, generationsQuery.data, viewState.generationId]
-  )
+  const candidateGeneration = useMemo(() => {
+    if (generationDetail) return generationDetail
+    const items = generationsQuery.data ?? []
+    if (viewState.generationId) {
+      const listed = items.find((generation) => generation.id === viewState.generationId)
+      if (listed) return listed
+      if (generationDetailQuery.isPending || generationDetailQuery.isFetching) return null
+    }
+    return items[0] ?? null
+  }, [
+    generationDetail,
+    generationDetailQuery.isFetching,
+    generationDetailQuery.isPending,
+    generationsQuery.data,
+    viewState.generationId
+  ])
+  const candidateGenerationLoading =
+    candidateGeneration === null &&
+    (generationsQuery.isPending || (Boolean(viewState.generationId) && generationDetailQuery.isPending))
 
   useEffect(() => {
     if (!candidateGeneration) {
@@ -260,12 +273,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }, [candidateGeneration?.id, candidateGeneration?.candidates.length])
 
   useEffect(() => {
-    const status = generationDetailQuery.data?.status
+    const status = generationDetail?.status
     if (!status || !TERMINAL_GENERATION_STATUSES.has(status)) return
     void queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
-  }, [generationDetailQuery.data?.id, generationDetailQuery.data?.status, project.id, queryClient])
+  }, [generationDetail?.id, generationDetail?.status, project.id, queryClient])
 
   const providerLabel =
     providers.find((provider) => provider.id === candidateGeneration?.providerConnectionId)?.model ??
@@ -286,7 +299,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const selectedPromptVersionId = viewState.promptVersionId ?? workspace?.activePromptVersion?.id ?? null
   const latestGeneration = useMemo(() => {
     const items = generationsQuery.data ?? []
-    return items.find((generation) => generation.promptVersionId === selectedPromptVersionId) ?? null
+    return (
+      items.find(
+        (generation) =>
+          generation.promptVersionId === selectedPromptVersionId && generation.status === 'succeeded'
+      ) ?? null
+    )
   }, [generationsQuery.data, selectedPromptVersionId])
   const promptVersionQuery = useQuery({
     queryKey: queryKeys.promptVersion(project.id, selectedPromptVersionId ?? 'none'),
@@ -298,6 +316,9 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     (workspace && selectedPromptVersionId === workspace.activePromptVersion?.id
       ? (workspace.activePromptVersion ?? null)
       : null)
+  const promptVersionError = promptVersionQuery.isError
+    ? (errorMessage(promptVersionQuery.error) ?? '提示词版本加载失败。')
+    : null
   const editingActiveVersion =
     selectedPromptVersionId !== null && selectedPromptVersionId === project.activePromptVersionId
   const displaySpec = editingActiveVersion
@@ -310,7 +331,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     if (workspace.activeDraft) {
       if (hydratedDraftId.current === workspace.activeDraft.id) return
       hydratedDraftId.current = workspace.activeDraft.id
-      applyServerDraft(draftSnapshot(workspace.activeDraft))
+      hydrate(draftSnapshot(workspace.activeDraft))
       return
     }
     if (!workspace.activePromptVersion) return
@@ -323,7 +344,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       rowVersion: null,
       draft: workspace.activePromptVersion.state
     })
-  }, [applyServerDraft, hydrate, workspace?.activeDraft?.id, workspace?.activePromptVersion?.id])
+  }, [hydrate, workspace?.activeDraft?.id, workspace?.activePromptVersion?.id])
 
   useEffect(() => {
     if (!workspace) return
@@ -374,6 +395,40 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     versionsQuery.isError,
     versionsQuery.isFetching,
     viewState.artVersionId,
+    viewState.view
+  ])
+
+  useEffect(() => {
+    if (viewState.view !== 'prompt' || !viewState.promptVersionId) return
+    if (!workspace || workspaceQuery.isFetching) return
+    if (workspace.versions.some((version) => version.id === viewState.promptVersionId)) return
+    if (workspace.activePromptVersion?.id === viewState.promptVersionId) return
+    const resolvedId = workspace.activePromptVersion?.id ?? null
+    if (resolvedId === viewState.promptVersionId) return
+    setView({ view: 'prompt', promptVersionId: resolvedId })
+  }, [setView, viewState.promptVersionId, viewState.view, workspace, workspaceQuery.isFetching])
+
+  useEffect(() => {
+    if (viewState.view !== 'candidates' || !viewState.generationId) return
+    if (generationDetailQuery.isFetching) return
+    if (generationDetail) return
+    if (!generationDetailQuery.data && !generationDetailQuery.isError) return
+    if (generationsQuery.isPending || generationsQuery.isFetching) return
+    const items = generationsQuery.data ?? []
+    if (items.some((generation) => generation.id === viewState.generationId)) return
+    const fallbackId = items[0]?.id ?? null
+    if (fallbackId === viewState.generationId) return
+    setView({ generationId: fallbackId })
+  }, [
+    generationDetail,
+    generationDetailQuery.data,
+    generationDetailQuery.isError,
+    generationDetailQuery.isFetching,
+    generationsQuery.data,
+    generationsQuery.isFetching,
+    generationsQuery.isPending,
+    setView,
+    viewState.generationId,
     viewState.view
   ])
 
@@ -465,21 +520,29 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }
 
   const prepareAiRewrite = async (): Promise<void> => {
-    const live = useWorkbenchStore.getState()
-    if (!live.dirty) return
-    if (!activeDraft || !live.draft) throw new Error('当前没有可保存的提示词草稿。')
-    const saved = await savePromptDraft(
-      project.id,
-      activeDraft.id,
-      live.draft,
-      live.rowVersion ?? activeDraft.rowVersion
-    )
-    useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
-    setDraftHint(saved)
-    invalidateProjectWorkspace()
+    if (saveLock.current) throw new Error('正在保存，请稍候')
+    saveLock.current = true
+    setSaveBusy(true)
+    try {
+      const live = useWorkbenchStore.getState()
+      if (!live.dirty) return
+      if (!activeDraft || !live.draft) throw new Error('当前没有可保存的提示词草稿。')
+      const saved = await savePromptDraft(
+        project.id,
+        activeDraft.id,
+        live.draft,
+        live.rowVersion ?? activeDraft.rowVersion
+      )
+      useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
+      setDraftHint(saved)
+      invalidateProjectWorkspace()
+    } finally {
+      saveLock.current = false
+      setSaveBusy(false)
+    }
   }
 
-  const saveCurrentVersion = async (): Promise<{
+  const saveCurrentVersionInternal = async (): Promise<{
     id: string
     versionNumber: number
     created: boolean
@@ -543,12 +606,34 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     }
   }
 
+  const saveCurrentVersion = async (): Promise<{
+    id: string
+    versionNumber: number
+    created: boolean
+  }> => {
+    if (saveLock.current) throw new Error('正在保存，请稍候')
+    saveLock.current = true
+    setSaveBusy(true)
+    try {
+      return await saveCurrentVersionInternal()
+    } finally {
+      saveLock.current = false
+      setSaveBusy(false)
+    }
+  }
+
   async function executeRollback(target: PromptVersionDto, saveFirst: boolean): Promise<void> {
+    if (saveLock.current) {
+      setVersionError('正在保存，请稍候')
+      return
+    }
+    saveLock.current = true
+    setSaveBusy(true)
     setRollbackBusy(true)
     setVersionError(null)
     try {
       if (saveFirst) {
-        await saveCurrentVersion()
+        await saveCurrentVersionInternal()
       } else {
         useWorkbenchStore.getState().cancelLocalChanges()
       }
@@ -597,6 +682,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     } catch (reason) {
       setVersionError(errorMessage(reason))
     } finally {
+      saveLock.current = false
+      setSaveBusy(false)
       setRollbackBusy(false)
     }
   }
@@ -611,7 +698,16 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     setVersionError(null)
     getPromptVersion(project.id, versionId)
       .then(async (version) => {
-        if (useWorkbenchStore.getState().dirty) {
+        const live = useWorkbenchStore.getState()
+        const activeVersion = workspace.activePromptVersion
+        const editableDraft = draftHint ?? workspace.activeDraft
+        const activeVersionIsCurrent =
+          activeVersion !== null && activeVersion.id === project.activePromptVersionId
+        const draftAhead =
+          activeVersionIsCurrent &&
+          editableDraft !== null &&
+          editableDraft.contentHash !== activeVersion.contentHash
+        if (live.dirty || draftAhead) {
           setPendingRollback(version)
         } else {
           await executeRollback(version, false)
@@ -731,6 +827,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     restore?: () => void
   ): Promise<void> => {
     if (readOnly) return
+    if (saveLock.current) {
+      setDialogError('正在保存，请稍候')
+      return
+    }
     setDialogSaving(true)
     setDialogError(null)
     let applied = false
@@ -852,8 +952,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             readOnly={readOnly}
             dirty={dirty}
             canCommit={canCommit}
+            busy={saveBusy}
             filter={filter}
-            latestGeneration={latestGeneration}
+            latestGeneration={readOnly ? null : latestGeneration}
+            promptVersionError={promptVersionError}
             submitting={versionSubmitting}
             error={versionError}
             onFilterChange={setFilter}
@@ -894,6 +996,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         ) : viewState.view === 'candidates' ? (
           <CandidateWorkbenchView
             generation={candidateGeneration}
+            loading={candidateGenerationLoading}
             promptVersionNumber={promptVersionNumberForGeneration}
             providerLabel={providerLabel}
             selectedCandidateId={selectedCandidateId}
@@ -902,6 +1005,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             nextVersionNumber={nextVersionNumber}
             onSelectCandidate={setSelectedCandidateId}
             onSaveCandidate={saveCandidate}
+            onViewArtVersion={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
             onSaveSelected={() => {
               if (selectedCandidateId) saveCandidate(selectedCandidateId)
             }}
@@ -999,7 +1103,9 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         >
           <Button
             variant="primary"
-            disabled={readOnly || !selectedPromptVersion || (displaySpec?.blocks.length ?? 0) === 0}
+            disabled={
+              readOnly || saveBusy || !selectedPromptVersion || (displaySpec?.blocks.length ?? 0) === 0
+            }
             onClick={() => {
               void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
             }}

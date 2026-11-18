@@ -25,8 +25,10 @@ export interface PromptWorkbenchViewProps {
   readOnly: boolean
   dirty: boolean
   canCommit: boolean
+  busy: boolean
   filter: PromptFilter
   latestGeneration: GenerationDto | null
+  promptVersionError: string | null
   submitting: boolean
   error: string | null
   onFilterChange(filter: PromptFilter): void
@@ -57,8 +59,10 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
   readOnly,
   dirty,
   canCommit,
+  busy,
   filter,
   latestGeneration,
+  promptVersionError,
   submitting,
   error,
   onFilterChange,
@@ -104,8 +108,10 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
           readOnly={readOnly}
           dirty={dirty}
           canCommit={canCommit}
+          busy={busy}
           filter={filter}
           droppedBlockIds={latestGeneration?.droppedBlockIds ?? []}
+          promptVersionError={promptVersionError}
           submitting={submitting}
           error={error}
           onFilterChange={onFilterChange}

@@ -1,12 +1,14 @@
 import React, { useState } from 'react'
 import type { GenerationDto } from '@studio/api'
 import { Button, ConfirmDialog, EmptyState, InlineNotice, ProgressBar } from '@agent2live/design-system'
+import { StudioLoading } from '@studio/components'
 import { GenerationParamsBar } from '../components/generation/GenerationParamsBar'
 import { CandidateGrid } from '../components/generation/CandidateGrid'
 import { WorkbenchActionBar } from '../components/WorkbenchActionBar'
 
 export interface CandidateWorkbenchViewProps {
   generation: GenerationDto | null
+  loading: boolean
   promptVersionNumber: number | null
   providerLabel: string
   selectedCandidateId: string | null
@@ -15,6 +17,7 @@ export interface CandidateWorkbenchViewProps {
   nextVersionNumber: number
   onSelectCandidate(candidateId: string): void
   onSaveCandidate(candidateId: string): void
+  onViewArtVersion(versionId: string): void
   onSaveSelected(): void
   onDiscard(): void
   onRetry(): void
@@ -26,6 +29,7 @@ export interface CandidateWorkbenchViewProps {
 
 export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
   generation,
+  loading,
   promptVersionNumber,
   providerLabel,
   selectedCandidateId,
@@ -34,6 +38,7 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
   nextVersionNumber,
   onSelectCandidate,
   onSaveCandidate,
+  onViewArtVersion,
   onSaveSelected,
   onDiscard,
   onRetry,
@@ -43,6 +48,14 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
   error
 }) => {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+
+  if (loading) {
+    return (
+      <section className="workbench-loading" data-testid="wb3-candidates-loading">
+        <StudioLoading label="正在加载生成任务…" />
+      </section>
+    )
+  }
 
   if (!generation) {
     return (
@@ -138,6 +151,7 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
             seconds={seconds}
             onSelect={onSelectCandidate}
             onSave={onSaveCandidate}
+            onViewArtVersion={onViewArtVersion}
             onRetrySlot={onRetrySlot}
           />
         )}

@@ -129,10 +129,10 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
   const update = (patch: Partial<PromptBlock>): void => {
     setDraft((current) => {
       const next = { ...current, ...patch }
-      if (patch.category !== undefined) {
-        next.strength = patch.category === 'negative' ? 'avoid' : 'prefer'
+      if (patch.category !== undefined && patch.category !== current.category) {
+        if (next.category === 'negative') next.strength = 'avoid'
+        else if (current.category === 'negative') next.strength = 'prefer'
       }
-      if (next.category === 'negative') next.strength = 'avoid'
       return next
     })
   }
@@ -199,7 +199,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
             <ChipGroup
               ariaLabel="块分类"
               value={draft.category}
-              disabled={disabled}
+              disabled={disabled || isNegative}
               onValueChange={(value) => update({ category: value as PromptBlock['category'] })}
               options={PROMPT_CATEGORIES.map((category) => ({
                 id: category,

@@ -47,8 +47,6 @@ export interface AiRewriteDialogProps {
   onJobResolved(): void
 }
 
-const STEP_LABELS = ['读提示词块', '读参考图', '生成改动建议'] as const
-
 function stepState(index: number, progress: number): 'done' | 'active' | 'waiting' {
   if (index === 0) return progress >= 20 ? 'done' : 'active'
   if (index === 1) return progress < 20 ? 'waiting' : progress < 70 ? 'active' : 'done'
@@ -263,10 +261,11 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   const applyMutation = useMutation({
     mutationFn: async () => {
       if (!suggestion) throw new Error('建议还没有加载完成。')
+      const allSelected = selected.size === suggestion.operations.length
       return acceptPromptSuggestion(
         suggestion.id,
         draftRowVersion,
-        [...selected].sort((left, right) => left - right)
+        allSelected ? undefined : [...selected].sort((left, right) => left - right)
       )
     },
     onSuccess: (result) => {
@@ -314,6 +313,9 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
     !jobRunning
   const proposalReady = suggestion?.status === 'proposed'
   const disabledRows = !proposalReady || applyMutation.isPending
+  const blockCount = spec ? spec.blocks.length + spec.negativeBlocks.length : 0
+  const referenceCount = spec?.materialRefs.length ?? 0
+  const stepLabels = [`读 ${blockCount} 个块`, `读 ${referenceCount} 张参考图`, '生成改动建议']
 
   return (
     <Dialog
@@ -336,6 +338,9 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
               >
                 全部拒绝
               </Button>
+              <span className="wb3-generation-estimate" data-testid="wb3-ai-received">
+                已接收 {selected.size} 条 · 剩 {suggestion.operations.length - selected.size} 条
+              </span>
               <span className="wb3-dialog-spacer" />
               <Button variant="quiet" disabled={applyMutation.isPending} onClick={close}>
                 关闭
@@ -414,7 +419,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
             </div>
             <ProgressBar label="AI 改写进度" value={progress} />
             <ol className="wb3-ai-steps">
-              {STEP_LABELS.map((label, index) => {
+              {stepLabels.map((label, index) => {
                 const state = stepState(index, progress)
                 return (
                   <li key={label} data-state={state}>

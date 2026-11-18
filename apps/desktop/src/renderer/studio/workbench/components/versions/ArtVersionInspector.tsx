@@ -1,7 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { ArtProjectDto, ArtVersionDto, PromptVersionDto } from '@studio/api'
 import { formatDateTime } from '@studio/format'
-import { Button, KeyValueList } from '@agent2live/design-system'
+import { Button, ConfirmDialog, KeyValueList } from '@agent2live/design-system'
 import { ART_SOURCE_LABELS, MATERIAL_ROLE_LABELS } from '../../prompt-labels'
 
 export interface ArtVersionInspectorProps {
@@ -27,6 +27,7 @@ export const ArtVersionInspector: React.FC<ArtVersionInspectorProps> = ({
   onOpenVersions,
   onBackToPrompt
 }) => {
+  const [confirmActivate, setConfirmActivate] = useState(false)
   const active = version.id === project.activeVersionId
   const references = promptVersion?.references ?? []
   const mainReference = references[0]
@@ -83,7 +84,7 @@ export const ArtVersionInspector: React.FC<ArtVersionInspectorProps> = ({
           type="button"
           className="wb3-action-card"
           disabled={active || activating}
-          onClick={onActivate}
+          onClick={() => setConfirmActivate(true)}
         >
           <span>
             <strong>{active ? '当前参考' : '设为当前参考'}</strong>
@@ -99,6 +100,19 @@ export const ArtVersionInspector: React.FC<ArtVersionInspectorProps> = ({
           <span aria-hidden="true">→</span>
         </button>
       </section>
+      <ConfirmDialog
+        open={confirmActivate}
+        title="设为当前参考？"
+        confirmLabel="设为当前参考"
+        busy={activating}
+        onCancel={() => setConfirmActivate(false)}
+        onConfirm={() => {
+          setConfirmActivate(false)
+          onActivate()
+        }}
+      >
+        <p>只会把当前参考指向这一版，不会复制或覆盖任何版本；下次生成以它为主参考。</p>
+      </ConfirmDialog>
     </aside>
   )
 }

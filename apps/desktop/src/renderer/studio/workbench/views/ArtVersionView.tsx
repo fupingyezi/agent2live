@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { ArtProjectDto, ArtVersionDto, GenerationDto, PromptVersionDto } from '@studio/api'
-import { Button, EmptyState, InlineNotice } from '@agent2live/design-system'
+import { Button, ConfirmDialog, EmptyState, InlineNotice } from '@agent2live/design-system'
 import { ArtVersionList } from '../components/versions/ArtVersionList'
 import { ArtVersionViewer } from '../components/versions/ArtVersionViewer'
 import { ArtVersionInspector } from '../components/versions/ArtVersionInspector'
@@ -37,6 +37,8 @@ export const ArtVersionView: React.FC<ArtVersionViewProps> = ({
   onBackToPrompt,
   onOpenLayered
 }) => {
+  const [confirmActivate, setConfirmActivate] = useState(false)
+
   if (artVersions.length === 0 || !selectedVersion) {
     return (
       <div className="wb3-version-empty" data-testid="wb3-art-version-view">
@@ -97,7 +99,7 @@ export const ArtVersionView: React.FC<ArtVersionViewProps> = ({
         busy={activating}
       >
         {!active ? (
-          <Button variant="secondary" disabled={activating} onClick={onActivate}>
+          <Button variant="secondary" disabled={activating} onClick={() => setConfirmActivate(true)}>
             {activating ? '切换中…' : '设为当前参考'}
           </Button>
         ) : null}
@@ -105,6 +107,19 @@ export const ArtVersionView: React.FC<ArtVersionViewProps> = ({
           打开分层
         </Button>
       </WorkbenchActionBar>
+      <ConfirmDialog
+        open={confirmActivate}
+        title="设为当前参考？"
+        confirmLabel="设为当前参考"
+        busy={activating}
+        onCancel={() => setConfirmActivate(false)}
+        onConfirm={() => {
+          setConfirmActivate(false)
+          onActivate()
+        }}
+      >
+        <p>只会把当前参考指向这一版，不会复制或覆盖任何版本；下次生成以它为主参考。</p>
+      </ConfirmDialog>
     </div>
   )
 }

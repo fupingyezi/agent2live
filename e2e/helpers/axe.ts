@@ -35,12 +35,26 @@ export async function resizeToBaseline(app: ElectronApplication, page: Page): Pr
   // so resolve the studio window by URL instead of picking the first window.
   const targetUrl = page.url().split('#')[0]
   await app.evaluate(
-    ({ BrowserWindow }, options) => {
+    ({ BrowserWindow, screen }, options) => {
       const window =
         BrowserWindow.getAllWindows().find(
           (candidate) => candidate.webContents.getURL().split('#')[0] === options.url
         ) ?? BrowserWindow.getAllWindows()[0]
-      if (window) window.setContentSize(options.width, options.height)
+      if (!window) return
+      window.setContentSize(options.width, options.height)
+      const cursor = screen.getCursorScreenPoint()
+      const bounds = window.getBounds()
+      const inside =
+        cursor.x >= bounds.x &&
+        cursor.x < bounds.x + bounds.width &&
+        cursor.y >= bounds.y &&
+        cursor.y < bounds.y + bounds.height
+      if (inside) {
+        window.setPosition(
+          Math.round(cursor.x - bounds.width - 120),
+          Math.round(cursor.y - bounds.height - 120)
+        )
+      }
     },
     { url: targetUrl, ...UI_BASELINE }
   )
