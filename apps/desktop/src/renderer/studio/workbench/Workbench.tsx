@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ArtProjectDto, CharacterDto, PromptBlock, PromptDraftDto, PromptVersionDto } from '@studio/api'
 import {
   acceptGenerationCandidate,
+  activateArtVersion,
   ApiError,
   commitPromptDraft,
   createPromptDraft,
@@ -21,7 +22,7 @@ import {
   savePromptDraft,
   updateCharacter
 } from '@studio/api'
-import { Button, Dialog, EmptyState, InlineNotice } from '@agent2live/design-system'
+import { Button, Dialog, InlineNotice } from '@agent2live/design-system'
 import { StudioError, StudioLoading } from '@studio/components'
 import { findDefaultTextProvider } from '@studio/providers'
 import { useWorkbenchStore } from './store'
@@ -41,6 +42,7 @@ import { WorkbenchTopbar } from './components/WorkbenchTopbar'
 import { WorkbenchActionBar } from './components/WorkbenchActionBar'
 import { PromptWorkbenchView } from './views/PromptWorkbenchView'
 import { CandidateWorkbenchView } from './views/CandidateWorkbenchView'
+import { ArtVersionView } from './views/ArtVersionView'
 import { PromptBlockDialog } from './components/prompt/PromptBlockDialog'
 import { FullPromptDialog } from './components/prompt/FullPromptDialog'
 import { RenameDialog } from './components/prompt/RenameDialog'
@@ -144,6 +146,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [filter, setFilter] = useState<PromptFilter>('all')
   const [versionSubmitting, setVersionSubmitting] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
+  const [activatingArtVersion, setActivatingArtVersion] = useState(false)
   const [pendingRollback, setPendingRollback] = useState<PromptVersionDto | null>(null)
   const [rollbackBusy, setRollbackBusy] = useState(false)
   const [blockDialog, setBlockDialog] = useState<{
@@ -217,6 +220,16 @@ export const Workbench: React.FC<WorkbenchProps> = ({
 
   const workspace = workspaceQuery.data ?? null
   const artVersions = versionsQuery.data ?? []
+  const selectedArtVersionId =
+    viewState.artVersionId ?? project.activeVersionId ?? artVersions[0]?.id ?? null
+  const selectedArtVersion =
+    artVersions.find((version) => version.id === selectedArtVersionId) ?? null
+  const artPromptVersionQuery = useQuery({
+    queryKey: queryKeys.promptVersion(project.id, selectedArtVersion?.promptVersionId ?? 'none'),
+    queryFn: ({ signal }) =>
+      getPromptVersion(project.id, selectedArtVersion!.promptVersionId, signal),
+    enabled: Boolean(selectedArtVersion)
+  })
   const providers = providersQuery.data ?? []
   const currentDraftRowVersion =
     useWorkbenchStore((state) => state.rowVersion) ?? workspace?.activeDraft?.rowVersion ?? null
@@ -631,6 +644,30 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       .finally(() => setSavingCandidateId(null))
   }
 
+  const activateSelectedArtVersion = (): void => {
+    if (!selectedArtVersion) return
+    const active = artVersions.find((version) => version.id === project.activeVersionId) ?? null
+    const reason =
+      active && selectedArtVersion.versionNumber < active.versionNumber ? 'rollback' : 'switch'
+    setActivatingArtVersion(true)
+    setVersionError(null)
+    activateArtVersion(project.id, selectedArtVersion.id, reason, project.rowVersion)
+      .then((mutation) => {
+        queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
+        setView({ view: 'versions', artVersionId: mutation.artVersion.id })
+        return Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.characters })
+        ])
+      })
+      .catch((reason) => setVersionError(errorMessage(reason)))
+      .finally(() => setActivatingArtVersion(false))
+  }
+
   const discardBatch = (): void => {
     if (!candidateGeneration) return
     setDiscarding(true)
@@ -863,20 +900,40 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             error={versionError}
           />
         ) : (
-          <div className="wb3-placeholder">
-            <EmptyState
-              title="立绘版本视图建设中"
-              description="后续 Task 会接入完整交互。"
-              action={
-                <Button
-                  variant="secondary"
-                  onClick={() => setView({ view: 'prompt', promptVersionId: null })}
-                >
-                  返回提示词
-                </Button>
+          <ArtVersionView
+            project={project}
+            artVersions={artVersions}
+            selectedVersion={selectedArtVersion}
+            promptVersion={artPromptVersionQuery.data ?? null}
+            generations={generationsQuery.data ?? []}
+            activating={activatingArtVersion}
+            error={versionError}
+            onSelect={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
+            onActivate={activateSelectedArtVersion}
+            onFork={() => {
+              if (selectedArtVersion) {
+                setForkSource({
+                  kind: 'art_version',
+                  versionId: selectedArtVersion.id,
+                  versionLabel: `第 ${selectedArtVersion.versionNumber} 版`
+                })
               }
-            />
-          </div>
+            }}
+            onOpenVersions={() => setWorkspaceDialog('versions')}
+            onBackToPrompt={() => {
+              setView({
+                view: 'prompt',
+                promptVersionId: selectedArtVersion?.promptVersionId ?? null
+              })
+            }}
+            onOpenLayered={() => {
+              if (selectedArtVersion) {
+                navigate(
+                  `/characters/${encodeURIComponent(project.characterId)}/live2d?artVersion=${encodeURIComponent(selectedArtVersion.id)}`
+                )
+              }
+            }}
+          />
         )}
       </div>
       {viewState.view === 'prompt' ? (
