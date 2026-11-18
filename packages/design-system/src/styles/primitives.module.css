@@ -933,3 +933,47 @@
 .disclosureButton[aria-expanded='false'] {
   border-radius: var(--a2l-radius-md);
 }
+
+.chipGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2l-space-1);
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  height: 26px;
+  padding: 0 var(--a2l-space-2);
+  align-items: center;
+  color: var(--a2l-color-text-muted);
+  background: var(--a2l-color-surface-subtle);
+  border: 0;
+  border-radius: var(--a2l-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--a2l-text-meta-size);
+  gap: var(--a2l-space-1);
+}
+
+.chip:hover:not(:disabled) {
+  color: var(--a2l-color-text);
+  background: var(--a2l-color-surface-selected);
+}
+
+.chip[data-state='selected'] {
+  color: var(--a2l-color-accent-strong);
+  background: var(--a2l-color-accent-soft);
+  font-weight: 500;
+}
+
+.chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chipCount {
+  color: inherit;
+  font-size: var(--a2l-text-caption-size);
+  opacity: 0.8;
+}

@@ -1,5 +1,9 @@
 export type { EmptyProps } from '../../types'
 
+/** 单选筛选 chips，用于分类、权重、张数等紧凑选项。 */
+export { ChipGroup } from './ChipGroup'
+export type { ChipGroupOption, ChipGroupProps } from './ChipGroup'
+
 /** 表单字段容器，统一标签、帮助文本和错误信息布局。 */
 export { Field } from './Field'
 
