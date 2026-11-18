@@ -164,6 +164,47 @@ describe('workbench store', () => {
     )
   })
 
+  it('replaces a block, moves it between lists and updates strength', () => {
+    const store = useWorkbenchStore.getState()
+    store.reset()
+    const base = spec()
+    store.hydrate({ draftId: 'draft_1', revision: 1, rowVersion: 3, draft: base })
+
+    const positive = base.blocks[0]!
+    store.replaceBlock({ ...positive, text: '黑色长卷发', strength: 'must' })
+    const afterEdit = useWorkbenchStore.getState().draft!
+    expect(afterEdit.blocks[0]).toMatchObject({ text: '黑色长卷发', strength: 'must' })
+    expect(useWorkbenchStore.getState().dirty).toBe(true)
+    expect(useWorkbenchStore.getState().lastEdited).toBe('blocks')
+
+    store.replaceBlock({ ...afterEdit.blocks[0]!, category: 'negative', strength: 'avoid' })
+    const afterMove = useWorkbenchStore.getState().draft!
+    expect(afterMove.blocks.some((block) => block.id === positive.id)).toBe(false)
+    expect(afterMove.negativeBlocks.some((block) => block.id === positive.id)).toBe(true)
+    expect(useWorkbenchStore.getState().lastEdited).toBe('blocks')
+  })
+
+  it('normalizes positive block strength and allows editing locked blocks via replaceBlock', () => {
+    const store = useWorkbenchStore.getState()
+    store.reset()
+    const base = spec()
+    store.hydrate({ draftId: 'draft_1', revision: 1, rowVersion: 3, draft: base })
+
+    const locked = { ...base.blocks[0]!, locked: true, strength: 'avoid' as const }
+    store.replaceBlock(locked)
+    const after = useWorkbenchStore.getState().draft!
+    expect(after.blocks[0]?.strength).toBe('prefer')
+    expect(after.blocks[0]?.locked).toBe(true)
+  })
+
+  it('refuses bulk replacement when all blocks are locked', () => {
+    const store = useWorkbenchStore.getState()
+    store.reset()
+    const locked = { ...spec(), lockAll: true }
+    store.hydrate({ draftId: 'draft_2', revision: 1, rowVersion: 1, draft: locked })
+    expect(() => store.replaceBlock(locked.blocks[0]!)).toThrow(/locked/i)
+  })
+
   it('tracks which representation produced the latest dirty edit', () => {
     hydrate()
     useWorkbenchStore.getState().updateFullPrompt('新的连贯完整提示词。')

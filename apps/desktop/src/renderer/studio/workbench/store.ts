@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { PromptMaterialRef, PromptSpecV2 } from '@agent2live/contracts'
+import type { PromptBlock, PromptMaterialRef, PromptSpecV2 } from '@agent2live/contracts'
 import type { PromptEditSource } from '@agent2live/contracts'
 import {
   makePromptBlock,
@@ -34,7 +34,16 @@ interface WorkbenchStore extends WorkbenchSnapshot {
   selectSuggestion(suggestionId: string | null): void
   selectReverse(reverseId: string | null): void
   updateFullPrompt(fullPrompt: string): void
-  updateBlock(blockId: string, patch: { label?: string; text?: string; category?: string }): void
+  updateBlock(
+    blockId: string,
+    patch: {
+      label?: string
+      text?: string
+      category?: string
+      strength?: 'must' | 'prefer' | 'avoid'
+    }
+  ): void
+  replaceBlock(block: PromptBlock): void
   updateBlockWeight(blockId: string, weight: number): void
   updateBlockReferences(blockId: string, patch: { requirementRefs?: string[]; materialRefs?: string[] }): void
   updateMaterialRefs(materialRefs: PromptMaterialRef[]): void
@@ -143,6 +152,27 @@ export const useWorkbenchStore = create<WorkbenchStore>((set, get) => ({
     if (patch.text !== undefined) target.text = patch.text
     if (patch.category !== undefined) {
       target.category = patch.category as typeof target.category
+    }
+    if (patch.strength !== undefined) {
+      target.strength = patch.strength
+    }
+    set({ draft: next, dirty: true, lastEdited: 'blocks' })
+  },
+
+  replaceBlock(block) {
+    const current = get()
+    const spec = requireDraft(current)
+    if (spec.lockAll) throw new Error('all prompt blocks are locked')
+    const next = structuredClone(spec)
+    next.blocks = next.blocks.filter((candidate) => candidate.id !== block.id)
+    next.negativeBlocks = next.negativeBlocks.filter((candidate) => candidate.id !== block.id)
+    if (block.category === 'negative') {
+      next.negativeBlocks.push({ ...structuredClone(block), strength: 'avoid' })
+    } else {
+      next.blocks.push({
+        ...structuredClone(block),
+        strength: block.strength === 'avoid' ? 'prefer' : block.strength
+      })
     }
     set({ draft: next, dirty: true, lastEdited: 'blocks' })
   },
