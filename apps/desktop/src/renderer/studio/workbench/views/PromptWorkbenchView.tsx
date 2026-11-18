@@ -21,6 +21,7 @@ export interface PromptWorkbenchViewProps {
   referenceCount: number
   readOnly: boolean
   dirty: boolean
+  canCommit: boolean
   filter: PromptFilter
   latestGeneration: GenerationDto | null
   submitting: boolean
@@ -48,6 +49,7 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
   spec,
   readOnly,
   dirty,
+  canCommit,
   filter,
   latestGeneration,
   submitting,
@@ -70,6 +72,7 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
         referenceCount={referenceCount}
         readOnly={readOnly}
         dirty={dirty}
+        canCommit={canCommit}
         filter={filter}
         droppedBlockIds={latestGeneration?.droppedBlockIds ?? []}
         submitting={submitting}

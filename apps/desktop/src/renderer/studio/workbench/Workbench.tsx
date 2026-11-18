@@ -205,9 +205,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   }, [applyServerDraft, hydrate, workspace?.activeDraft?.id, workspace?.activePromptVersion?.id])
 
   useEffect(() => {
-    if (!workspace || workspace.activeDraft || !workspace.activePromptVersion || draftRequested.current) {
+    if (!workspace) return
+    if (workspace.activeDraft) {
+      draftRequested.current = true
       return
     }
+    if (!workspace.activePromptVersion || draftRequested.current) return
     draftRequested.current = true
     createPromptDraft(project.id, 'active_version')
       .then((created) => {
@@ -263,6 +266,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const spec = storeDraft
   const submission = workspace.latestSubmission
   const draftRowVersion = spec ? storeRowVersion : (draft?.rowVersion ?? null)
+  const canCommit =
+    !readOnly &&
+    spec !== null &&
+    (dirty ||
+      (draft !== null &&
+        workspace.activePromptVersion !== null &&
+        draft.contentHash !== workspace.activePromptVersion.contentHash))
 
   const invalidateProjectWorkspace = (): void => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
@@ -373,13 +383,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     created: boolean
   }> => {
     if (!selectedPromptVersion) throw new Error('请先选择提示词版本。')
-    const version = dirty
-      ? await saveCurrentVersion()
-      : {
-          id: selectedPromptVersion.id,
-          versionNumber: selectedPromptVersion.versionNumber,
-          created: false
-        }
+    const version = await saveCurrentVersion()
     setGenerationPromptVersion({
       id: version.id,
       versionNumber: version.versionNumber
@@ -440,6 +444,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             referenceCount={displaySpec?.materialRefs.length ?? 0}
             readOnly={readOnly}
             dirty={dirty}
+            canCommit={canCommit}
             filter={filter}
             latestGeneration={null}
             submitting={versionSubmitting}
@@ -496,11 +501,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           生成图片
         </Button>
       </WorkbenchActionBar>
-      {versionError ? (
-        <div className="workbench-selection-notice" role="alert">
-          <InlineNotice tone="danger">{versionError}</InlineNotice>
-        </div>
-      ) : null}
 
       <GenerationDialog
         open={generationDialogOpen}

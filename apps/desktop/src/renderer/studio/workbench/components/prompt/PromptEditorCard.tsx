@@ -24,6 +24,7 @@ export interface PromptEditorCardProps {
   referenceCount: number
   readOnly: boolean
   dirty: boolean
+  canCommit: boolean
   filter: PromptFilter
   droppedBlockIds: string[]
   submitting: boolean
@@ -45,6 +46,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   referenceCount,
   readOnly,
   dirty,
+  canCommit,
   filter,
   droppedBlockIds,
   submitting,
@@ -225,7 +227,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
           size="sm"
           busy={submitting}
           busyLabel="提交中…"
-          disabled={readOnly || !dirty || !spec}
+          disabled={readOnly || !canCommit || submitting}
           onClick={onSubmitVersion}
         >
           提交为新版本
