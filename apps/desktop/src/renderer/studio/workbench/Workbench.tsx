@@ -363,18 +363,20 @@ export const Workbench: React.FC<WorkbenchProps> = ({
 
   useEffect(() => {
     if (viewState.view !== 'versions' || !viewState.artVersionId) return
-    if (versionsQuery.isPending || versionsQuery.isError) return
+    if (versionsQuery.isFetching || versionsQuery.isError) return
     if (artVersions.some((version) => version.id === viewState.artVersionId)) return
-    setView({
-      view: 'versions',
-      artVersionId: project.activeVersionId ?? artVersions[0]?.id ?? null
-    })
+    const resolvedId =
+      artVersions.find((version) => version.id === project.activeVersionId)?.id ??
+      artVersions[0]?.id ??
+      null
+    if (resolvedId === viewState.artVersionId) return
+    setView({ view: 'versions', artVersionId: resolvedId })
   }, [
     artVersions,
     project.activeVersionId,
     setView,
     versionsQuery.isError,
-    versionsQuery.isPending,
+    versionsQuery.isFetching,
     viewState.artVersionId,
     viewState.view
   ])
@@ -924,7 +926,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           <section className="workbench-loading">
             <StudioLoading label="正在加载立绘版本…" />
           </section>
-        ) : versionsQuery.isError ? (
+        ) : versionsQuery.isError && !versionsQuery.data ? (
           <section className="workbench-loading" data-testid="versions-error">
             <StudioError
               error={versionsQuery.error}
@@ -934,40 +936,58 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             />
           </section>
         ) : (
-          <ArtVersionView
-            project={project}
-            artVersions={artVersions}
-            selectedVersion={selectedArtVersion}
-            promptVersion={artPromptVersionQuery.data ?? null}
-            generations={generationsQuery.data ?? []}
-            activating={activatingArtVersion}
-            error={versionError}
-            onSelect={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
-            onActivate={activateSelectedArtVersion}
-            onFork={() => {
-              if (selectedArtVersion) {
-                setForkSource({
-                  kind: 'art_version',
-                  versionId: selectedArtVersion.id,
-                  versionLabel: `第 ${selectedArtVersion.versionNumber} 版`
+          <div className="wb3-version-shell">
+            {versionsQuery.isError ? (
+              <div className="wb3-version-refetch-error" data-testid="wb3-version-refetch-error">
+                <InlineNotice tone="danger">
+                  刷新立绘版本失败：{errorMessage(versionsQuery.error) ?? '请重试。'}
+                </InlineNotice>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    void versionsQuery.refetch()
+                  }}
+                >
+                  重试
+                </Button>
+              </div>
+            ) : null}
+            <ArtVersionView
+              project={project}
+              artVersions={artVersions}
+              selectedVersion={selectedArtVersion}
+              promptVersion={artPromptVersionQuery.data ?? null}
+              generations={generationsQuery.data ?? []}
+              activating={activatingArtVersion}
+              error={versionError}
+              onSelect={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
+              onActivate={activateSelectedArtVersion}
+              onFork={() => {
+                if (selectedArtVersion) {
+                  setForkSource({
+                    kind: 'art_version',
+                    versionId: selectedArtVersion.id,
+                    versionLabel: `第 ${selectedArtVersion.versionNumber} 版`
+                  })
+                }
+              }}
+              onOpenVersions={() => setWorkspaceDialog('versions')}
+              onBackToPrompt={() => {
+                setView({
+                  view: 'prompt',
+                  promptVersionId: selectedArtVersion?.promptVersionId ?? null
                 })
-              }
-            }}
-            onOpenVersions={() => setWorkspaceDialog('versions')}
-            onBackToPrompt={() => {
-              setView({
-                view: 'prompt',
-                promptVersionId: selectedArtVersion?.promptVersionId ?? null
-              })
-            }}
-            onOpenLayered={() => {
-              if (selectedArtVersion) {
-                navigate(
-                  `/characters/${encodeURIComponent(project.characterId)}/live2d?artVersion=${encodeURIComponent(selectedArtVersion.id)}`
-                )
-              }
-            }}
-          />
+              }}
+              onOpenLayered={() => {
+                if (selectedArtVersion) {
+                  navigate(
+                    `/characters/${encodeURIComponent(project.characterId)}/live2d?artVersion=${encodeURIComponent(selectedArtVersion.id)}`
+                  )
+                }
+              }}
+            />
+          </div>
         )}
       </div>
       {viewState.view === 'prompt' ? (

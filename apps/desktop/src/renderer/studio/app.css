@@ -6102,3 +6102,22 @@ label.new-character-drop-zone {
 .wb3-version-error {
   padding: 0 var(--a2l-space-6);
 }
+
+.wb3-version-shell {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.wb3-version-refetch-error {
+  display: flex;
+  padding: var(--a2l-space-3) var(--a2l-space-6) 0;
+  align-items: center;
+  gap: var(--a2l-space-3);
+}
+
+.wb3-version-refetch-error > div {
+  flex: 1 1 auto;
+}
