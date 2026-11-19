@@ -27,19 +27,16 @@ async function png(): Promise<Buffer> {
 }
 
 describe('SeedreamImageProvider', () => {
-  it('sends reference images and sequential options; downloads and hashes outputs', async () => {
+  it('requests one image per call without sequential options and downloads outputs', async () => {
     const image = await png()
     server = await startTestServer(async (request, response) => {
       if (request.method === 'POST' && request.url === '/v1/images/generations') {
         sendJson(response, 200, {
-          data: [
-            { url: `${server!.url}/image-1.png`, size: '8x8' },
-            { url: `${server!.url}/image-2.png`, size: '8x8' }
-          ]
+          data: [{ url: `${server!.url}/image.png`, size: '8x8' }]
         })
         return
       }
-      if (request.url === '/image-1.png' || request.url === '/image-2.png') {
+      if (request.url === '/image.png') {
         response.writeHead(200, { 'content-type': 'image/png' })
         response.end(image)
         return
@@ -62,19 +59,112 @@ describe('SeedreamImageProvider', () => {
     expect(result.images[0]!.width).toBe(8)
     expect(result.images[0]!.height).toBe(8)
     expect(result.images[0]!.sha256).toHaveLength(64)
-    const body = JSON.parse(server.requests[0]!.body.toString('utf8'))
-    expect(body).toMatchObject({
-      model: 'test-seedream-model',
-      prompt: 'a flat illustration',
-      size: '1024x1024',
-      seed: 42,
-      response_format: 'url',
-      watermark: false,
-      sequential_image_generation: 'auto',
-      sequential_image_generation_options: { max_images: 2 }
+    const posts = server.requests.filter(
+      (request) => request.method === 'POST' && request.url === '/v1/images/generations'
+    )
+    expect(posts).toHaveLength(2)
+    const bodies = posts
+      .map((request) => JSON.parse(request.body.toString('utf8')))
+      .sort((left, right) => left.seed - right.seed)
+    expect(bodies.map((body) => body.seed)).toEqual([42, 43])
+    for (const body of bodies) {
+      expect(body).toMatchObject({
+        model: 'test-seedream-model',
+        prompt: 'a flat illustration',
+        size: '1024x1024',
+        response_format: 'url',
+        watermark: false
+      })
+      expect(body).not.toHaveProperty('sequential_image_generation')
+      expect(body).not.toHaveProperty('sequential_image_generation_options')
+      expect(body.image[0]).toMatch(/^data:image\/png;base64,/)
+    }
+    for (const request of posts) {
+      expect(request.headers.authorization).toBe('Bearer seedream-secret')
+    }
+  })
+
+  it('does not send sequential generation params for a multi-image batch', async () => {
+    const image = await png()
+    server = await startTestServer(async (request, response) => {
+      if (request.method === 'POST' && request.url === '/v1/images/generations') {
+        const body = JSON.parse(request.body.toString('utf8')) as Record<string, unknown>
+        if ('sequential_image_generation' in body || 'sequential_image_generation_options' in body) {
+          sendJson(response, 400, {
+            error: { code: 'InvalidParameter', message: 'unsupported parameter' }
+          })
+          return
+        }
+        sendJson(response, 200, {
+          data: [{ url: `${server!.url}/image.png`, size: '8x8' }]
+        })
+        return
+      }
+      if (request.url === '/image.png') {
+        response.writeHead(200, { 'content-type': 'image/png' })
+        response.end(image)
+        return
+      }
+      response.writeHead(404).end()
     })
-    expect(body.image[0]).toMatch(/^data:image\/png;base64,/)
-    expect(server.requests[0]!.headers.authorization).toBe('Bearer seedream-secret')
+
+    const result = await provider(`${server.url}/v1`).generate(
+      {
+        prompt: 'a flat illustration',
+        count: 4,
+        size: '1024x1024'
+      },
+      { requestId: 'req-image-flash-contract' }
+    )
+
+    expect(result.images).toHaveLength(4)
+    const posts = server.requests.filter(
+      (request) => request.method === 'POST' && request.url === '/v1/images/generations'
+    )
+    expect(posts).toHaveLength(4)
+    for (const request of posts) {
+      const body = JSON.parse(request.body.toString('utf8'))
+      expect(body).not.toHaveProperty('sequential_image_generation')
+      expect(body).not.toHaveProperty('sequential_image_generation_options')
+    }
+  })
+
+  it('keeps successful images when one request is rejected', async () => {
+    const image = await png()
+    let posts = 0
+    server = await startTestServer(async (request, response) => {
+      if (request.method === 'POST' && request.url === '/v1/images/generations') {
+        posts += 1
+        if (posts === 2) {
+          sendJson(response, 400, {
+            error: { code: 'content_policy', message: 'sensitive prompt' }
+          })
+          return
+        }
+        sendJson(response, 200, {
+          data: [{ url: `${server!.url}/image.png`, size: '8x8' }]
+        })
+        return
+      }
+      if (request.url === '/image.png') {
+        response.writeHead(200, { 'content-type': 'image/png' })
+        response.end(image)
+        return
+      }
+      response.writeHead(404).end()
+    })
+
+    const result = await provider(`${server.url}/v1`).generate(
+      {
+        prompt: 'a flat illustration',
+        count: 2,
+        size: '1024x1024'
+      },
+      { requestId: 'req-image-partial' }
+    )
+
+    expect(result.images).toHaveLength(1)
+    expect(posts).toBe(2)
   })
 
   it('maps content policy rejection without leaking inputs', async () => {

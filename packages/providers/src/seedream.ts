@@ -83,6 +83,12 @@ async function decodeImage(
   }
 }
 
+interface SeedreamSingleImage {
+  image: GeneratedImage
+  model: string
+  providerRequestId: string | null
+}
+
 export class SeedreamImageProvider implements ImageProvider {
   readonly kind = 'image' as const
 
@@ -92,24 +98,25 @@ export class SeedreamImageProvider implements ImageProvider {
     }
   }
 
-  async generate(request: ImageRequest, context: ProviderRequestContext): Promise<ImageResult> {
-    validateRequest(request)
-    const count = request.count ?? 1
+  /**
+   * Seedream 5.0 flash/pro reject the sequential-image parameter (HTTP 400
+   * InvalidParameter), so every image is requested as a separate single-image
+   * call. A failed call becomes a missing candidate instead of failing the batch.
+   */
+  private async requestOne(
+    base: string,
+    request: ImageRequest,
+    seed: number | undefined,
+    context: ProviderRequestContext
+  ): Promise<SeedreamSingleImage> {
     const references = request.referenceImages ?? []
-    const base = this.config.baseUrl.replace(/\/+$/, '')
     const body: Record<string, unknown> = {
       model: this.config.model,
       prompt: request.prompt,
       size: request.size,
       response_format: 'url',
       watermark: false,
-      ...(count > 1
-        ? {
-            sequential_image_generation: 'auto',
-            sequential_image_generation_options: { max_images: count }
-          }
-        : {}),
-      ...(request.seed === undefined ? {} : { seed: request.seed }),
+      ...(seed === undefined ? {} : { seed }),
       ...(references.length === 0 ? {} : { image: references.map(dataUrl) })
     }
 
@@ -124,29 +131,52 @@ export class SeedreamImageProvider implements ImageProvider {
     if (!Array.isArray(entries) || entries.length === 0) {
       throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider returned no images')
     }
-
-    const images: GeneratedImage[] = []
-    for (const entry of entries.slice(0, count)) {
-      if (!entry || typeof entry !== 'object') {
-        throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider image entry invalid')
-      }
-      const item = entry as { url?: unknown; b64_json?: unknown }
-      if (typeof item.url === 'string' && item.url.length > 0) {
-        const downloaded = await fetchImageBytes(item.url, context, {
-          maxBytes: MAX_IMAGE_BYTES,
-          timeoutMs: 60_000
-        })
-        images.push(await decodeImage(downloaded.bytes, downloaded.contentType, context))
-      } else if (typeof item.b64_json === 'string' && item.b64_json.length > 0) {
-        images.push(await decodeImage(Buffer.from(item.b64_json, 'base64'), null, context))
-      } else {
-        throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider image entry has no bytes')
-      }
+    const entry = entries[0]
+    if (!entry || typeof entry !== 'object') {
+      throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider image entry invalid')
+    }
+    const item = entry as { url?: unknown; b64_json?: unknown }
+    let image: GeneratedImage
+    if (typeof item.url === 'string' && item.url.length > 0) {
+      const downloaded = await fetchImageBytes(item.url, context, {
+        maxBytes: MAX_IMAGE_BYTES,
+        timeoutMs: 60_000
+      })
+      image = await decodeImage(downloaded.bytes, downloaded.contentType, context)
+    } else if (typeof item.b64_json === 'string' && item.b64_json.length > 0) {
+      image = await decodeImage(Buffer.from(item.b64_json, 'base64'), null, context)
+    } else {
+      throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider image entry has no bytes')
     }
     return {
-      images,
+      image,
       model: typeof json.model === 'string' ? json.model : this.config.model,
       providerRequestId: headers.get('x-request-id')
+    }
+  }
+
+  async generate(request: ImageRequest, context: ProviderRequestContext): Promise<ImageResult> {
+    validateRequest(request)
+    const count = request.count ?? 1
+    const base = this.config.baseUrl.replace(/\/+$/, '')
+    const results = await Promise.allSettled(
+      Array.from({ length: count }, (_, index) => {
+        const seed = request.seed === undefined ? undefined : (request.seed + index) % 2_147_483_648
+        return this.requestOne(base, request, seed, context)
+      })
+    )
+    const successes = results.filter(
+      (result): result is PromiseFulfilledResult<SeedreamSingleImage> => result.status === 'fulfilled'
+    )
+    if (successes.length === 0) {
+      const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+      throw failure?.reason ?? new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider returned no images')
+    }
+    const first = successes[0]!.value
+    return {
+      images: successes.map((result) => result.value.image),
+      model: first.model,
+      providerRequestId: first.providerRequestId
     }
   }
 }
