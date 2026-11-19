@@ -1,0 +1,21 @@
+.technicalDetails {
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-sm);
+}
+.technicalSummary {
+  min-height: var(--a2l-space-10);
+  padding: var(--a2l-space-2) var(--a2l-space-3);
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+  cursor: pointer;
+}
+.technicalBody {
+  padding: var(--a2l-space-3);
+  color: var(--a2l-color-text-secondary);
+  background: var(--a2l-color-surface-subtle);
+  font-family: var(--a2l-font-mono);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+  overflow-wrap: anywhere;
+}

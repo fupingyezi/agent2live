@@ -1,0 +1,11 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--a2l-space-2);
+  border-radius: var(--a2l-radius-xs);
+  background: var(--a2l-color-surface-subtle);
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+}

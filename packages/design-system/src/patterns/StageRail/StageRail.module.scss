@@ -1,0 +1,42 @@
+.stageRail {
+  overflow-x: auto;
+}
+.stageRail ol {
+  display: flex;
+  gap: var(--a2l-space-2);
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.stageStep {
+  display: inline-flex;
+  gap: var(--a2l-space-2);
+  align-items: center;
+  min-height: var(--a2l-space-8);
+  padding: var(--a2l-space-1) var(--a2l-space-3);
+  color: var(--a2l-color-text-secondary);
+  white-space: nowrap;
+  border-radius: var(--a2l-radius-sm);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+}
+.stageStep[data-state='current'] {
+  color: var(--a2l-color-accent-strong);
+  background: var(--a2l-color-accent-soft);
+}
+.stageStep[data-state='blocked'] {
+  color: var(--a2l-color-danger);
+  background: var(--a2l-color-danger-border);
+}
+.stageStep[data-state='upcoming'] {
+  color: var(--a2l-color-text-muted);
+}
+.stageMarker {
+  font-size: var(--a2l-text-body-sm-size);
+  font-weight: 500;
+}
+.stageLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

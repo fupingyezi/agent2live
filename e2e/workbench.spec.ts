@@ -157,13 +157,13 @@ test('renames the character and rolls back a prompt version', async () => {
     await gallery.getByLabel('权重').fill('1.3')
     await gallery.getByRole('button', { name: '完成', exact: true }).click()
     await expect(gallery).toBeHidden()
-    await expect(studio.page.locator('.wb3-actionbar')).toContainText('有未保存修改')
+    await expect(studio.page.locator('[data-testid="wb3-actionbar"]')).toContainText('有未保存修改')
 
     const secondVersion = studio.page
       .locator('[data-testid="wb3-prompt-history-row"]')
       .filter({ hasText: '第 2 版' })
     await secondVersion.getByRole('button', { name: /第 2 版/ }).click()
-    await expect(studio.page.locator('.wb3-actionbar')).toContainText('历史版本只读')
+    await expect(studio.page.locator('[data-testid="wb3-actionbar"]')).toContainText('历史版本只读')
     await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('第二版')
 
     await studio.page
@@ -285,7 +285,10 @@ test('generates candidates through the dialog and saves one as an art version', 
     const cards = studio.page.locator('[data-testid="wb3-candidate-card"]')
     await expect(cards).toHaveCount(4, { timeout: 30_000 })
     await cards.first().click()
-    await studio.page.locator('.wb3-actionbar').getByRole('button', { name: '存为立绘', exact: true }).click()
+    await studio.page
+      .locator('[data-testid="wb3-actionbar"]')
+      .getByRole('button', { name: '存为立绘', exact: true })
+      .click()
 
     await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
       timeout: 20_000
@@ -572,7 +575,7 @@ test('activates an older art version after confirmation', async () => {
     await expect(firstItem).not.toContainText('在用')
 
     await studio.page
-      .locator('.wb3-actionbar')
+      .locator('[data-testid="wb3-actionbar"]')
       .getByRole('button', { name: '设为当前参考', exact: true })
       .click()
     const confirm = studio.page.getByRole('dialog', { name: '设为当前参考？' })
@@ -700,7 +703,7 @@ test('preserves unsaved prompt edits across workbench remounts', async () => {
     await expect(gallery).toBeVisible()
     await gallery.getByLabel('权重').fill('1.3')
     await gallery.getByRole('button', { name: '完成', exact: true }).click()
-    await expect(studio.page.locator('.wb3-actionbar')).toContainText('有未保存修改')
+    await expect(studio.page.locator('[data-testid="wb3-actionbar"]')).toContainText('有未保存修改')
 
     await studio.page.evaluate((characterId) => {
       window.location.hash = `#/characters/${encodeURIComponent(characterId)}`
@@ -710,7 +713,7 @@ test('preserves unsaved prompt edits across workbench remounts', async () => {
     })
 
     await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
-    await expect(studio.page.locator('.wb3-actionbar')).toContainText('有未保存修改')
+    await expect(studio.page.locator('[data-testid="wb3-actionbar"]')).toContainText('有未保存修改')
     await overview.getByRole('button', { name: '查看全部', exact: true }).first().click()
     await expect(studio.page.getByRole('dialog', { name: '参考图' }).getByLabel('权重')).toHaveValue('1.3')
   } finally {

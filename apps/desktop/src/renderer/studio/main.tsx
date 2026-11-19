@@ -8,13 +8,14 @@ import '@fontsource/noto-sans-sc/600.css'
 import '@fontsource/noto-sans-sc/700.css'
 import '@agent2live/design-system/styles.css'
 import '../shared/harness.css'
-import './app.css'
+import './styles/base.scss'
 import { mountModel, ProbePanel } from '@renderer/shared'
 import type { Live2DProbe } from '@agent2live/live2d-runtime'
 import { ApiError } from '@studio/api'
 import { App } from './App'
 import { ErrorBoundary } from '@studio/components'
 import type { EmptyProps } from '@agent2live/design-system'
+import styles from './styles/harness.module.scss'
 
 const ModelHarness: React.FC<EmptyProps> = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -45,7 +46,7 @@ const ModelHarness: React.FC<EmptyProps> = () => {
   return (
     <main className="harness studio-bg" data-testid="studio-ready">
       <h1>agent2live Studio</h1>
-      <canvas ref={canvasRef} className="studio-harness-canvas" />
+      <canvas ref={canvasRef} className={styles['studio-harness-canvas']!} />
       <div data-testid="model-status">{status}</div>
       {error ? <div role="alert">{error}</div> : null}
       {probe ? <ProbePanel probe={probe} /> : null}

@@ -1,0 +1,97 @@
+.wb3-overview-muted {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-meta-size);
+}
+.wb3-version-inspector {
+  display: flex;
+  min-height: 0;
+  padding: var(--a2l-space-5) var(--a2l-space-4);
+  overflow: auto;
+  background: var(--a2l-color-surface);
+  border-left: var(--a2l-border-width) solid var(--a2l-color-border);
+  flex-direction: column;
+  gap: var(--a2l-space-4);
+}
+.wb3-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wb3-inspector-head h2 {
+  margin: 0;
+  color: var(--a2l-color-text);
+  font-size: var(--a2l-text-title-sm-size);
+  font-weight: 600;
+}
+.wb3-inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2l-space-2);
+}
+.wb3-inspector-section h3 {
+  margin: 0;
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-meta-size);
+  font-weight: 600;
+}
+.wb3-inspector-card {
+  display: flex;
+  padding: var(--a2l-space-3);
+  align-items: center;
+  justify-content: space-between;
+  background: var(--a2l-color-accent-soft);
+  border-radius: var(--a2l-radius-md);
+  gap: var(--a2l-space-2);
+}
+.wb3-inspector-card > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.wb3-inspector-card strong {
+  color: var(--a2l-color-accent-strong);
+  font-size: var(--a2l-text-meta-size);
+  font-weight: 600;
+}
+.wb3-inspector-card span {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-caption-size);
+}
+.wb3-inspector-card small {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-caption-size);
+}
+.wb3-action-card {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  padding: var(--a2l-space-3);
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  color: var(--a2l-color-text);
+  background: var(--a2l-color-surface);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-md);
+  cursor: pointer;
+  font: inherit;
+  gap: var(--a2l-space-2);
+}
+.wb3-action-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.wb3-action-card > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wb3-action-card strong {
+  font-size: var(--a2l-text-meta-size);
+  font-weight: 500;
+}
+.wb3-action-card small {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-caption-size);
+}

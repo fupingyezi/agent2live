@@ -1,0 +1,7 @@
+.iconButton {
+  border-radius: var(--a2l-radius-md);
+}
+.iconButton[aria-pressed='true'] {
+  background: var(--a2l-color-surface-selected);
+  color: var(--a2l-color-accent-strong);
+}

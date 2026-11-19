@@ -1,0 +1,27 @@
+.wb3-version-view {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+.wb3-version-empty {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+.wb3-version-empty {
+  align-items: center;
+  justify-content: center;
+}
+.wb3-version-layout {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 336px) minmax(0, 1fr) minmax(0, 324px);
+}
+.wb3-version-error {
+  padding: 0 var(--a2l-space-6);
+}

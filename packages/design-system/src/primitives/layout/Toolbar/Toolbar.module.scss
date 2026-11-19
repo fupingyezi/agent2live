@@ -1,0 +1,10 @@
+.toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--a2l-space-2);
+  align-items: center;
+  min-height: var(--a2l-space-10);
+}
+.toolbarWrap {
+  flex-wrap: wrap;
+}

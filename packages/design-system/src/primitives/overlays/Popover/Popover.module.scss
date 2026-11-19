@@ -1,0 +1,22 @@
+.popoverAnchor {
+  position: relative;
+  display: inline-flex;
+}
+.popover {
+  position: absolute;
+  top: calc(100% + var(--a2l-space-1));
+  z-index: 60;
+  min-width: 220px;
+  padding: var(--a2l-space-4);
+  color: var(--a2l-color-text);
+  background: var(--a2l-color-surface);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-md);
+  box-shadow: var(--a2l-shadow-popover);
+}
+.popoverStart {
+  left: 0;
+}
+.popoverEnd {
+  right: 0;
+}

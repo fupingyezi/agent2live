@@ -1,0 +1,1 @@
+export { CharacterCreatedPage } from './CharacterCreatedPage'

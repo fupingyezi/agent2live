@@ -1,0 +1,21 @@
+.reviewFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2l-space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--a2l-layout-actionbar);
+  padding-top: var(--a2l-space-4);
+  border-top: var(--a2l-border-width) solid var(--a2l-color-border);
+}
+.reviewSummary {
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+}
+.reviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2l-space-2);
+  align-items: center;
+}

@@ -1,0 +1,20 @@
+.tooltipWrap {
+  position: relative;
+  display: inline-flex;
+}
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + var(--a2l-space-1));
+  left: 50%;
+  z-index: 60;
+  max-width: 240px;
+  padding: var(--a2l-space-2) var(--a2l-space-3);
+  color: var(--a2l-color-on-accent);
+  white-space: normal;
+  pointer-events: none;
+  background: var(--a2l-color-text);
+  border-radius: var(--a2l-radius-sm);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+  transform: translateX(-50%);
+}

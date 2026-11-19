@@ -24,7 +24,10 @@ test('offers a Phase 2 Live2D placeholder from character and project entry point
     await studio.getByTestId('open-art-workbench').click()
     await expect(studio.locator('[data-testid="art-workbench"]')).toBeVisible({ timeout: 30_000 })
 
-    await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
+    const characterId = decodeURIComponent(new URL(studio.url()).hash.split('/')[2] ?? '')
+    await studio.evaluate((id) => {
+      window.location.hash = `#/characters/${encodeURIComponent(id)}`
+    }, characterId)
     const projectCard = studio.locator('[data-testid="project-card"]').filter({ hasText: '默认造型' })
     await expect(projectCard).toBeVisible()
     await projectCard.getByRole('link', { name: 'Live2D', exact: true }).click()
@@ -36,7 +39,6 @@ test('offers a Phase 2 Live2D placeholder from character and project entry point
     await expect(studio.locator('[data-testid="live2d-empty"]')).toContainText('Phase 2')
 
     await studio.getByRole('link', { name: /返回角色驾驶舱/ }).click()
-    const characterId = decodeURIComponent(new URL(studio.url()).hash.split('/')[2] ?? '')
     await studio.evaluate((id) => {
       window.location.hash = `#/characters/${encodeURIComponent(id)}/live2d`
     }, characterId)

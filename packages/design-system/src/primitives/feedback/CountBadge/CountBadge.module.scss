@@ -1,0 +1,16 @@
+.countBadge {
+  display: inline-grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0 var(--a2l-space-1);
+  border-radius: var(--a2l-radius-xs);
+  background: var(--a2l-color-accent-soft);
+  color: var(--a2l-color-accent-strong);
+  font-size: var(--a2l-text-meta-size);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.countBadge[data-state='overflow'] {
+  min-width: 32px;
+}

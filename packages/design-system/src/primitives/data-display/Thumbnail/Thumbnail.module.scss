@@ -1,0 +1,16 @@
+.thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--a2l-radius-md);
+}
+.thumbnailFallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--a2l-radius-md);
+  background: var(--a2l-color-surface-subtle);
+  color: var(--a2l-color-text-muted);
+}

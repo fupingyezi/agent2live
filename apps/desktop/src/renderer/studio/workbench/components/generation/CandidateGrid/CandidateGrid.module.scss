@@ -1,0 +1,5 @@
+.wb3-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--a2l-space-3);
+}

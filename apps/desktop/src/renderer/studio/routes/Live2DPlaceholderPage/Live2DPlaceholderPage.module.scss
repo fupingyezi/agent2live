@@ -1,0 +1,15 @@
+.live2d-page {
+  max-width: calc(var(--a2l-layout-inspector) * 3 + var(--a2l-space-10));
+}
+.live2d-stage {
+  display: grid;
+  place-items: center;
+  min-height: calc(var(--a2l-space-14) * 4 + var(--a2l-space-4));
+  margin-bottom: var(--a2l-space-5);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-lg);
+  background: var(--a2l-color-surface-subtle);
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-display-size);
+  letter-spacing: 0.2em;
+}

@@ -1,0 +1,28 @@
+.wb3-params-bar {
+  display: flex;
+  flex: 0 0 48px;
+  height: 48px;
+  padding: 0 var(--a2l-space-8);
+  align-items: center;
+  justify-content: space-between;
+  background: var(--a2l-color-surface-subtle);
+  border-bottom: var(--a2l-border-width) solid var(--a2l-color-border);
+  gap: var(--a2l-space-4);
+}
+.wb3-params-list {
+  display: flex;
+  align-items: center;
+  gap: var(--a2l-space-4);
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-meta-size);
+}
+.wb3-params-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--a2l-space-4);
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-meta-size);
+}
+.wb3-params-list span:first-child {
+  color: var(--a2l-color-text-muted);
+}

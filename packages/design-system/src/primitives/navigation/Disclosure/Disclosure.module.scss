@@ -1,0 +1,38 @@
+.disclosureButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--a2l-space-3);
+  width: 100%;
+  min-height: var(--a2l-space-10);
+  padding: var(--a2l-space-2) var(--a2l-space-4);
+  color: var(--a2l-color-text);
+  text-align: left;
+  background: var(--a2l-color-surface);
+  border: 0;
+  font: inherit;
+  font-size: var(--a2l-text-body-size);
+  cursor: pointer;
+}
+.disclosureButton:hover {
+  background: var(--a2l-color-surface-subtle);
+}
+.disclosureButton:focus-visible {
+  outline: 2px solid var(--a2l-color-focus);
+  outline-offset: -2px;
+}
+.disclosurePanel {
+  padding: var(--a2l-space-3) var(--a2l-space-4) var(--a2l-space-4);
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+  background: var(--a2l-color-surface-subtle);
+}
+.disclosure {
+  overflow: hidden;
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-md);
+}
+.disclosureButton[aria-expanded='false'] {
+  border-radius: var(--a2l-radius-md);
+}

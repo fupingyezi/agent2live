@@ -1,0 +1,22 @@
+.wb3-topbar {
+  display: flex;
+  flex: 0 0 60px;
+  height: 60px;
+  padding: 0 var(--a2l-space-8);
+  align-items: center;
+  justify-content: space-between;
+  background: var(--a2l-color-surface);
+  border-bottom: var(--a2l-border-width) solid var(--a2l-color-border);
+}
+.wb3-topbar h1 {
+  margin: 0;
+  color: var(--a2l-color-text);
+  font-size: var(--a2l-text-body-size);
+  font-weight: 600;
+  line-height: var(--a2l-text-body-line);
+}
+.wb3-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--a2l-space-2);
+}

@@ -1,0 +1,1 @@
+export { CharacterCockpitPage } from './CharacterCockpitPage'

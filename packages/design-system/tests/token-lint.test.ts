@@ -23,6 +23,14 @@ describe('token lint', () => {
     expect(result.map((violation) => violation.rule)).toEqual(['raw-color', 'raw-color', 'arbitrary-radius'])
   })
 
+  it('scans scss modules for raw colors and arbitrary radii', () => {
+    const result = scan(
+      'apps/desktop/src/renderer/studio/Page.module.scss',
+      '.root { color: #fff; background: rgba(0, 0, 0, 0.2); border-radius: 12px; }'
+    )
+    expect(result.map((violation) => violation.rule)).toEqual(['raw-color', 'raw-color', 'arbitrary-radius'])
+  })
+
   it('flags hex literals in TSX and deep imports', () => {
     const result = scan(
       'apps/desktop/src/renderer/studio/Page.tsx',

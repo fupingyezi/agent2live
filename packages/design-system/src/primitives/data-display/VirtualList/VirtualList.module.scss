@@ -1,0 +1,13 @@
+.virtualViewport {
+  overflow: auto;
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-md);
+}
+.virtualInner {
+  position: relative;
+}
+.virtualRow {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+}

@@ -1,0 +1,135 @@
+.wb3-card {
+  display: flex;
+  min-height: 0;
+  padding: var(--a2l-space-6);
+  overflow: hidden;
+  background: var(--a2l-color-surface);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-lg);
+  flex-direction: column;
+}
+.wb3-prompt-card {
+  min-width: 0;
+}
+.wb3-prompt-character {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--a2l-space-3);
+}
+.wb3-character-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--a2l-space-2);
+}
+.wb3-character-copy h2 {
+  margin: 0;
+  color: var(--a2l-color-text);
+  font-size: var(--a2l-text-title-sm-size);
+  font-weight: 600;
+}
+.wb3-character-copy span {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-meta-size);
+}
+.wb3-prompt-heading {
+  display: flex;
+  margin-top: var(--a2l-space-5);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--a2l-space-3);
+}
+.wb3-prompt-title {
+  display: flex;
+  align-items: center;
+  gap: var(--a2l-space-2);
+}
+.wb3-prompt-title h3 {
+  margin: 0;
+  color: var(--a2l-color-text);
+  font-size: var(--a2l-text-body-size);
+  font-weight: 600;
+}
+.wb3-pill {
+  display: inline-flex;
+  height: 22px;
+  padding: 0 var(--a2l-space-2);
+  align-items: center;
+  color: var(--a2l-color-text-muted);
+  background: var(--a2l-color-surface-subtle);
+  border-radius: var(--a2l-radius-xs);
+  font-size: var(--a2l-text-caption-size);
+}
+.wb3-prompt-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--a2l-space-1);
+}
+.wb3-ai-bar {
+  display: flex;
+  margin-top: var(--a2l-space-3);
+  align-items: center;
+  gap: var(--a2l-space-2);
+}
+.wb3-ai-bar input {
+  flex: 1 1 auto;
+}
+.wb3-filter-row {
+  display: flex;
+  margin-top: var(--a2l-space-3);
+  padding-bottom: var(--a2l-space-2);
+  overflow-x: auto;
+  align-items: center;
+  gap: var(--a2l-space-2);
+  scrollbar-width: thin;
+}
+.wb3-filter-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 16px;
+  background: var(--a2l-color-border);
+}
+.wb3-prompt-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: var(--a2l-space-2);
+  padding-right: var(--a2l-space-1);
+  overflow: auto;
+  flex-direction: column;
+}
+[class*='emptyMark']:has(> .wb3-empty-illustration) {
+  width: auto;
+  height: auto;
+  background: transparent;
+}
+.wb3-empty-illustration {
+  display: block;
+  width: 104px;
+  height: auto;
+}
+.wb3-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--a2l-space-2);
+}
+.wb3-card-footer {
+  display: flex;
+  min-height: 40px;
+  margin-top: var(--a2l-space-1);
+  padding-top: var(--a2l-space-2);
+  align-items: center;
+  justify-content: space-between;
+  border-top: var(--a2l-border-width) solid var(--a2l-color-border);
+  gap: var(--a2l-space-3);
+}
+.wb3-card-footer span {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-caption-size);
+}
+.wb3-card-error {
+  padding-top: var(--a2l-space-2);
+}

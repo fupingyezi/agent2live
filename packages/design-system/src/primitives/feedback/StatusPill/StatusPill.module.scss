@@ -1,0 +1,31 @@
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 var(--a2l-space-2);
+  border-radius: var(--a2l-radius-xs);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.toneNeutral {
+  background: var(--a2l-color-surface-subtle);
+  color: var(--a2l-color-text-secondary);
+}
+.toneAccent {
+  background: var(--a2l-color-accent-soft);
+  color: var(--a2l-color-accent-strong);
+}
+.toneSuccess {
+  background: var(--a2l-color-accent-soft);
+  color: var(--a2l-color-accent-strong);
+}
+.toneWarning {
+  background: var(--a2l-color-warning-bg);
+  color: var(--a2l-color-warning);
+}
+.toneDanger {
+  background: var(--a2l-color-danger-border);
+  color: var(--a2l-color-danger);
+}

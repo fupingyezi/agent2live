@@ -1,0 +1,38 @@
+.workbench-loading {
+  padding-block: var(--a2l-space-6);
+}
+.wb3-candidates-view {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+.wb3-candidates-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--a2l-space-5) var(--a2l-space-8);
+  overflow: auto;
+}
+.wb3-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--a2l-space-3);
+}
+.wb3-candidates-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2l-space-3);
+}
+.wb3-candidate-skeleton {
+  min-height: 380px;
+  background: var(--a2l-color-surface-subtle);
+  border: var(--a2l-border-width) dashed var(--a2l-color-border-strong);
+  border-radius: var(--a2l-radius-lg);
+}
+.wb3-candidate-empty {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}

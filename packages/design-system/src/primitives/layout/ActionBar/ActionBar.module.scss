@@ -1,0 +1,26 @@
+.actionBar {
+  display: flex;
+  gap: var(--a2l-space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--a2l-layout-actionbar);
+  padding: var(--a2l-space-2) var(--a2l-space-4);
+  background: var(--a2l-color-surface);
+  border-top: var(--a2l-border-width) solid var(--a2l-color-border);
+}
+.actionBarStatus {
+  display: flex;
+  gap: var(--a2l-space-2);
+  align-items: center;
+  min-width: 0;
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+}
+.actionBarActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--a2l-space-2);
+  align-items: center;
+}

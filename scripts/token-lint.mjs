@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const TARGETS = ['apps/desktop/src/renderer']
-const SOURCE_FILE = /\.(css|tsx?)$/
+const SOURCE_FILE = /\.(css|scss|tsx?)$/
 const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/g
 const COLOR_FUNCTION = /\b(?:rgba?|hsla?)\(/g
 const ARBITRARY_RADIUS = /border-radius\s*:\s*(?!var\(--a2l-radius-)(?!0(?:px)?\b)(?!50%)\S[^;]*/
@@ -21,7 +21,7 @@ export function scanTokenViolations(files) {
       for (let count = 0; count < rawColors; count += 1) {
         violations.push({ path: file.path, line, rule: 'raw-color', text: text.trim() })
       }
-      if (file.path.endsWith('.css') && ARBITRARY_RADIUS.test(text)) {
+      if ((file.path.endsWith('.css') || file.path.endsWith('.scss')) && ARBITRARY_RADIUS.test(text)) {
         violations.push({ path: file.path, line, rule: 'arbitrary-radius', text: text.trim() })
       }
       if (DEEP_IMPORT.test(text)) {

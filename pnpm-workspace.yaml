@@ -11,6 +11,7 @@ allowBuilds:
   sharp: true
   esbuild: true
   electron-winstaller: false
+  '@parcel/watcher': false
 
 onlyBuiltDependencies:
   - electron

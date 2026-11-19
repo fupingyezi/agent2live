@@ -1,0 +1,83 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--a2l-space-2);
+  min-height: 40px;
+  padding: 0 var(--a2l-space-4);
+  border: var(--a2l-border-width) solid transparent;
+  border-radius: var(--a2l-radius-control);
+  font-family: var(--a2l-font-sans);
+  font-size: var(--a2l-text-label-size);
+  line-height: var(--a2l-text-label-line);
+  font-weight: var(--a2l-text-label-weight);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--a2l-motion-fast) var(--a2l-ease-standard),
+    border-color var(--a2l-motion-fast) var(--a2l-ease-standard),
+    color var(--a2l-motion-fast) var(--a2l-ease-standard),
+    transform var(--a2l-motion-fast) var(--a2l-ease-standard);
+}
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.primary {
+  background: var(--a2l-color-accent);
+  color: var(--a2l-color-on-accent);
+}
+.primary:hover:not(:disabled) {
+  background: var(--a2l-color-accent-strong);
+}
+.secondary {
+  background: var(--a2l-color-accent-soft);
+  color: var(--a2l-color-accent-strong);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--a2l-color-surface-selected);
+}
+.quiet {
+  background: transparent;
+  border-color: var(--a2l-color-border);
+  color: var(--a2l-color-text-secondary);
+}
+.quiet:hover:not(:disabled) {
+  background: var(--a2l-color-surface-subtle);
+  color: var(--a2l-color-text);
+}
+.danger {
+  background: var(--a2l-color-danger);
+  color: var(--a2l-color-on-accent);
+}
+.danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+.md {
+  min-height: 40px;
+  padding-inline: var(--a2l-space-4);
+}
+.sm {
+  min-height: 32px;
+  padding-inline: var(--a2l-space-3);
+}
+.icon {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: var(--a2l-radius-md);
+}
+.buttonIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.buttonLabel {
+  display: inline-block;
+}

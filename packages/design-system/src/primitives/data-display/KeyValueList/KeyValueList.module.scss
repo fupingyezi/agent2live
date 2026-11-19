@@ -1,0 +1,22 @@
+.keyValueList {
+  display: grid;
+  gap: var(--a2l-space-2);
+  margin: 0;
+}
+.keyValueRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.4fr) minmax(0, 1fr);
+  gap: var(--a2l-space-3);
+}
+.keyValueRow dt {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+}
+.keyValueRow dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+}

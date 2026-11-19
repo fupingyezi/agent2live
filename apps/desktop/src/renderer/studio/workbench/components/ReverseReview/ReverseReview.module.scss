@@ -1,0 +1,26 @@
+.ai-review {
+  margin-top: var(--a2l-space-3);
+  padding-top: var(--a2l-space-3);
+  border-top: var(--a2l-border-width) solid var(--a2l-color-border);
+}
+.review-block-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2l-space-2);
+  max-height: 300px;
+  margin: var(--a2l-space-2) 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.review-block {
+  padding: var(--a2l-space-2);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-sm);
+  background: var(--a2l-color-surface-subtle);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+}
+.review-block p {
+  margin: var(--a2l-space-1) 0 0;
+}

@@ -1,0 +1,11 @@
+.imageFrame {
+  position: relative;
+  overflow: hidden;
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-md);
+  background: var(--a2l-color-surface-subtle);
+}
+.imageFrame[data-state='selected'] {
+  border-color: var(--a2l-color-accent);
+  box-shadow: 0 0 0 2px var(--a2l-color-accent-soft);
+}

@@ -1,0 +1,56 @@
+.errorState {
+  display: flex;
+  gap: var(--a2l-space-4);
+  padding: var(--a2l-space-5);
+  border: var(--a2l-border-width) solid var(--a2l-color-danger-border);
+  border-radius: var(--a2l-radius-lg);
+  background: var(--a2l-color-surface);
+}
+.errorMark {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--a2l-color-danger-border);
+  color: var(--a2l-color-danger);
+  font-weight: 700;
+}
+.errorCopy {
+  min-width: 0;
+}
+.errorTitle {
+  margin: 0 0 var(--a2l-space-1);
+  font-size: var(--a2l-text-title-sm-size);
+  line-height: var(--a2l-text-title-sm-line);
+  font-weight: var(--a2l-text-title-sm-weight);
+}
+.errorDescription {
+  margin: 0 0 var(--a2l-space-3);
+  color: var(--a2l-color-text-secondary);
+  line-height: var(--a2l-text-body-line);
+}
+.errorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2l-space-2);
+}
+.errorDetails {
+  margin-top: var(--a2l-space-3);
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-meta-size);
+}
+.errorDetails summary {
+  cursor: pointer;
+  min-height: 32px;
+}
+.errorDetails dl {
+  margin: var(--a2l-space-2) 0 0;
+}
+.errorDetails dt {
+  font-weight: 500;
+}
+.errorDetails dd {
+  margin: 0 0 var(--a2l-space-1);
+}

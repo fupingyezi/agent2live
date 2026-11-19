@@ -1,0 +1,106 @@
+html {
+  height: 100%;
+}
+body {
+  height: 100%;
+}
+#root {
+  height: 100%;
+}
+.studio-bg {
+  background: var(--a2l-color-app-bg);
+}
+.studio-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  color: var(--a2l-color-text);
+  background: var(--a2l-color-app-bg);
+}
+.studio-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.studio-page-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.studio-page-topbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--a2l-space-3);
+  align-items: center;
+  width: 100%;
+  height: var(--a2l-layout-topbar);
+  padding: 0 var(--a2l-space-7);
+  background: var(--a2l-color-surface);
+  border-bottom: var(--a2l-border-width) solid var(--a2l-color-border);
+}
+.studio-breadcrumb {
+  overflow: hidden;
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-page-topbar-actions {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.studio-page-topbar[data-tone='completion'] {
+  height: 60px;
+  padding-inline: 36px;
+}
+.studio-page-topbar[data-tone='editor'] {
+  height: 60px;
+  padding-inline: 36px;
+}
+.studio-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
+}
+.studio-content::-webkit-scrollbar {
+  display: none;
+}
+.studio-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2l-space-6);
+  width: 100%;
+  max-width: 1296px;
+  margin-inline: auto;
+  padding: var(--a2l-space-7) var(--a2l-space-8);
+}
+.studio-meta {
+  margin: 0;
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-meta-line);
+}
+
+@media (max-width: 720px) {
+  .studio-page {
+    padding: var(--a2l-space-4);
+  }
+  .studio-page-topbar {
+    padding-inline: var(--a2l-space-4);
+  }
+}

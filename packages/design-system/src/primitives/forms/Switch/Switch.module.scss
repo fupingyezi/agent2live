@@ -1,0 +1,30 @@
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--a2l-color-border-strong);
+  cursor: pointer;
+  transition: background var(--a2l-motion-fast) var(--a2l-ease-standard);
+}
+.switch[data-state='on'] {
+  background: var(--a2l-color-accent);
+}
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.switchThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--a2l-color-surface);
+  transition: transform var(--a2l-motion-fast) var(--a2l-ease-standard);
+}
+.switch[data-state='on'] .switchThumb {
+  transform: translateX(20px);
+}

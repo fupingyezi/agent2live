@@ -1,0 +1,6 @@
+.wb3-dialog-spacer {
+  flex: 1 1 auto;
+}
+[role='dialog'].wb3-reference-dialog {
+  width: min(720px, calc(100vw - 48px));
+}

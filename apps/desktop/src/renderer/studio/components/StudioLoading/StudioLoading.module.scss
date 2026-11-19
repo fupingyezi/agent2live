@@ -1,0 +1,15 @@
+.studio-loading {
+  width: 100%;
+}
+.studio-loading {
+  display: flex;
+  gap: var(--a2l-space-3);
+  align-items: center;
+  padding: var(--a2l-space-6);
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-body-size);
+  line-height: var(--a2l-text-body-line);
+}
+.studio-loading p {
+  margin: 0;
+}

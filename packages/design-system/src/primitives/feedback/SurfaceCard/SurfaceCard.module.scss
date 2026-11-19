@@ -1,0 +1,36 @@
+.surfaceCard {
+  display: block;
+  padding: var(--a2l-space-5);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-lg);
+  background: var(--a2l-color-surface);
+  color: var(--a2l-color-text);
+  text-decoration: none;
+}
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--a2l-space-3);
+  margin-bottom: var(--a2l-space-3);
+}
+.cardTitle {
+  margin: 0;
+  font-size: var(--a2l-text-title-sm-size);
+  line-height: var(--a2l-text-title-sm-line);
+  font-weight: var(--a2l-text-title-sm-weight);
+}
+.cardDescription {
+  margin: var(--a2l-space-1) 0 0;
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-body-sm-size);
+  line-height: var(--a2l-text-body-sm-line);
+}
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: var(--a2l-space-2);
+}
+.cardBody {
+  min-width: 0;
+}
