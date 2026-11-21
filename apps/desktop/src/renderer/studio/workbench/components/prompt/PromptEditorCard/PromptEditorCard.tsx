@@ -81,16 +81,8 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   const dropped = new Set(droppedBlockIds)
 
   useEffect(() => {
-    if (!spec) {
-      setCollapsed({})
-      return
-    }
-    const next: Record<string, boolean> = {}
-    promptBlockGroups(spec, filter).forEach((group, index) => {
-      next[group.id] = total > 12 && index > 0
-    })
-    setCollapsed(next)
-  }, [filter, total, spec, spec?.blocks.length, spec?.negativeBlocks.length])
+    setCollapsed({})
+  }, [filter, spec, spec?.blocks.length, spec?.negativeBlocks.length])
 
   const submitIntent = (): void => {
     if (busy) return
