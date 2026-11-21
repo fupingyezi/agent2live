@@ -155,7 +155,7 @@ export class GenerationService {
   constructor(private readonly deps: GenerationServiceDeps) {}
 
   prepare(projectId: string, input: CreateGenerationInput): PreparedGeneration {
-    this.deps.projects.getWritable(projectId)
+    const project = this.deps.projects.getWritable(projectId)
     const version = this.deps.versions.get(projectId, input.promptVersionId)
     const connection = this.deps.connections.getRow(input.providerConnectionId)
     if (!connection.enabled) {
@@ -189,7 +189,13 @@ export class GenerationService {
         limit: image.maxPromptChars
       })
     }
-    const baseArtVersionId = input.baseArtVersionId ?? null
+    const baseArtVersionId = input.baseArtVersionId ?? project.activeVersionId
+    if (input.baseArtVersionId !== undefined && input.baseArtVersionId !== project.activeVersionId) {
+      throw new AppError('ART_ACTIVE_VERSION_CHANGED', {
+        expected: project.activeVersionId,
+        actual: input.baseArtVersionId
+      })
+    }
     if (baseArtVersionId !== null) {
       this.deps.artVersions.get(projectId, baseArtVersionId)
     }

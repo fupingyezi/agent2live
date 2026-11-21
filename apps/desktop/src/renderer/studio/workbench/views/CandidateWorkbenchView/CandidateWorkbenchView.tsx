@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
-import type { GenerationDto } from '@studio/api'
+import type { ArtVersionDto, GenerationDto } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
+import { formatDateTime } from '@studio/format'
 import { Button, ConfirmDialog, EmptyState, InlineNotice, ProgressBar } from '@agent2live/design-system'
 import { StudioLoading } from '@studio/components'
 import { GenerationParamsBar } from '../../components/generation/GenerationParamsBar'
@@ -11,11 +13,12 @@ export interface CandidateWorkbenchViewProps {
   generation: GenerationDto | null
   loading: boolean
   promptVersionNumber: number | null
+  baseVersionId: string | null
+  baseVersion: ArtVersionDto | null
   providerLabel: string
   selectedCandidateId: string | null
   savingCandidateId: string | null
   discarding: boolean
-  nextVersionNumber: number
   onSelectCandidate(candidateId: string): void
   onSaveCandidate(candidateId: string): void
   onViewArtVersion(versionId: string): void
@@ -32,11 +35,12 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
   generation,
   loading,
   promptVersionNumber,
+  baseVersionId,
+  baseVersion,
   providerLabel,
   selectedCandidateId,
   savingCandidateId,
   discarding,
-  nextVersionNumber,
   onSelectCandidate,
   onSaveCandidate,
   onViewArtVersion,
@@ -49,6 +53,8 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
   error
 }) => {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const { url: baseUrl, isLoading: baseLoading } = useAssetUrl(baseVersion?.artworkAssetId ?? null)
+  const hasBase = baseVersionId !== null
 
   if (loading) {
     return (
@@ -144,17 +150,50 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
             }
           />
         ) : (
-          <CandidateGrid
-            candidates={showable}
-            requestedCount={generation.count}
-            selectedId={selectedCandidateId}
-            savingId={savingCandidateId}
-            seconds={seconds}
-            onSelect={onSelectCandidate}
-            onSave={onSaveCandidate}
-            onViewArtVersion={onViewArtVersion}
-            onRetrySlot={onRetrySlot}
-          />
+          <div className={styles['wb3-candidate-compare']!}>
+            <aside className={styles['wb3-candidate-baseline']!} data-testid="wb3-candidate-baseline">
+              <header>
+                <strong>{baseVersion ? '当前立绘（本次基线）' : hasBase ? '本次基线' : '首次立绘'}</strong>
+                <span>{hasBase ? '旧图只用于本次对比' : '没有旧图可对比'}</span>
+              </header>
+              <div className={styles['wb3-candidate-baseline-image']!}>
+                {!hasBase ? (
+                  <span>这次没有旧立绘，直接从提示词生成。</span>
+                ) : baseVersion === null ? (
+                  <span>本次基线暂时不可用。当前立绘仍保持不变。</span>
+                ) : baseLoading ? (
+                  <span>加载中…</span>
+                ) : baseUrl ? (
+                  <img src={baseUrl} alt="本次生成使用的当前立绘基线" />
+                ) : (
+                  <span>无法加载当前立绘</span>
+                )}
+              </div>
+              <footer>
+                {baseVersion ? (
+                  <>
+                    <strong>第 {baseVersion.versionNumber} 版</strong>
+                    <span>{formatDateTime(baseVersion.createdAt)}</span>
+                  </>
+                ) : hasBase ? (
+                  <span>生成批次已固定旧图，正在等待基线信息</span>
+                ) : (
+                  <span>提示词驱动的新起点</span>
+                )}
+              </footer>
+            </aside>
+            <CandidateGrid
+              candidates={showable}
+              requestedCount={generation.count}
+              selectedId={selectedCandidateId}
+              savingId={savingCandidateId}
+              seconds={seconds}
+              onSelect={onSelectCandidate}
+              onSave={onSaveCandidate}
+              onViewArtVersion={onViewArtVersion}
+              onRetrySlot={onRetrySlot}
+            />
+          </div>
         )}
       </div>
       <WorkbenchActionBar
@@ -163,7 +202,9 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
             ? `生成中 · ${generation.progress ?? 0}%`
             : failed
               ? '生成失败'
-              : `已选 ${selectedCount} 张 · 存为立绘后成为第 ${nextVersionNumber} 版`
+              : selectedCount === 0
+                ? '请选择一张候选 · 选中后会替换当前立绘'
+                : `已选 ${selectedCount} 张 · 将替换当前立绘`
         }
       >
         <Button variant="secondary" disabled={running || discarding} onClick={() => setConfirmDiscard(true)}>
@@ -191,7 +232,7 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
           onDiscard()
         }}
       >
-        <p>本批候选会被标记为已丢弃，不会删除历史记录，也不会影响当前立绘版本。</p>
+        <p>本批候选会被标记为已丢弃，不会删除历史记录，也不会影响当前立绘。</p>
       </ConfirmDialog>
     </div>
   )

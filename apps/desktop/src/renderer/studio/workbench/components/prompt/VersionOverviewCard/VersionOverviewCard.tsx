@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import type { ArtProjectDto, ArtVersionDto, PromptVersionDto } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
 import { formatDateTime } from '@studio/format'
@@ -33,12 +33,6 @@ export const VersionOverviewCard: React.FC<VersionOverviewCardProps> = ({
   artVersions,
   onViewArtVersion
 }) => {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setSelectedId(null)
-  }, [promptVersion?.id])
-
   if (!promptVersion) {
     return (
       <aside
@@ -50,14 +44,7 @@ export const VersionOverviewCard: React.FC<VersionOverviewCardProps> = ({
     )
   }
 
-  const linkedArt = artVersions
-    .filter((version) => version.promptVersionId === promptVersion.id)
-    .sort((left, right) => right.versionNumber - left.versionNumber)
-  const selected =
-    linkedArt.find((version) => version.id === selectedId) ??
-    linkedArt.find((version) => version.id === project.activeVersionId) ??
-    linkedArt[0] ??
-    null
+  const currentArt = artVersions.find((version) => version.id === project.activeVersionId) ?? null
 
   return (
     <aside
@@ -66,56 +53,51 @@ export const VersionOverviewCard: React.FC<VersionOverviewCardProps> = ({
     >
       <header className={styles['wb3-overview-heading']!}>
         <h2>
-          {`${project.activePromptVersionId === promptVersion.id ? '当前版本' : '历史版本'} 第 ${
+          {`${project.activePromptVersionId === promptVersion.id ? '当前提示词' : '历史提示词'} 第 ${
             promptVersion.versionNumber
           } 版`}
         </h2>
-        <p>{`当前版本生成的立绘 ${linkedArt.length} 个`}</p>
+        <p>立绘区域只展示唯一当前结果</p>
       </header>
 
-      {selected ? (
+      {currentArt ? (
         <>
           <div className={styles['wb3-art-preview']!}>
-            <ArtImage assetId={selected.artworkAssetId} alt={`第 ${selected.versionNumber} 版立绘`} />
-          </div>
-
-          <div className={styles['wb3-art-strip']!}>
-            {linkedArt.map((version) => (
-              <button
-                key={version.id}
-                type="button"
-                className={styles['wb3-art-thumb']!}
-                data-state={version.id === selected.id ? 'selected' : undefined}
-                data-testid="wb3-art-version-row"
-                data-version-id={version.id}
-                data-active={version.id === project.activeVersionId || undefined}
-                aria-label={`查看第 ${version.versionNumber} 版立绘`}
-                onClick={() => setSelectedId(version.id)}
-              >
-                <ArtImage assetId={version.artworkAssetId} alt="" />
-              </button>
-            ))}
+            <ArtImage assetId={currentArt.artworkAssetId} alt="当前立绘" />
           </div>
 
           <div className={styles['wb3-art-facts']!}>
             <div>
+              <span>状态</span>
+              <strong>当前立绘</strong>
+            </div>
+            <div>
               <span>来源</span>
-              <strong>{ART_SOURCE_LABELS[selected.sourceKind]}</strong>
+              <strong>{ART_SOURCE_LABELS[currentArt.sourceKind]}</strong>
             </div>
             <div>
               <span>时间</span>
-              <strong>{formatDateTime(selected.createdAt)}</strong>
+              <strong>{formatDateTime(currentArt.createdAt)}</strong>
             </div>
           </div>
 
+          <p className={styles['wb3-art-note']!}>
+            不满意时继续修改提示词并重新生成；新候选会和这张图对比后二选一替换。
+          </p>
+
           <div className={styles['wb3-art-footer']!}>
-            <Button type="button" variant="secondary" size="sm" onClick={() => onViewArtVersion(selected.id)}>
-              打开立绘版本
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => onViewArtVersion(currentArt.id)}
+            >
+              打开当前立绘
             </Button>
           </div>
         </>
       ) : (
-        <p className={styles['wb3-overview-muted']!}>还没有由这一版提示词生成的立绘。</p>
+        <p className={styles['wb3-overview-muted']!}>还没有当前立绘。修改提示词后生成第一张。</p>
       )}
     </aside>
   )

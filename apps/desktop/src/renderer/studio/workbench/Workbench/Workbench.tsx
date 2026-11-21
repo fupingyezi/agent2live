@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ArtProjectDto, CharacterDto, PromptBlock, PromptDraftDto, PromptVersionDto } from '@studio/api'
 import {
   acceptGenerationCandidate,
-  activateArtVersion,
   ApiError,
   commitPromptDraft,
   createPromptDraft,
@@ -26,7 +25,6 @@ import { AsyncButton, Button, Dialog, InlineNotice } from '@agent2live/design-sy
 import { StudioError, StudioLoading } from '@studio/components'
 import { findDefaultTextProvider } from '@studio/providers'
 import { useWorkbenchStore } from '../store'
-import { ForkDialog, type ForkSource } from '../components'
 import { WorkbenchMoreMenu } from '../components/WorkbenchMoreMenu'
 import { GenerationDialog, type GenerationDefaults } from '../components/GenerationDialog'
 import { parseWorkbenchView, updateWorkbenchView } from '../view-state'
@@ -119,12 +117,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [searchParams, setSearchParams] = useSearchParams()
   const hydrate = useWorkbenchStore((state) => state.hydrate)
   const applyServerDraft = useWorkbenchStore((state) => state.applyServerDraft)
-  const resetStore = useWorkbenchStore((state) => state.reset)
   const storeDraft = useWorkbenchStore((state) => state.draft)
   const dirty = useWorkbenchStore((state) => state.dirty)
 
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
-  const [forkSource, setForkSource] = useState<ForkSource | null>(null)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   const [generationDefaults, setGenerationDefaults] = useState<GenerationDefaults | null>(null)
   const [generationPromptVersion, setGenerationPromptVersion] = useState<{
@@ -142,7 +138,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [filter, setFilter] = useState<PromptFilter>('all')
   const [versionSubmitting, setVersionSubmitting] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
-  const [activatingArtVersion, setActivatingArtVersion] = useState(false)
   const [pendingRollback, setPendingRollback] = useState<PromptVersionDto | null>(null)
   const [rollbackBusy, setRollbackBusy] = useState(false)
   const [blockDialog, setBlockDialog] = useState<{
@@ -222,16 +217,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       ? generationDetailQuery.data
       : null
   const artVersions = versionsQuery.data ?? []
-  const selectedArtVersionId =
-    artVersions.find((version) => version.id === viewState.artVersionId)?.id ??
-    project.activeVersionId ??
-    artVersions[0]?.id ??
-    null
-  const selectedArtVersion = artVersions.find((version) => version.id === selectedArtVersionId) ?? null
+  const currentArtVersion = artVersions.find((version) => version.id === project.activeVersionId) ?? null
   const artPromptVersionQuery = useQuery({
-    queryKey: queryKeys.promptVersion(project.id, selectedArtVersion?.promptVersionId ?? 'none'),
-    queryFn: ({ signal }) => getPromptVersion(project.id, selectedArtVersion!.promptVersionId, signal),
-    enabled: Boolean(selectedArtVersion)
+    queryKey: queryKeys.promptVersion(project.id, currentArtVersion?.promptVersionId ?? 'none'),
+    queryFn: ({ signal }) => getPromptVersion(project.id, currentArtVersion!.promptVersionId, signal),
+    enabled: Boolean(currentArtVersion)
   })
   const providers = providersQuery.data ?? []
   const currentDraftRowVersion =
@@ -253,6 +243,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     generationsQuery.data,
     viewState.generationId
   ])
+  const candidateBaseVersion =
+    artVersions.find((version) => version.id === candidateGeneration?.baseArtVersionId) ?? null
   const candidateGenerationLoading =
     candidateGeneration === null &&
     (generationsQuery.isPending || (Boolean(viewState.generationId) && generationDetailQuery.isPending))
@@ -289,8 +281,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       (workspace?.activePromptVersion?.id === versionId ? workspace.activePromptVersion.versionNumber : null)
     )
   }, [candidateGeneration?.promptVersionId, workspace?.versions, workspace?.activePromptVersion])
-
-  const nextVersionNumber = artVersions.reduce((max, version) => Math.max(max, version.versionNumber), 0) + 1
 
   const selectedPromptVersionId = viewState.promptVersionId ?? workspace?.activePromptVersion?.id ?? null
   const latestGeneration = useMemo(() => {
@@ -375,24 +365,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   useEffect(() => {
     if (workspace?.activeDraft) setDraftHint(null)
   }, [workspace?.activeDraft?.id])
-
-  useEffect(() => {
-    if (viewState.view !== 'versions' || !viewState.artVersionId) return
-    if (versionsQuery.isFetching || versionsQuery.isError) return
-    if (artVersions.some((version) => version.id === viewState.artVersionId)) return
-    const resolvedId =
-      artVersions.find((version) => version.id === project.activeVersionId)?.id ?? artVersions[0]?.id ?? null
-    if (resolvedId === viewState.artVersionId) return
-    setView({ view: 'versions', artVersionId: resolvedId })
-  }, [
-    artVersions,
-    project.activeVersionId,
-    setView,
-    versionsQuery.isError,
-    versionsQuery.isFetching,
-    viewState.artVersionId,
-    viewState.view
-  ])
 
   useEffect(() => {
     if (viewState.view !== 'prompt' || !viewState.promptVersionId) return
@@ -753,29 +725,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       .finally(() => setSavingCandidateId(null))
   }
 
-  const activateSelectedArtVersion = (): void => {
-    if (!selectedArtVersion) return
-    const active = artVersions.find((version) => version.id === project.activeVersionId) ?? null
-    const reason = active && selectedArtVersion.versionNumber < active.versionNumber ? 'rollback' : 'switch'
-    setActivatingArtVersion(true)
-    setVersionError(null)
-    activateArtVersion(project.id, selectedArtVersion.id, reason, project.rowVersion)
-      .then((mutation) => {
-        queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
-        setView({ view: 'versions', artVersionId: mutation.artVersion.id })
-        return Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.artVersions(project.id) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.generations(project.id) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.lineages }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.characters })
-        ])
-      })
-      .catch((reason) => setVersionError(errorMessage(reason)))
-      .finally(() => setActivatingArtVersion(false))
-  }
-
   const discardBatch = (): void => {
     if (!candidateGeneration) return
     setDiscarding(true)
@@ -825,13 +774,16 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       setDialogError('正在保存，请稍候')
       return
     }
+    saveLock.current = true
     setDialogSaving(true)
     setDialogError(null)
     let applied = false
     try {
       apply()
       applied = true
-      await saveCurrentVersion()
+      const saved = await persistPromptEdit()
+      useWorkbenchStore.getState().markSaved(saved.state, saved.rowVersion, saved.revision)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.workspace(project.id) })
       close()
     } catch (reason) {
       if (applied && restore) {
@@ -843,6 +795,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       }
       setDialogError(errorMessage(reason))
     } finally {
+      saveLock.current = false
       setDialogSaving(false)
     }
   }
@@ -899,20 +852,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     invalidateProjectWorkspace()
   }
 
-  const handleForkCreated = (child: ArtProjectDto): void => {
-    setForkSource(null)
-    setDraftHint(null)
-    resetStore()
-    navigate(
-      `/characters/${encodeURIComponent(child.characterId)}/art?project=${encodeURIComponent(child.id)}`
-    )
-  }
-
   const title =
     viewState.view === 'candidates'
       ? '立绘工作台'
       : viewState.view === 'versions'
-        ? '立绘版本'
+        ? '当前立绘'
         : '提示词工作台'
 
   const handleSubmitVersion = (): void => {
@@ -996,11 +940,12 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             generation={candidateGeneration}
             loading={candidateGenerationLoading}
             promptVersionNumber={promptVersionNumberForGeneration}
+            baseVersionId={candidateGeneration?.baseArtVersionId ?? null}
+            baseVersion={candidateBaseVersion}
             providerLabel={providerLabel}
             selectedCandidateId={selectedCandidateId}
             savingCandidateId={savingCandidateId}
             discarding={discarding}
-            nextVersionNumber={nextVersionNumber}
             onSelectCandidate={setSelectedCandidateId}
             onSaveCandidate={saveCandidate}
             onViewArtVersion={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
@@ -1021,7 +966,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           />
         ) : versionsQuery.isPending ? (
           <section className={styles['workbench-loading']!}>
-            <StudioLoading label="正在加载立绘版本…" />
+            <StudioLoading label="正在加载当前立绘…" />
           </section>
         ) : versionsQuery.isError && !versionsQuery.data ? (
           <section className={styles['workbench-loading']!} data-testid="versions-error">
@@ -1037,7 +982,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             {versionsQuery.isError ? (
               <div className={styles['wb3-version-refetch-error']!} data-testid="wb3-version-refetch-error">
                 <InlineNotice tone="danger">
-                  刷新立绘版本失败：{errorMessage(versionsQuery.error) ?? '请重试。'}
+                  刷新当前立绘失败：{errorMessage(versionsQuery.error) ?? '请重试。'}
                 </InlineNotice>
                 <Button
                   variant="secondary"
@@ -1052,34 +997,22 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             ) : null}
             <ArtVersionView
               project={project}
-              artVersions={artVersions}
-              selectedVersion={selectedArtVersion}
+              currentVersion={currentArtVersion}
               promptVersion={artPromptVersionQuery.data ?? null}
-              generations={generationsQuery.data ?? []}
-              activating={activatingArtVersion}
               error={versionError}
-              onSelect={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
-              onActivate={activateSelectedArtVersion}
-              onFork={() => {
-                if (selectedArtVersion) {
-                  setForkSource({
-                    kind: 'art_version',
-                    versionId: selectedArtVersion.id,
-                    versionLabel: `第 ${selectedArtVersion.versionNumber} 版`
-                  })
-                }
-              }}
-              onOpenVersions={() => setVersionDrawerOpen(true)}
               onBackToPrompt={() => {
                 setView({
                   view: 'prompt',
-                  promptVersionId: selectedArtVersion?.promptVersionId ?? null
+                  promptVersionId: currentArtVersion?.promptVersionId ?? null
                 })
               }}
+              onRegenerate={() => {
+                void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
+              }}
               onOpenLayered={() => {
-                if (selectedArtVersion) {
+                if (currentArtVersion) {
                   navigate(
-                    `/characters/${encodeURIComponent(project.characterId)}/live2d?artVersion=${encodeURIComponent(selectedArtVersion.id)}`
+                    `/characters/${encodeURIComponent(project.characterId)}/live2d?artVersion=${encodeURIComponent(currentArtVersion.id)}`
                   )
                 }
               }}
@@ -1094,9 +1027,11 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               ? '历史版本只读'
               : dirty
                 ? '有未保存修改'
-                : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版 · ${
-                    (displaySpec?.blocks.length ?? 0) + (displaySpec?.negativeBlocks.length ?? 0)
-                  } 块`
+                : canCommit
+                  ? '草稿待提交为新版本'
+                  : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版 · ${
+                      (displaySpec?.blocks.length ?? 0) + (displaySpec?.negativeBlocks.length ?? 0)
+                    } 块`
           }
         >
           <Button
@@ -1166,16 +1101,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         open={versionDrawerOpen}
         project={project}
         promptVersions={workspace.versions}
-        artVersions={artVersions}
         selectedPromptVersionId={selectedPromptVersion?.id ?? null}
         onClose={closeVersionDrawer}
         onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
         onRollback={requestRollback}
-        onViewArtVersion={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
-        onFork={setForkSource}
-        onMutated={(mutation) => {
-          queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
-        }}
       />
 
       <ReferenceGalleryDialog
@@ -1310,16 +1239,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           </Button>
         </div>
       </Dialog>
-
-      {forkSource ? (
-        <ForkDialog
-          open
-          project={project}
-          source={forkSource}
-          onClose={() => setForkSource(null)}
-          onCreated={handleForkCreated}
-        />
-      ) : null}
     </section>
   )
 }

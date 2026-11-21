@@ -98,8 +98,8 @@ export const ProjectInfoDialog: React.FC<ProjectInfoDialogProps> = ({
 
         <section className={styles['section']!}>
           <header className={styles['section-head']!}>
-            <h3>四套版本</h3>
-            <span>各自从第 1 版排号</span>
+            <h3>当前内容</h3>
+            <span>只展示当前采用结果</span>
           </header>
           <div className={styles['version-table']!}>
             <VersionRow
@@ -110,7 +110,7 @@ export const ProjectInfoDialog: React.FC<ProjectInfoDialogProps> = ({
             <div className={styles['divider']!} />
             <VersionRow
               label="立绘"
-              value={activeArtVersion ? `第 ${activeArtVersion.versionNumber} 版` : '未生成'}
+              value={activeArtVersion ? '当前立绘' : '未生成'}
               detail={activeArtVersion ? ART_SOURCE_LABELS[activeArtVersion.sourceKind] : '等提示词生成'}
             />
             <div className={styles['divider']!} />

@@ -138,10 +138,11 @@ test('renders the v3 prompt workbench and saves block edits as a new version', a
 
     await rows.filter({ hasText: '渲染风格' }).click()
     const dialog = studio.page.getByRole('dialog')
-    await expect(dialog).toContainText('编辑块')
+    await expect(dialog).toContainText('编辑条目')
     await dialog.getByLabel('正文').fill('清爽的日系赛璐璐插画，干净线稿，柔和逆光')
-    await dialog.getByRole('button', { name: '保存为新版本' }).click()
+    await dialog.getByRole('button', { name: '保存草稿' }).click()
     await expect(dialog).toBeHidden({ timeout: 30_000 })
+    await studio.page.getByRole('button', { name: '提交为新版本' }).click()
 
     await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 2 版')
     await expect(studio.page.locator('[data-testid="wb3-prompt-editor"]')).toContainText('柔和逆光')
@@ -173,10 +174,11 @@ test('renames the character and rolls back a prompt version', async () => {
       .locator('[data-testid="wb3-prompt-block-row"]')
       .filter({ hasText: '渲染风格' })
     await styleRow.click()
-    const blockDialog = studio.page.getByRole('dialog')
+    const blockDialog = studio.page.getByRole('dialog', { name: /编辑条目/ })
     await blockDialog.getByLabel('正文').fill('清爽的日系赛璐璐插画，干净线稿，第二版')
-    await blockDialog.getByRole('button', { name: '保存为新版本' }).click()
+    await blockDialog.getByRole('button', { name: '保存草稿' }).click()
     await expect(blockDialog).toBeHidden({ timeout: 30_000 })
+    await studio.page.getByRole('button', { name: '提交为新版本' }).click()
     await expect(studio.page.locator('[data-testid="wb3-version-overview"]')).toContainText('第 2 版')
 
     const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
@@ -330,8 +332,72 @@ test('generates candidates through the dialog and saves one as an art version', 
     await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.page.locator('[data-testid="wb3-art-version-item"]').first()).toContainText('第 1 版')
-    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('当前参考')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toContainText('当前立绘')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('依据提示词')
+  } finally {
+    await studio.close()
+  }
+})
+
+test('shows the candidate baseline and presents a one-to-one replacement', async () => {
+  const studio = await launchStudio('agent2live-v3-candidate-baseline-')
+  try {
+    const api = new ApiClient(studio.endpoint)
+    const seeded = await seedWorkbench(api)
+    const provider = await createImageProvider(api)
+    const firstGeneration = await api.createGeneration({
+      projectId: seeded.project.id,
+      promptVersionId: seeded.version.id,
+      providerConnectionId: provider.id,
+      count: 1,
+      size: '512x896'
+    })
+    await api.waitForJob(firstGeneration.jobId)
+    const firstReady = await api.waitForGenerationReady(firstGeneration.generationId)
+    const firstCandidate = firstReady.candidates.find((entry) => entry.status === 'ready')!
+    const before = await api.getProject(seeded.project.id)
+    const baseline = await api.createManualArtVersion({
+      projectId: seeded.project.id,
+      assetId: firstCandidate.assetId,
+      promptVersionId: seeded.version.id,
+      expectedProjectRowVersion: before.rowVersion
+    })
+    const replacement = await api.createGeneration({
+      projectId: seeded.project.id,
+      promptVersionId: seeded.version.id,
+      providerConnectionId: provider.id,
+      count: 2,
+      size: '512x896'
+    })
+    await api.waitForGenerationReady(replacement.generationId)
+
+    await openWorkbench(
+      studio.page,
+      seeded.character.id,
+      seeded.project.id,
+      `&view=candidates&generation=${encodeURIComponent(replacement.generationId)}`
+    )
+    const baselineCard = studio.page.locator('[data-testid="wb3-candidate-baseline"]')
+    await expect(baselineCard).toContainText('当前立绘（本次基线）')
+    await expect(baselineCard).toContainText(`第 ${baseline.artVersion.versionNumber} 版`)
+    await expect(studio.page.locator('[data-testid="wb3-actionbar"]')).toContainText('将替换当前立绘')
+
+    await studio.page.route(
+      `**/api/v1/art-projects/${encodeURIComponent(seeded.project.id)}/art-versions*`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ items: [], activeVersionId: baseline.artVersion.id })
+        })
+      }
+    )
+    await studio.page.reload()
+    await expect(studio.page.locator('[data-testid="wb3-candidates-view"]')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(baselineCard).not.toContainText('首次立绘')
+    await expect(baselineCard).toContainText('本次基线暂时不可用')
   } finally {
     await studio.close()
   }
@@ -383,7 +449,7 @@ test('warns about blocks dropped from generation and discards a batch', async ()
   }
 })
 
-test('views art versions and restores the three views from the URL', async () => {
+test('views the current artwork and restores the three views from the URL', async () => {
   const studio = await launchStudio('agent2live-v3-versions-')
   try {
     const api = new ApiClient(studio.endpoint)
@@ -416,11 +482,14 @@ test('views art versions and restores the three views from the URL', async () =>
     await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
       timeout: 20_000
     })
-    await expect(studio.page.locator('[data-testid="wb3-art-version-list"]')).toContainText('第 1 版')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toContainText('当前立绘')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('依据提示词')
     await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText(
-      '依据的提示词'
+      '唯一当前结果'
     )
-    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('当前参考')
+    await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).not.toContainText(
+      'prompt_draft'
+    )
     await studio.page.getByRole('button', { name: '打开分层', exact: true }).click()
     await expect(studio.page.locator('[data-testid="live2d-placeholder"]')).toBeVisible({
       timeout: 20_000
@@ -461,8 +530,9 @@ test('edits and saves the full prompt', async () => {
     const dialog = studio.page.getByRole('dialog', { name: '完整提示词' })
     await expect(dialog).toBeVisible()
     await dialog.getByLabel('提示词正文').fill('完整提示词测试句子：银白长发，清爽赛璐璐。')
-    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await dialog.getByRole('button', { name: '保存草稿', exact: true }).click()
     await expect(dialog).toBeHidden({ timeout: 30_000 })
+    await studio.page.getByRole('button', { name: '提交为新版本' }).click()
 
     const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
     await expect(overview).toContainText('第 2 版', { timeout: 30_000 })
@@ -562,8 +632,8 @@ test('retries a missing candidate slot with a one-image generation', async () =>
   }
 })
 
-test('activates an older art version after confirmation', async () => {
-  const studio = await launchStudio('agent2live-v3-activation-')
+test('exposes only the current artwork without legacy switching controls', async () => {
+  const studio = await launchStudio('agent2live-v3-single-artwork-')
   try {
     const api = new ApiClient(studio.endpoint)
     const seeded = await seedWorkbench(api)
@@ -598,33 +668,18 @@ test('activates an older art version after confirmation', async () => {
       studio.page,
       seeded.character.id,
       seeded.project.id,
-      `&view=versions&artVersion=${encodeURIComponent(first.artVersion.id)}`
+      `&view=versions&artVersion=${encodeURIComponent(second.artVersion.id)}`
     )
     await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toBeVisible({
       timeout: 20_000
     })
-    const firstItem = studio.page.locator(
-      `[data-testid="wb3-art-version-item"][data-version-id="${first.artVersion.id}"]`
-    )
-    const secondItem = studio.page.locator(
-      `[data-testid="wb3-art-version-item"][data-version-id="${second.artVersion.id}"]`
-    )
-    await expect(secondItem).toHaveAttribute('data-active', 'true')
-    await expect(firstItem).not.toHaveAttribute('data-active', 'true')
-
-    await studio.page
-      .locator('[data-testid="wb3-actionbar"]')
-      .getByRole('button', { name: '设为当前参考', exact: true })
-      .click()
-    const confirm = studio.page.getByRole('dialog', { name: '设为当前参考？' })
-    await expect(confirm).toBeVisible()
-    await confirm.getByRole('button', { name: '设为当前参考', exact: true }).click()
-    await expect(confirm).toBeHidden({ timeout: 30_000 })
-    await expect(firstItem).toHaveAttribute('data-active', 'true', { timeout: 30_000 })
-    await expect(secondItem).not.toHaveAttribute('data-active', 'true')
-    await expect
-      .poll(async () => (await api.getProject(seeded.project.id)).activeVersionId)
-      .toBe(first.artVersion.id)
+    await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toContainText('当前立绘')
+    await expect(studio.page.getByText('设为当前参考', { exact: true })).toHaveCount(0)
+    await expect(studio.page.getByText('从此版本分支', { exact: true })).toHaveCount(0)
+    await expect(studio.page.locator('[data-testid="wb3-art-version-item"]')).toHaveCount(0)
+    await openVersionDrawer(studio.page)
+    await expect(studio.page.locator('[data-testid="version-drawer-art-row"]')).toHaveCount(0)
+    await expect(studio.page.getByRole('dialog', { name: '版本历史' })).toContainText('提示词版本')
   } finally {
     await studio.close()
   }
@@ -720,10 +775,11 @@ test('confirms rollback when a clean draft is ahead of the active version', asyn
     await expect(rows.first()).toBeVisible({ timeout: 20_000 })
 
     await rows.filter({ hasText: '渲染风格' }).click()
-    const blockDialog = studio.page.getByRole('dialog', { name: /编辑块/ })
+    const blockDialog = studio.page.getByRole('dialog', { name: /编辑条目/ })
     await blockDialog.getByLabel('正文').fill('清爽的日系赛璐璐插画，干净线稿，第二版')
-    await blockDialog.getByRole('button', { name: '保存为新版本' }).click()
+    await blockDialog.getByRole('button', { name: '保存草稿' }).click()
     await expect(blockDialog).toBeHidden({ timeout: 30_000 })
+    await studio.page.getByRole('button', { name: '提交为新版本' }).click()
     const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
     await expect(overview).toContainText('第 2 版', { timeout: 30_000 })
 

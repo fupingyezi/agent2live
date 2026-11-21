@@ -7,7 +7,7 @@ const STAGE_LABELS: Record<ArtProjectStage, string> = {
   prompt_ready: '提示词就绪',
   generating: '生成中',
   candidate_review: '候选评审',
-  art_version_active: '美术版本已激活',
+  art_version_active: '当前立绘已就绪',
   live2d_pending: '待绑定 Live2D',
   blocked: '已阻塞'
 }

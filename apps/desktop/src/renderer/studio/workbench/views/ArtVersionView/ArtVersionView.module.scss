@@ -10,18 +10,85 @@
   flex: 1 1 auto;
   width: 100%;
   min-height: 0;
-  flex-direction: column;
-}
-.wb3-version-empty {
   align-items: center;
   justify-content: center;
+  flex-direction: column;
 }
-.wb3-version-layout {
+.wb3-current-artwork {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
-  grid-template-columns: minmax(0, 336px) minmax(0, 1fr) minmax(0, 324px);
+  padding: var(--a2l-space-5) var(--a2l-space-8);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: var(--a2l-space-5);
 }
-.wb3-version-error {
-  padding: 0 var(--a2l-space-6);
+.wb3-current-canvas {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--a2l-color-text-muted);
+  background: var(--a2l-color-surface-subtle);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-lg);
+  font-size: var(--a2l-text-meta-size);
+  place-items: center;
+}
+.wb3-current-image {
+  width: 100%;
+  height: 100%;
+  padding: var(--a2l-space-4);
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+}
+.wb3-current-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.wb3-current-image:focus-visible {
+  outline: 2px solid var(--a2l-color-focus);
+  outline-offset: -4px;
+}
+.wb3-current-info {
+  display: flex;
+  min-height: 0;
+  padding: var(--a2l-space-5);
+  overflow: auto;
+  background: var(--a2l-color-surface);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-lg);
+  flex-direction: column;
+  gap: var(--a2l-space-4);
+}
+.wb3-current-info header span {
+  color: var(--a2l-color-text-muted);
+  font-size: var(--a2l-text-caption-size);
+}
+.wb3-current-info header h2 {
+  margin: var(--a2l-space-1) 0 0;
+  color: var(--a2l-color-text);
+  font-size: var(--a2l-text-title-lg-size);
+  font-weight: 600;
+}
+.wb3-current-note {
+  padding: var(--a2l-space-4);
+  background: var(--a2l-color-accent-soft);
+  border-radius: var(--a2l-radius-md);
+}
+.wb3-current-note strong {
+  color: var(--a2l-color-accent-strong);
+  font-size: var(--a2l-text-body-sm-size);
+}
+.wb3-current-note p {
+  margin: var(--a2l-space-2) 0 0;
+  color: var(--a2l-color-text-secondary);
+  font-size: var(--a2l-text-meta-size);
+  line-height: var(--a2l-text-body-line);
+}
+.wb3-current-lightbox {
+  display: block;
+  max-width: min(84vw, 960px);
+  max-height: 82vh;
+  object-fit: contain;
 }

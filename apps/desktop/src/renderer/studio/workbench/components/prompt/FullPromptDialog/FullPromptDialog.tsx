@@ -42,7 +42,7 @@ export const FullPromptDialog: React.FC<FullPromptDialogProps> = ({
             取消
           </Button>
           <Button variant="primary" disabled={readOnly || saving} onClick={() => onSave(text)}>
-            {saving ? '保存中…' : '保存'}
+            {saving ? '保存中…' : '保存草稿'}
           </Button>
         </>
       }

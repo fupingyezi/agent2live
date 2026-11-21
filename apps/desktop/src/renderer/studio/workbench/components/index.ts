@@ -1,7 +1,3 @@
-/** 从 Prompt 或立绘版本创建派生项目的对话框。 */
-export { ForkDialog } from './ForkDialog'
-export type { ForkDialogProps, ForkSource } from './ForkDialog'
-
 /** 展示当前项目来源，并维护派生链接状态。 */
 export { ForkOriginBar } from './ForkOriginBar'
 export type { ForkOriginBarProps } from './ForkOriginBar'

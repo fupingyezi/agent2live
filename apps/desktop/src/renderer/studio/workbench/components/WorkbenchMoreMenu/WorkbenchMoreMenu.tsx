@@ -41,7 +41,7 @@ export const WorkbenchMoreMenu: React.FC<WorkbenchMoreMenuProps> = ({
           onClick={() => choose(onOpenProjectInfo)}
         >
           <span className={styles['wb3-more-name']!}>项目信息</span>
-          <span className={styles['wb3-more-desc']!}>角色与四套版本号</span>
+          <span className={styles['wb3-more-desc']!}>角色与当前内容</span>
         </button>
         <button
           type="button"
@@ -51,7 +51,7 @@ export const WorkbenchMoreMenu: React.FC<WorkbenchMoreMenuProps> = ({
           onClick={() => choose(onOpenVersionHistory)}
         >
           <span className={styles['wb3-more-name']!}>版本历史</span>
-          <span className={styles['wb3-more-desc']!}>提示词与立绘分开看</span>
+          <span className={styles['wb3-more-desc']!}>查看提示词修改记录</span>
         </button>
       </div>
     </Popover>

@@ -189,7 +189,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
               取消
             </Button>
             <Button variant="primary" disabled={disabled} onClick={save}>
-              {saving ? '保存中…' : '保存'}
+              {saving ? '保存中…' : '保存草稿'}
             </Button>
           </>
         }

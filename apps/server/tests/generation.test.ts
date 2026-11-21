@@ -122,30 +122,82 @@ function seedArtVersion(
   ctx: Ctx,
   projectId: string,
   promptVersionId: string,
-  artworkAssetId: string
+  artworkAssetId: string,
+  options: { versionNumber?: number; activate?: boolean } = {}
 ): string {
   const now = ctx.clock.now()
   const versionId = newId('artVersion')
+  const versionNumber = options.versionNumber ?? 1
   ctx.db
     .prepare(
       `insert into art_versions
      (id, art_project_id, parent_version_id, origin_version_id, prompt_version_id,
       artwork_asset_id, generation_job_id, source_kind, source_json, validation_json,
       canvas_transform_json, content_hash, version_number, created_at)
-     values (?, ?, null, ?, ?, ?, null, 'manual_upload', '{}', '{}', '{}', ?, 1, ?)`
+     values (?, ?, null, ?, ?, ?, null, 'manual_upload', '{}', '{}', '{}', ?, ?, ?)`
     )
-    .run(versionId, projectId, versionId, promptVersionId, artworkAssetId, hashCanonical({ versionId }), now)
-  ctx.db
-    .prepare(
-      `update art_projects
-     set active_version_id = ?, stage = 'art_version_active', updated_at = ?, row_version = row_version + 1
-     where id = ?`
+    .run(
+      versionId,
+      projectId,
+      versionId,
+      promptVersionId,
+      artworkAssetId,
+      hashCanonical({ versionId }),
+      versionNumber,
+      now
     )
-    .run(versionId, now, projectId)
+  if (options.activate !== false) {
+    ctx.db
+      .prepare(
+        `update art_projects
+       set active_version_id = ?, stage = 'art_version_active', updated_at = ?, row_version = row_version + 1
+       where id = ?`
+      )
+      .run(versionId, now, projectId)
+  }
   return versionId
 }
 
 describe('generation jobs', () => {
+  it('pins the current artwork as the default base and rejects a stale explicit base', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 2 })
+      const connection = await mockImageConnection(ctx)
+      const currentArtVersionId = seedArtVersion(ctx, project.id, version.id, materialAssetIds[0]!)
+      const staleArtVersionId = seedArtVersion(ctx, project.id, version.id, materialAssetIds[1]!, {
+        versionNumber: 2,
+        activate: false
+      })
+      const payload = {
+        promptVersionId: version.id,
+        providerConnectionId: connection.id,
+        count: 1,
+        size: '512x896'
+      }
+
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-current-art-0001' },
+        payload
+      })
+      expect(created.statusCode).toBe(202)
+      expect(created.json<{ baseArtVersionId: string | null }>().baseArtVersionId).toBe(currentArtVersionId)
+
+      const stale = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-stale-art-0001' },
+        payload: { ...payload, baseArtVersionId: staleArtVersionId }
+      })
+      expect(stale.statusCode).toBe(409)
+      expect(stale.json()).toMatchObject({ error: { code: 'ART_ACTIVE_VERSION_CHANGED' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('runs a mock generation and records decodable ready candidates', async () => {
     const ctx = await createTestApp()
     try {
