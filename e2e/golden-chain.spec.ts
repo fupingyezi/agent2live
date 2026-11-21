@@ -305,7 +305,7 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(
       page.locator(`[data-testid="wb3-art-version-row"][data-version-id="${firstArtVersion.id}"]`)
-    ).toContainText('在用')
+    ).toHaveAttribute('data-active', 'true')
 
     await page.evaluate((id) => {
       window.location.hash = `#/characters/${encodeURIComponent(id)}`
@@ -318,8 +318,9 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
     await expect(
       page.locator(`[data-testid="wb3-art-version-row"][data-version-id="${fork.seedArtVersion!.id}"]`)
-    ).toContainText('在用')
-    await page.getByRole('button', { name: '管理全部', exact: true }).click()
+    ).toHaveAttribute('data-active', 'true')
+    await page.getByRole('button', { name: '更多', exact: true }).click()
+    await page.getByRole('menuitem', { name: '项目信息', exact: true }).click()
     const originBar = page.locator('[data-testid="fork-origin-bar"]')
     await expect(originBar).toBeVisible()
     await expect(originBar.locator(`code[title="${projectId}"]`)).toBeVisible()

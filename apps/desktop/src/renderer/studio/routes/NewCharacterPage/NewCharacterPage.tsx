@@ -40,9 +40,7 @@ import type {
   MaterialRole,
   PromptDraftDto
 } from '@studio/api'
-import deleteIcon from '@studio/assets/reference-actions/delete.png'
-import editIcon from '@studio/assets/reference-actions/edit.png'
-import previewIcon from '@studio/assets/reference-actions/preview.png'
+import { Eye, Pencil, X } from 'lucide-react'
 import { findDefaultTextProvider, findDefaultVisionProvider } from '@studio/providers'
 import { CharacterReferenceEditor } from '../new-character/CharacterReferenceEditor'
 import {
@@ -211,11 +209,11 @@ const ReferencePreview: React.FC<ReferencePreviewProps> = ({
         </span>
         <div className={styles['new-character-reference-hover']!} data-testid="reference-hover-actions">
           <button type="button" onClick={() => onPreview(reference)}>
-            <img src={previewIcon} alt="" aria-hidden="true" />
+            <Eye size={13} aria-hidden="true" />
             <span>预览</span>
           </button>
           <button type="button" onClick={() => onEdit(reference)}>
-            <img src={editIcon} alt="" aria-hidden="true" />
+            <Pencil size={13} aria-hidden="true" />
             <span>编辑</span>
           </button>
         </div>
@@ -225,7 +223,7 @@ const ReferencePreview: React.FC<ReferencePreviewProps> = ({
           label={`移除参考图 ${reference.file.name}`}
           onClick={() => onRemove(reference)}
         >
-          <img src={deleteIcon} alt="" aria-hidden="true" />
+          <X size={16} aria-hidden="true" />
         </IconButton>
       </div>
       <figcaption>

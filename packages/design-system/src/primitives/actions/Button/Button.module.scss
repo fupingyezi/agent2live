@@ -57,6 +57,15 @@
 .danger:hover:not(:disabled) {
   filter: brightness(0.92);
 }
+.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--a2l-color-text-secondary);
+}
+.ghost:hover:not(:disabled) {
+  background: var(--a2l-color-surface-subtle);
+  color: var(--a2l-color-text);
+}
 .md {
   min-height: 40px;
   padding-inline: var(--a2l-space-4);
@@ -81,3 +90,9 @@
 .buttonLabel {
   display: inline-block;
 }
+.icon .buttonLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+

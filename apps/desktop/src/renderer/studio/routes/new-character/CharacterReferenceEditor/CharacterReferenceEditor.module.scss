@@ -262,7 +262,7 @@ div.reference-editor-dialog {
 .reference-editor-note textarea {
   min-height: 110px;
   padding: 10px var(--a2l-space-3);
-  resize: vertical;
+  resize: none;
   color: var(--a2l-color-text-secondary);
   background: var(--a2l-color-surface);
   border: var(--a2l-border-width) solid var(--a2l-color-border-strong);

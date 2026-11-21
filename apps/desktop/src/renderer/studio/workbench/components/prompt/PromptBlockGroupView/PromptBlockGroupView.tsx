@@ -1,8 +1,7 @@
 import React from 'react'
+import { Lock } from 'lucide-react'
 import type { PromptBlock } from '@studio/api'
 import type { PromptBlockGroup } from '../../../prompt-diagnostics'
-import { isPendingBlock } from '../../../prompt-diagnostics'
-import { effectiveBlockStrength } from '@agent2live/contracts/prompt'
 import styles from './PromptBlockGroupView.module.scss'
 
 export interface PromptBlockGroupViewProps {
@@ -20,11 +19,6 @@ function weightBadge(block: PromptBlock): string | null {
   return block.weight === 1 ? null : `×${block.weight.toFixed(1)}`
 }
 
-function aiBadge(block: PromptBlock): string | null {
-  if (block.source !== 'vision-model' && block.source !== 'ai-suggestion') return null
-  return `AI ${Math.round(block.confidence * 100)}%`
-}
-
 export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
   group,
   collapsed,
@@ -39,7 +33,6 @@ export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
     <section className={styles['wb3-block-group']!} data-testid="wb3-prompt-group" data-group={group.id}>
       <div className={styles['wb3-block-group-head']!}>
         <span className={styles['wb3-block-group-title']!}>{group.label}</span>
-        <span className={styles['wb3-block-group-count']!}>{group.blocks.length} 块</span>
         {group.negative ? <span className={styles['wb3-block-group-note']!}>不生成这些</span> : null}
         <button
           type="button"
@@ -53,8 +46,7 @@ export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
       {collapsed
         ? null
         : group.blocks.map((block) => {
-            const strength = effectiveBlockStrength(block, group.negative)
-            const pending = !group.negative && isPendingBlock(block)
+            const weight = weightBadge(block)
             return (
               <button
                 key={block.id}
@@ -80,27 +72,12 @@ export const PromptBlockGroupView: React.FC<PromptBlockGroupViewProps> = ({
                 <span className={styles['wb3-block-name']!}>{block.label}</span>
                 <span className={styles['wb3-block-text']!}>{block.text}</span>
                 <span className={styles['wb3-block-badges']!}>
-                  {pending ? (
-                    <span className={`${styles['wb3-badge']!} ${styles['wb3-badge-pending']!}`}>待补</span>
-                  ) : null}
-                  {shadowed.has(block.id) ? (
-                    <span className={`${styles['wb3-badge']!} ${styles['wb3-badge-warning']!}`}>被覆盖</span>
-                  ) : null}
-                  {dropped.has(block.id) ? (
-                    <span className={`${styles['wb3-badge']!} ${styles['wb3-badge-danger']!}`}>没落到</span>
-                  ) : null}
-                  {weightBadge(block) ? (
-                    <span className={styles['wb3-badge']!}>{weightBadge(block)}</span>
-                  ) : null}
-                  {aiBadge(block) ? (
-                    <span className={`${styles['wb3-badge']!} ${styles['wb3-badge-accent']!}`}>
-                      {aiBadge(block)}
+                  {weight ? <span className={styles['wb3-badge']!}>{weight}</span> : null}
+                  {block.locked || lockAll ? (
+                    <span className={styles['wb3-badge']!}>
+                      <Lock size={12} aria-label="已锁定" />
                     </span>
                   ) : null}
-                  {group.negative || strength === 'avoid' ? (
-                    <span className={`${styles['wb3-badge']!} ${styles['wb3-badge-warning']!}`}>避免</span>
-                  ) : null}
-                  {block.locked || lockAll ? <span className={styles['wb3-badge']!}>锁</span> : null}
                 </span>
               </button>
             )

@@ -22,19 +22,12 @@ import {
   savePromptDraft,
   updateCharacter
 } from '@studio/api'
-import { Button, Dialog, InlineNotice } from '@agent2live/design-system'
+import { AsyncButton, Button, Dialog, InlineNotice } from '@agent2live/design-system'
 import { StudioError, StudioLoading } from '@studio/components'
 import { findDefaultTextProvider } from '@studio/providers'
 import { useWorkbenchStore } from '../store'
-import {
-  ArtVersionPanel,
-  ForkDialog,
-  ForkOriginBar,
-  PromptInputPanel,
-  ReferenceChainBar,
-  VersionGraph,
-  type ForkSource
-} from '../components'
+import { ForkDialog, type ForkSource } from '../components'
+import { WorkbenchMoreMenu } from '../components/WorkbenchMoreMenu'
 import { GenerationDialog, type GenerationDefaults } from '../components/GenerationDialog'
 import { parseWorkbenchView, updateWorkbenchView } from '../view-state'
 import type { PromptFilter } from '../prompt-diagnostics'
@@ -49,6 +42,8 @@ import { RenameDialog } from '../components/prompt/RenameDialog'
 import { AiRewriteDialog } from '../components/prompt/AiRewriteDialog'
 import { ReverseDialog } from '../components/prompt/ReverseDialog'
 import { ReferenceGalleryDialog } from '../components/prompt/ReferenceGalleryDialog'
+import { ProjectInfoDialog } from '../components/prompt/ProjectInfoDialog/ProjectInfoDialog'
+import { VersionHistoryDrawer } from '../components/prompt/VersionHistoryDrawer/VersionHistoryDrawer'
 import styles from './Workbench.module.scss'
 
 function draftSnapshot(draft: PromptDraftDto): {
@@ -126,7 +121,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const applyServerDraft = useWorkbenchStore((state) => state.applyServerDraft)
   const resetStore = useWorkbenchStore((state) => state.reset)
   const storeDraft = useWorkbenchStore((state) => state.draft)
-  const storeRowVersion = useWorkbenchStore((state) => state.rowVersion)
   const dirty = useWorkbenchStore((state) => state.dirty)
 
   const [draftHint, setDraftHint] = useState<PromptDraftDto | null>(null)
@@ -140,7 +134,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   const [savingCandidateId, setSavingCandidateId] = useState<string | null>(null)
   const [discarding, setDiscarding] = useState(false)
-  const [workspaceDialog, setWorkspaceDialog] = useState<'materials' | 'versions' | null>(null)
+  const [projectInfoOpen, setProjectInfoOpen] = useState(false)
+  const [versionDrawerOpen, setVersionDrawerOpen] = useState(false)
   const [referenceGalleryOpen, setReferenceGalleryOpen] = useState(false)
   const [aiRewrite, setAiRewrite] = useState<{ intent: string; autoStart: boolean } | null>(null)
   const [reverseOpen, setReverseOpen] = useState(false)
@@ -463,8 +458,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   const activeDraft = workspace.activeDraft ?? draftHint
   const draft = editingActiveVersion ? activeDraft : null
   const spec = storeDraft
-  const submission = workspace.latestSubmission
-  const draftRowVersion = spec ? storeRowVersion : (draft?.rowVersion ?? null)
   const canCommit =
     !readOnly &&
     spec !== null &&
@@ -900,12 +893,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       .finally(() => setDialogSaving(false))
   }
 
-  const handleSubmitted = (result: { draft: PromptDraftDto; warnings: string[] }): void => {
-    setDraftHint(result.draft)
-    applyServerDraft(draftSnapshot(result.draft))
-    invalidateProjectWorkspace()
-  }
-
   const handleDraftUpdated = (updated: PromptDraftDto): void => {
     setDraftHint(updated)
     applyServerDraft(draftSnapshot(updated))
@@ -936,9 +923,27 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       .finally(() => setVersionSubmitting(false))
   }
 
+  const closeVersionDrawer = (): void => {
+    setVersionDrawerOpen(false)
+    if (viewState.view !== 'prompt') return
+    const latest = [...workspace.versions].sort((left, right) => right.versionNumber - left.versionNumber)[0]
+    if (latest && latest.id !== selectedPromptVersionId) {
+      setView({ view: 'prompt', promptVersionId: latest.id })
+    }
+  }
+
   return (
     <section className={styles['wb3-page']!} data-testid="workbench">
-      <WorkbenchTopbar title={title} />
+      <WorkbenchTopbar
+        title={title}
+        subtitle={characterTitle}
+        actions={
+          <WorkbenchMoreMenu
+            onOpenProjectInfo={() => setProjectInfoOpen(true)}
+            onOpenVersionHistory={() => setVersionDrawerOpen(true)}
+          />
+        }
+      />
       <div className={styles['wb3-body']!}>
         {viewState.view === 'prompt' ? (
           <PromptWorkbenchView
@@ -946,18 +951,14 @@ export const Workbench: React.FC<WorkbenchProps> = ({
             characterTitle={characterTitle}
             characterSummary={characterSummary}
             promptVersion={selectedPromptVersion}
-            promptVersions={workspace.versions}
             artVersions={artVersions}
             spec={displaySpec}
             referenceCount={displaySpec?.materialRefs.length ?? 0}
             readOnly={readOnly}
-            dirty={dirty}
-            canCommit={canCommit}
             busy={saveBusy}
             filter={filter}
             latestGeneration={readOnly ? null : latestGeneration}
             promptVersionError={promptVersionError}
-            submitting={versionSubmitting}
             error={versionError}
             onFilterChange={setFilter}
             onRename={() => {
@@ -985,14 +986,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               setFullPromptOpen(true)
             }}
             onOpenReferences={() => setReferenceGalleryOpen(true)}
-            onOpenVersions={() => setWorkspaceDialog('versions')}
-            onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
             onRegenerate={() => {
               void openGenerationDialog().catch((reason) => setVersionError(errorMessage(reason)))
             }}
-            onRollbackToPromptVersion={requestRollback}
             onViewArtVersion={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
-            onSubmitVersion={handleSubmitVersion}
           />
         ) : viewState.view === 'candidates' ? (
           <CandidateWorkbenchView
@@ -1072,7 +1069,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                   })
                 }
               }}
-              onOpenVersions={() => setWorkspaceDialog('versions')}
+              onOpenVersions={() => setVersionDrawerOpen(true)}
               onBackToPrompt={() => {
                 setView({
                   view: 'prompt',
@@ -1113,6 +1110,15 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           >
             生成图片
           </Button>
+          <AsyncButton
+            variant="secondary"
+            busy={versionSubmitting}
+            busyLabel="提交中…"
+            disabled={readOnly || !canCommit || versionSubmitting || saveBusy}
+            onClick={handleSubmitVersion}
+          >
+            提交为新版本
+          </AsyncButton>
         </WorkbenchActionBar>
       ) : null}
 
@@ -1145,56 +1151,32 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         }}
       />
 
-      <Dialog
-        open={workspaceDialog === 'materials'}
-        title="素材与要求"
-        description="参考图、说明和要求作为临时工作区打开，不会占用主画布。"
-        onOpenChange={(open) => {
-          if (!open) setWorkspaceDialog(null)
-        }}
-        className={styles['workbench-workspace-dialog']!}
-      >
-        <PromptInputPanel
-          projectId={project.id}
-          draftRowVersion={draftRowVersion}
-          submission={submission}
-          disabled={dirty || (draft !== null && spec === null)}
-          onSubmitted={(result) => {
-            handleSubmitted(result)
-            setWorkspaceDialog(null)
-          }}
-        />
-      </Dialog>
+      <ProjectInfoDialog
+        open={projectInfoOpen}
+        project={project}
+        characterTitle={characterTitle}
+        characterSummary={characterSummary}
+        promptVersion={selectedPromptVersion ?? workspace.activePromptVersion}
+        artVersions={artVersions}
+        activePromptVersion={workspace.activePromptVersion}
+        onClose={() => setProjectInfoOpen(false)}
+      />
 
-      <Dialog
-        open={workspaceDialog === 'versions'}
-        title="版本操作"
-        description="查看版本链、参考图继承和分支来源。"
-        onOpenChange={(open) => {
-          if (!open) setWorkspaceDialog(null)
+      <VersionHistoryDrawer
+        open={versionDrawerOpen}
+        project={project}
+        promptVersions={workspace.versions}
+        artVersions={artVersions}
+        selectedPromptVersionId={selectedPromptVersion?.id ?? null}
+        onClose={closeVersionDrawer}
+        onSelectPromptVersion={(versionId) => setView({ view: 'prompt', promptVersionId: versionId })}
+        onRollback={requestRollback}
+        onViewArtVersion={(versionId) => setView({ view: 'versions', artVersionId: versionId })}
+        onFork={setForkSource}
+        onMutated={(mutation) => {
+          queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
         }}
-        className={styles['workbench-versions-dialog']!}
-      >
-        <div className={styles['workbench-versions-dialog-content']!}>
-          <ReferenceChainBar project={project} activePromptVersion={workspace.activePromptVersion} />
-          <ForkOriginBar project={project} />
-          <VersionGraph
-            project={project}
-            promptVersions={workspace.versions}
-            artVersions={artVersions}
-            onFork={setForkSource}
-          />
-          <ArtVersionPanel
-            project={project}
-            artVersions={artVersions}
-            promptVersions={workspace.versions}
-            onMutated={(mutation) => {
-              queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
-            }}
-            onFork={setForkSource}
-          />
-        </div>
-      </Dialog>
+      />
 
       <ReferenceGalleryDialog
         open={referenceGalleryOpen}
@@ -1202,10 +1184,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         readOnly={readOnly}
         onClose={() => setReferenceGalleryOpen(false)}
         onChange={(references) => useWorkbenchStore.getState().updateMaterialRefs(references)}
-        onOpenMaterials={() => {
-          setReferenceGalleryOpen(false)
-          setWorkspaceDialog('materials')
-        }}
         onOpenReverse={() => {
           setActiveAiJob(null)
           setReferenceGalleryOpen(false)

@@ -191,10 +191,6 @@ section.new-character-reference-card {
   line-height: 16px;
   cursor: pointer;
 }
-.new-character-reference-hover img {
-  width: 13px;
-  height: 13px;
-}
 .new-character-reference-image .new-character-reference-remove {
   position: absolute;
   top: var(--a2l-space-2);
@@ -212,10 +208,6 @@ section.new-character-reference-card {
   pointer-events: none;
   transition: opacity var(--a2l-motion-fast) var(--a2l-ease-standard);
   z-index: 3;
-}
-.new-character-reference-remove img {
-  width: 16px;
-  height: 16px;
 }
 .new-character-reference:hover .new-character-reference-hover {
   opacity: 1;

@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react'
+import { X } from 'lucide-react'
 import { focusFirst, trapTab } from '../../../internal/focus'
 import { cx } from '../../../internal/polymorphic'
 import { renderPortal } from '../../../internal/portal'
@@ -14,6 +15,8 @@ export interface DrawerProps {
   side?: 'left' | 'right' | 'bottom'
   busy?: boolean
   closeLabel?: string
+  modal?: boolean
+  className?: string
 }
 
 export const Drawer: React.FC<DrawerProps> = ({
@@ -24,30 +27,61 @@ export const Drawer: React.FC<DrawerProps> = ({
   footer,
   side = 'right',
   busy = false,
-  closeLabel = '关闭'
+  closeLabel = '关闭',
+  modal = true,
+  className
 }) => {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !modal) return
     restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     focusFirst(panelRef.current)
     return () => restoreRef.current?.focus()
-  }, [open])
+  }, [open, modal])
 
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape' && !busy) onOpenChange(false)
-      trapTab(event, panelRef.current)
+      if (modal) trapTab(event, panelRef.current)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, busy, onOpenChange])
+  }, [open, busy, modal, onOpenChange])
 
   if (!open) return null
+
+  const panel = (
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal={modal}
+      aria-labelledby={titleId}
+      className={cx(
+        styles.drawer,
+        styles[`drawer${side[0]!.toUpperCase()}${side.slice(1)}`],
+        !modal ? styles.drawerNonModal : undefined,
+        className
+      )}
+      data-state={busy ? 'busy' : 'open'}
+    >
+      <header className={styles.dialogHeader}>
+        <h2 id={titleId} className={styles.dialogTitle}>
+          {title}
+        </h2>
+        <IconButton label={closeLabel} variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+          <X size={16} aria-hidden="true" />
+        </IconButton>
+      </header>
+      <div className={styles.dialogBody}>{children}</div>
+      {footer ? <footer className={styles.dialogFooter}>{footer}</footer> : null}
+    </div>
+  )
+
+  if (!modal) return renderPortal(panel)
 
   return renderPortal(
     <div
@@ -56,25 +90,7 @@ export const Drawer: React.FC<DrawerProps> = ({
         if (event.target === event.currentTarget && !busy) onOpenChange(false)
       }}
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={cx(styles.drawer, styles[`drawer${side[0]!.toUpperCase()}${side.slice(1)}`])}
-        data-state={busy ? 'busy' : 'open'}
-      >
-        <header className={styles.dialogHeader}>
-          <h2 id={titleId} className={styles.dialogTitle}>
-            {title}
-          </h2>
-          <IconButton label={closeLabel} variant="quiet" onClick={() => onOpenChange(false)} disabled={busy}>
-            ×
-          </IconButton>
-        </header>
-        <div className={styles.dialogBody}>{children}</div>
-        {footer ? <footer className={styles.dialogFooter}>{footer}</footer> : null}
-      </div>
+      {panel}
     </div>
   )
 }

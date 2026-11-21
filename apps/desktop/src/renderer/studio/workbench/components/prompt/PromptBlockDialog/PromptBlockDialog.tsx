@@ -85,7 +85,7 @@ function newBlock(negative: boolean): PromptBlock {
   return {
     id: `block-${crypto.randomUUID()}`,
     category: negative ? 'negative' : 'subject',
-    label: negative ? '新负面块' : '新提示块',
+    label: negative ? '新负面条目' : '新提示条目',
     text: '待填写',
     weight: 1,
     locked: false,
@@ -148,11 +148,11 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
 
   const save = (): void => {
     if (draft.label.trim().length === 0) {
-      setLocalError('请填写块名称。')
+      setLocalError('请填写条目名称。')
       return
     }
     if (draft.text.trim().length === 0) {
-      setLocalError('请填写块正文。')
+      setLocalError('请填写条目正文。')
       return
     }
     setLocalError(null)
@@ -170,8 +170,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
         onOpenChange={(next) => {
           if (!next && !saving && !confirmDelete) onClose()
         }}
-        title={`${block ? '编辑块' : '新增块'} ${block ? block.label : ''}`}
-        description="保存后当前版本不变，另起一版。"
+        title={`${block ? '编辑条目' : '新增条目'} ${block ? block.label : ''}`}
         busy={saving}
         className={styles['wb3-block-dialog']!}
         footer={
@@ -182,7 +181,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
                 disabled={disabled || block.locked || (spec?.lockAll ?? false)}
                 onClick={() => setConfirmDelete(true)}
               >
-                删除块
+                删除条目
               </Button>
             ) : null}
             <span className={styles['wb3-dialog-spacer']!} />
@@ -190,7 +189,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
               取消
             </Button>
             <Button variant="primary" disabled={disabled} onClick={save}>
-              {saving ? '保存中…' : '保存为新版本'}
+              {saving ? '保存中…' : '保存'}
             </Button>
           </>
         }
@@ -257,7 +256,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
               />
             </ChipField>
           </div>
-          <Field label="锁定" description="AI 改写跳过这一块">
+          <Field label="锁定" description="锁定后AI不可改写">
             <Switch
               checked={draft.locked}
               disabled={disabled}
@@ -302,9 +301,7 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
           setConfirmDelete(false)
           if (block && onDelete) onDelete(block.id)
         }}
-      >
-        <p>删除会随保存提交为新版本，旧版本保持不变。</p>
-      </ConfirmDialog>
+      ></ConfirmDialog>
     </>
   )
 }

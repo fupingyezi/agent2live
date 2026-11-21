@@ -34,7 +34,7 @@ export const FullPromptDialog: React.FC<FullPromptDialogProps> = ({
         if (!next && !saving) onClose()
       }}
       title="完整提示词"
-      description="高级编辑；保存后会与新版本一起提交。"
+      description="修改后会同步至所有提示词"
       busy={saving}
       footer={
         <>

@@ -14,10 +14,6 @@
   font-size: var(--a2l-text-meta-size);
   font-weight: 500;
 }
-.wb3-block-group-count {
-  color: var(--a2l-color-text-muted);
-  font-size: var(--a2l-text-caption-size);
-}
 .wb3-block-group-note {
   color: var(--a2l-color-text-muted);
   font-size: var(--a2l-text-caption-size);
@@ -112,21 +108,4 @@
   border-radius: var(--a2l-radius-xs);
   font-size: var(--a2l-text-caption-size);
   white-space: nowrap;
-}
-.wb3-badge-accent {
-  color: var(--a2l-color-accent-strong);
-  background: var(--a2l-color-accent-soft);
-}
-.wb3-badge-warning {
-  color: var(--a2l-color-warning);
-  background: var(--a2l-color-warning-bg);
-}
-.wb3-badge-danger {
-  color: var(--a2l-color-danger);
-  background: var(--a2l-color-danger-border);
-}
-.wb3-badge-pending {
-  color: var(--a2l-color-text-muted);
-  border: var(--a2l-border-width) dashed var(--a2l-color-border-strong);
-  background: transparent;
 }

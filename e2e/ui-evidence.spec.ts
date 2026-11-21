@@ -166,7 +166,7 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     expect(projectId).toMatch(/^artp_/)
 
     await expect(page.locator('[data-testid="wb3-topbar"]')).toHaveCSS('height', '60px')
-    await expect(page.locator('[data-testid="wb3-prompt-editor"]')).toHaveCSS('width', '736px')
+    await expect(page.locator('[data-testid="wb3-version-overview"]')).toHaveCSS('width', '336px')
     await expect(page.locator('[data-testid="wb3-prompt-block-row"]').first()).toBeVisible({
       timeout: 20_000
     })

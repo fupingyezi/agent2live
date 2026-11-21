@@ -9,12 +9,8 @@ import {
 } from '@agent2live/design-system'
 import type { SseStatus } from '@studio/api'
 import { useServerEvents } from '@studio/hooks'
-import agentIcon from '@studio/assets/navigation/agent.png'
+import { Bot, Layers, Rabbit, Settings, Users } from 'lucide-react'
 import brandIcon from '@studio/assets/navigation/brand.png'
-import charactersIcon from '@studio/assets/navigation/characters.png'
-import modelsIcon from '@studio/assets/navigation/models.png'
-import petsIcon from '@studio/assets/navigation/pets.png'
-import settingsIcon from '@studio/assets/navigation/settings.png'
 
 const SSE_LABELS: Record<SseStatus, string> = {
   connecting: '正在连接实时事件',
@@ -47,35 +43,35 @@ export const StudioAppShell: React.FC<EmptyProps> = () => {
             {
               id: 'characters',
               label: '角色',
-              icon: <img src={charactersIcon} alt="" />,
+              icon: <Users />,
               active: !onProviders,
               onSelect: () => navigate('/')
             },
             {
               id: 'pets',
               label: '桌宠',
-              icon: <img src={petsIcon} alt="" />,
+              icon: <Rabbit />,
               disabled: true,
               onSelect: () => undefined
             },
             {
               id: 'agent',
               label: 'Agent',
-              icon: <img src={agentIcon} alt="" />,
+              icon: <Bot />,
               disabled: true,
               onSelect: () => undefined
             },
             {
               id: 'models',
               label: '模型库',
-              icon: <img src={modelsIcon} alt="" />,
+              icon: <Layers />,
               disabled: true,
               onSelect: () => undefined
             },
             {
               id: 'providers',
               label: '设置',
-              icon: <img src={settingsIcon} alt="" />,
+              icon: <Settings />,
               active: onProviders,
               onSelect: () => navigate('/settings/providers')
             }

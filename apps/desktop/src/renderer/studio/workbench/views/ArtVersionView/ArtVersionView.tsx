@@ -94,7 +94,7 @@ export const ArtVersionView: React.FC<ArtVersionViewProps> = ({
       <WorkbenchActionBar
         status={
           active
-            ? `第 ${selectedVersion.versionNumber} 版 在用 · 以它作为下次生成的主参考`
+            ? `第 ${selectedVersion.versionNumber} 版 · 以它作为下次生成的主参考`
             : `第 ${selectedVersion.versionNumber} 版 历史版本 · 设为当前参考后可继续分层`
         }
         busy={activating}

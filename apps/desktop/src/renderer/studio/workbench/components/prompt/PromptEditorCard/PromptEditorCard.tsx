@@ -1,14 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import type { PromptSpecV2 } from '@studio/api'
-import {
-  Button,
-  AsyncButton,
-  ChipGroup,
-  EmptyState,
-  InlineNotice,
-  TextField
-} from '@agent2live/design-system'
+import type { PromptMaterialRef, PromptSpecV2 } from '@studio/api'
+import { useAssetUrl } from '@studio/hooks'
+import { Button, ChipGroup, EmptyState, InlineNotice, TextField } from '@agent2live/design-system'
 import characterEmptyArt from '@studio/assets/empty-states/character-empty.png'
+import { MATERIAL_ROLE_LABELS } from '../../../prompt-labels'
 import {
   promptBlockGroups,
   promptFilterModel,
@@ -18,19 +13,34 @@ import {
 import { PromptBlockGroupView } from '../PromptBlockGroupView'
 import styles from './PromptEditorCard.module.scss'
 
+interface ReferenceThumbProps {
+  reference: PromptMaterialRef
+  index: number
+}
+
+const ReferenceThumb: React.FC<ReferenceThumbProps> = ({ reference, index }) => {
+  const { url } = useAssetUrl(reference.assetId)
+  const label = MATERIAL_ROLE_LABELS[reference.role]
+  return (
+    <figure className={styles['wb3-reference-thumb']!} data-testid="wb3-reference-thumb">
+      <span className={styles['wb3-reference-image']!}>
+        {url ? <img src={url} alt={`${label}参考图 ${index + 1}`} /> : <span aria-hidden="true" />}
+      </span>
+      <figcaption>{label}</figcaption>
+    </figure>
+  )
+}
+
 export interface PromptEditorCardProps {
   characterTitle: string
   characterSummary: string | null
   spec: PromptSpecV2 | null
   referenceCount: number
   readOnly: boolean
-  dirty: boolean
-  canCommit: boolean
   busy: boolean
   filter: PromptFilter
   droppedBlockIds: string[]
   promptVersionError: string | null
-  submitting: boolean
   error: string | null
   onFilterChange(filter: PromptFilter): void
   onRename?(): void
@@ -39,7 +49,7 @@ export interface PromptEditorCardProps {
   onOpenAiRewrite(intent: string): void
   onOpenReverse(): void
   onOpenFullPrompt?(): void
-  onSubmitVersion(): void
+  onOpenReferences(): void
 }
 
 export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
@@ -48,13 +58,10 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   spec,
   referenceCount,
   readOnly,
-  dirty,
-  canCommit,
   busy,
   filter,
   droppedBlockIds,
   promptVersionError,
-  submitting,
   error,
   onFilterChange,
   onRename,
@@ -63,7 +70,7 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   onOpenAiRewrite,
   onOpenReverse,
   onOpenFullPrompt,
-  onSubmitVersion
+  onOpenReferences
 }) => {
   const [intent, setIntent] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -101,7 +108,6 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
       <header className={styles['wb3-prompt-character']!}>
         <div className={styles['wb3-character-copy']!}>
           <h2>{characterTitle}</h2>
-          <span>{characterSummary || '未填写简介'}</span>
         </div>
         {onRename ? (
           <Button variant="quiet" size="sm" disabled={readOnly || busy} onClick={onRename}>
@@ -113,9 +119,6 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
       <div className={styles['wb3-prompt-heading']!}>
         <div className={styles['wb3-prompt-title']!}>
           <h3>提示词</h3>
-          <span className={styles['wb3-pill']!}>
-            {total} 块 · {model.categories.length} 组
-          </span>
         </div>
         <div className={styles['wb3-prompt-heading-actions']!}>
           {onOpenFullPrompt ? (
@@ -123,16 +126,8 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
               完整提示词
             </Button>
           ) : null}
-          <Button
-            variant="quiet"
-            size="sm"
-            disabled={readOnly || busy}
-            onClick={() => onOpenAiRewrite(intent.trim())}
-          >
-            AI 改写
-          </Button>
           <Button variant="secondary" size="sm" disabled={readOnly || busy} onClick={() => onNewBlock(false)}>
-            新增块
+            新增条目
           </Button>
         </div>
       </div>
@@ -237,18 +232,37 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
         </div>
       ) : null}
 
+      <section className={styles['wb3-reference-section']!}>
+        <div className={styles['wb3-reference-head']!}>
+          <h3>{`参考图 ${referenceCount} / 14`}</h3>
+          <Button variant="quiet" size="sm" data-testid="wb3-open-references" onClick={onOpenReferences}>
+            查看全部
+          </Button>
+        </div>
+        {spec && spec.materialRefs.length > 0 ? (
+          <div className={styles['wb3-reference-row']!}>
+            {spec.materialRefs.slice(0, 6).map((reference, index) => (
+              <ReferenceThumb key={reference.assetId} reference={reference} index={index} />
+            ))}
+            {spec.materialRefs.length < 14 ? (
+              <button
+                type="button"
+                className={styles['wb3-reference-add']!}
+                aria-label="添加参考图片"
+                disabled={readOnly}
+                onClick={onOpenReferences}
+              >
+                +
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <p className="muted">还没有参考图，按文生图生成。</p>
+        )}
+      </section>
+
       <footer className={styles['wb3-card-footer']!}>
-        <span>点任意一行打开弹窗编辑　改动提交成新版本</span>
-        <AsyncButton
-          variant="secondary"
-          size="sm"
-          busy={submitting}
-          busyLabel="提交中…"
-          disabled={readOnly || !canCommit || submitting || busy}
-          onClick={onSubmitVersion}
-        >
-          提交为新版本
-        </AsyncButton>
+        <span>点任意一行打开弹窗编辑</span>
       </footer>
     </section>
   )

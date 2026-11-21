@@ -21,6 +21,7 @@ export { Switch } from './Switch'
 
 /** 支持多行文本编辑的输入控件。 */
 export { Textarea } from './Textarea'
+export type { TextareaProps, TextareaResize } from './Textarea'
 
 /** 单行文本输入控件。 */
 export { TextField } from './TextField'

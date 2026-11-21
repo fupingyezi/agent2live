@@ -2,7 +2,7 @@ import React, { forwardRef } from 'react'
 import { cx, renderAsChild } from '../../../internal/polymorphic'
 import styles from './Button.module.scss'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'ghost'
 
 export type ButtonSize = 'sm' | 'md' | 'icon'
 

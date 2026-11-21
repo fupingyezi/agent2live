@@ -13,7 +13,18 @@
 }
 .textarea {
   min-height: 96px;
+}
+.resizeNone {
+  resize: none;
+}
+.resizeVertical {
   resize: vertical;
+}
+.resizeHorizontal {
+  resize: horizontal;
+}
+.resizeBoth {
+  resize: both;
 }
 .textarea:hover {
   border-color: var(--a2l-color-text-muted);

@@ -1,11 +1,5 @@
 import React from 'react'
-import type {
-  ArtProjectDto,
-  ArtVersionDto,
-  GenerationDto,
-  PromptVersionDto,
-  PromptVersionSummaryDto
-} from '@studio/api'
+import type { ArtProjectDto, ArtVersionDto, GenerationDto, PromptVersionDto } from '@studio/api'
 import type { PromptSpecV2 } from '@studio/api'
 import { Button } from '@agent2live/design-system'
 import type { PromptFilter } from '../../prompt-diagnostics'
@@ -19,18 +13,14 @@ export interface PromptWorkbenchViewProps {
   characterTitle: string
   characterSummary: string | null
   promptVersion: PromptVersionDto | null
-  promptVersions: PromptVersionSummaryDto[]
   artVersions: ArtVersionDto[]
   spec: PromptSpecV2 | null
   referenceCount: number
   readOnly: boolean
-  dirty: boolean
-  canCommit: boolean
   busy: boolean
   filter: PromptFilter
   latestGeneration: GenerationDto | null
   promptVersionError: string | null
-  submitting: boolean
   error: string | null
   onFilterChange(filter: PromptFilter): void
   onRename(): void
@@ -40,12 +30,8 @@ export interface PromptWorkbenchViewProps {
   onOpenReverse(): void
   onOpenFullPrompt(): void
   onOpenReferences(): void
-  onOpenVersions(): void
-  onSelectPromptVersion(versionId: string): void
   onRegenerate(): void
-  onRollbackToPromptVersion(versionId: string): void
   onViewArtVersion(versionId: string): void
-  onSubmitVersion(): void
 }
 
 export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
@@ -53,18 +39,14 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
   characterTitle,
   characterSummary,
   promptVersion,
-  promptVersions,
   artVersions,
   spec,
   referenceCount,
   readOnly,
-  dirty,
-  canCommit,
   busy,
   filter,
   latestGeneration,
   promptVersionError,
-  submitting,
   error,
   onFilterChange,
   onRename,
@@ -74,12 +56,8 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
   onOpenReverse,
   onOpenFullPrompt,
   onOpenReferences,
-  onOpenVersions,
-  onSelectPromptVersion,
   onRegenerate,
-  onRollbackToPromptVersion,
-  onViewArtVersion,
-  onSubmitVersion
+  onViewArtVersion
 }) => {
   const droppedIds = latestGeneration?.droppedBlockIds ?? []
   const droppedLabels =
@@ -107,13 +85,10 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
           spec={spec}
           referenceCount={referenceCount}
           readOnly={readOnly}
-          dirty={dirty}
-          canCommit={canCommit}
           busy={busy}
           filter={filter}
           droppedBlockIds={latestGeneration?.droppedBlockIds ?? []}
           promptVersionError={promptVersionError}
-          submitting={submitting}
           error={error}
           onFilterChange={onFilterChange}
           onRename={onRename}
@@ -122,17 +97,12 @@ export const PromptWorkbenchView: React.FC<PromptWorkbenchViewProps> = ({
           onOpenAiRewrite={onOpenAiRewrite}
           onOpenReverse={onOpenReverse}
           onOpenFullPrompt={onOpenFullPrompt}
-          onSubmitVersion={onSubmitVersion}
+          onOpenReferences={onOpenReferences}
         />
         <VersionOverviewCard
           project={project}
           promptVersion={promptVersion}
-          promptVersions={promptVersions}
           artVersions={artVersions}
-          onOpenReferences={onOpenReferences}
-          onOpenVersions={onOpenVersions}
-          onSelectPromptVersion={onSelectPromptVersion}
-          onRollback={onRollbackToPromptVersion}
           onViewArtVersion={onViewArtVersion}
         />
       </div>

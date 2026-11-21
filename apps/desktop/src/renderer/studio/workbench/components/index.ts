@@ -10,10 +10,6 @@ export type { ForkOriginBarProps } from './ForkOriginBar'
 export { GenerationDialog } from './GenerationDialog'
 export type { GenerationDialogProps, GenerationDefaults } from './GenerationDialog'
 
-/** 提交画布、图片和文字等 Prompt 输入材料。 */
-export { PromptInputPanel } from './PromptInputPanel'
-export type { PromptInputPanelProps } from './PromptInputPanel'
-
 /** 展示版本间的参考图继承链与当前状态。 */
 export { ReferenceChainBar } from './ReferenceChainBar'
 export type { ReferenceChainBarProps } from './ReferenceChainBar'
@@ -25,11 +21,3 @@ export type { PromptReferenceEditorProps } from './PromptReferenceEditor'
 /** 审阅 AI 反推结果并选择应用或丢弃。 */
 export { ReverseReview } from './ReverseReview'
 export type { ReverseReviewProps } from './ReverseReview'
-
-/** 展示 Prompt 与立绘版本链及派生关系。 */
-export { VersionGraph } from './VersionGraph'
-export type { VersionGraphProps } from './VersionGraph'
-
-/** 管理立绘版本、手动上传、参考图和激活状态。 */
-export { ArtVersionPanel } from './ArtVersionPanel'
-export type { ArtVersionPanelProps } from './ArtVersionPanel'

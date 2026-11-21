@@ -31,12 +31,11 @@ async function expectSharedNavigation(studio: StudioPage): Promise<void> {
   await expect(studio.getByRole('button', { name: 'Agent', exact: true })).toBeDisabled()
   await expect(studio.getByRole('button', { name: '模型库', exact: true })).toBeDisabled()
 
-  const icons = studio.getByTestId('studio-nav-icons').locator('img')
+  const icons = studio.getByTestId('studio-nav-icons').locator('svg')
   await expect(icons).toHaveCount(5)
   for (const icon of await icons.all()) {
     await expect(icon).toHaveCSS('width', '24px')
     await expect(icon).toHaveCSS('height', '24px')
-    expect(await icon.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
   }
 }
 
@@ -400,21 +399,10 @@ test('creates a default art project and prompt draft from text-only setup', asyn
     await expect(studio.page.getByText('新建美术项目', { exact: true })).toHaveCount(0)
     await expect.poll(() => studio.page.url()).toContain('textWarning=no-text-provider')
 
-    await studio.page
-      .locator('[data-testid="wb3-version-overview"]')
-      .getByRole('button', { name: '查看全部', exact: true })
-      .first()
-      .click()
+    await studio.page.getByTestId('wb3-open-references').click()
     const referenceGallery = studio.page.getByRole('dialog', { name: '参考图' })
     await expect(referenceGallery).toBeVisible()
-    await referenceGallery.getByRole('button', { name: '素材与要求', exact: true }).click()
-    const inputDialog = studio.page.getByRole('dialog', { name: '素材与要求' })
-    const inputPanel = inputDialog.locator('[data-testid="prompt-input-panel"]')
-    await inputPanel.getByRole('button', { name: '展开', exact: true }).click()
-    const overallNotes = inputPanel.getByLabel('整体说明')
-    await expect(overallNotes).toHaveValue(
-      '住在旧城钟楼里的年轻抄写员，说话轻，习惯把重要的事写进页边。\n\n围巾始终可见，画面保持低饱和。'
-    )
+    await expect(referenceGallery.locator('[data-testid="prompt-reference-editor"]')).toBeVisible()
   } finally {
     await studio.close()
   }

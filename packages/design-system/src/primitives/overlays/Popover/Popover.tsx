@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react'
+import React, { useEffect, useId, useRef, useState } from 'react'
 import { cx } from '../../../internal/polymorphic'
 import styles from './Popover.module.scss'
 
@@ -25,7 +25,30 @@ export const Popover: React.FC<PopoverProps> = ({
 }) => {
   const panelId = useId()
   const [innerOpen, setInnerOpen] = useState(defaultOpen)
+  const anchorRef = useRef<HTMLSpanElement>(null)
   const current = open === undefined ? innerOpen : open
+  const close = (): void => {
+    if (open === undefined) setInnerOpen(false)
+    onOpenChange?.(false)
+  }
+
+  useEffect(() => {
+    if (!current) return
+    const onPointerDown = (event: PointerEvent): void => {
+      if (anchorRef.current?.contains(event.target as Node)) return
+      close()
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [current, open, onOpenChange])
+
   const triggerElement = React.cloneElement(trigger as React.ReactElement<Record<string, unknown>>, {
     'aria-expanded': current,
     'aria-haspopup': 'dialog',
@@ -39,7 +62,7 @@ export const Popover: React.FC<PopoverProps> = ({
   })
 
   return (
-    <span className={cx(styles.popoverAnchor, className)}>
+    <span ref={anchorRef} className={cx(styles.popoverAnchor, className)}>
       {triggerElement}
       {current ? (
         <div

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { X } from 'lucide-react'
 import {
   Button,
   ConfirmDialog,
@@ -337,12 +338,13 @@ export const CharactersPage: React.FC<EmptyProps> = () => {
                     </SurfaceCard>
                     <IconButton
                       type="button"
+                      variant="ghost"
                       className={styles['studio-character-delete']!}
                       label={`删除角色 ${item.character.title}`}
                       title={`删除角色「${item.character.title}」`}
                       onClick={() => openDelete(item.character)}
                     >
-                      ×
+                      <X size={16} aria-hidden="true" />
                     </IconButton>
                   </div>
                 )

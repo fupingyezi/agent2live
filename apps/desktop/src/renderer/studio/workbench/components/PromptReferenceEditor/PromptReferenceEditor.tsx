@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, X } from 'lucide-react'
 import type { PromptMaterialRef } from '@agent2live/contracts'
 import { PROMPT_REFERENCE_ROLES, type PromptReferenceRole } from '@agent2live/contracts/prompt-reference'
 import { uploadAsset } from '@studio/api'
@@ -11,7 +12,6 @@ import {
   FileDropZone,
   IconButton,
   InlineNotice,
-  SectionHeader,
   Select,
   StatusPill,
   Switch,
@@ -128,24 +128,24 @@ const ReferenceRow: React.FC<ReferenceRowProps> = ({
         <div className={styles['reference-row-actions']!}>
           <IconButton
             type="button"
-            variant="quiet"
+            variant="ghost"
             label="上移参考"
             disabled={disabled || index === 0}
             onClick={() => onMove(-1)}
           >
-            ↑
+            <ArrowUp size={16} aria-hidden="true" />
           </IconButton>
           <IconButton
             type="button"
-            variant="quiet"
+            variant="ghost"
             label="下移参考"
             disabled={disabled || index === count - 1}
             onClick={() => onMove(1)}
           >
-            ↓
+            <ArrowDown size={16} aria-hidden="true" />
           </IconButton>
-          <IconButton type="button" variant="quiet" label="移除参考" disabled={disabled} onClick={onRemove}>
-            ×
+          <IconButton type="button" variant="ghost" label="移除参考" disabled={disabled} onClick={onRemove}>
+            <X size={16} aria-hidden="true" />
           </IconButton>
         </div>
       </div>
@@ -230,14 +230,7 @@ export const PromptReferenceEditor: React.FC<PromptReferenceEditorProps> = ({
 
   return (
     <section className={styles['reference-set-editor']!} data-testid="prompt-reference-editor">
-      <SectionHeader
-        title="参考图"
-        description="数组顺序就是生成顺序；序号靠前的图片优先发送。"
-        actions={<StatusPill label={`${references.length}/${MAX_REFERENCES}`} />}
-      />
-      {references.length === 0 ? (
-        <p className="muted">不添加参考图时按文生图生成。</p>
-      ) : (
+      {references.length > 0 ? (
         <div className={styles['reference-list']!}>
           {references.map((reference, index) => (
             <ReferenceRow
@@ -252,7 +245,7 @@ export const PromptReferenceEditor: React.FC<PromptReferenceEditorProps> = ({
             />
           ))}
         </div>
-      )}
+      ) : null}
 
       <FileDropZone
         label="添加参考图片"
@@ -265,7 +258,7 @@ export const PromptReferenceEditor: React.FC<PromptReferenceEditorProps> = ({
         }}
       >
         <strong>{addMutation.isPending ? '上传中…' : '添加参考图'}</strong>
-        <span>新图先上传为资产，再追加到当前 PromptVersion 的参考图末尾。</span>
+        <span>，点击上传图片，或者拖入图片。</span>
       </FileDropZone>
 
       {error ? (
@@ -273,9 +266,7 @@ export const PromptReferenceEditor: React.FC<PromptReferenceEditorProps> = ({
           <InlineNotice tone="danger">{error}</InlineNotice>
         </div>
       ) : null}
-      <InlineNotice tone="info">
-        参考图变化会随提示词保存为新 PromptVersion，不会创建新的立绘版本。
-      </InlineNotice>
+      <InlineNotice tone="info">参考图变化会随提示词保存为新的版本</InlineNotice>
     </section>
   )
 }

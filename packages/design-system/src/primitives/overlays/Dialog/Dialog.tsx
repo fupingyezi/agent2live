@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react'
+import { X } from 'lucide-react'
 import { focusFirst, trapTab } from '../../../internal/focus'
 import { cx } from '../../../internal/polymorphic'
 import { renderPortal } from '../../../internal/portal'
@@ -90,11 +91,11 @@ export const Dialog: React.FC<DialogProps> = ({
           {showClose ? (
             <IconButton
               label={closeLabel}
-              variant="quiet"
+              variant="ghost"
               onClick={() => onOpenChange(false)}
               disabled={busy}
             >
-              ×
+              <X size={16} aria-hidden="true" />
             </IconButton>
           ) : null}
         </header>

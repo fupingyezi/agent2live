@@ -48,6 +48,9 @@
   background: var(--a2l-color-surface);
   box-shadow: var(--a2l-shadow-overlay);
 }
+.drawerNonModal {
+  z-index: 40;
+}
 .drawerRight {
   inset-block: 0;
   right: 0;

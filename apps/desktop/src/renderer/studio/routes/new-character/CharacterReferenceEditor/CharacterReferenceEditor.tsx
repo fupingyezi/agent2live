@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useState } from 'react'
+import { X } from 'lucide-react'
 import { Button, Dialog, IconButton } from '@agent2live/design-system'
 import type { MaterialRole } from '@studio/api'
 import { StudioPageTopbar } from '@studio/components'
@@ -108,8 +109,8 @@ export const CharacterReferenceEditor: React.FC<CharacterReferenceEditorProps> =
           tone="editor"
           status={<span className={styles['reference-editor-role-tag']!}>{ROLE_LABELS[draft.role]}</span>}
           actions={
-            <IconButton type="button" label="关闭参考图编辑" variant="quiet" onClick={onCancel}>
-              ×
+            <IconButton type="button" label="关闭参考图编辑" variant="ghost" onClick={onCancel}>
+              <X size={16} aria-hidden="true" />
             </IconButton>
           }
         />

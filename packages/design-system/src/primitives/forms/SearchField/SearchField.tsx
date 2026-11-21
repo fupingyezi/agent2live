@@ -1,4 +1,5 @@
 import React, { forwardRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { cx } from '../../../internal/polymorphic'
 import styles from './SearchField.module.scss'
 import { IconButton } from '../../actions/IconButton'
@@ -33,14 +34,14 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
       {currentValue ? (
         <IconButton
           label={clearLabel}
-          variant="quiet"
+          variant="ghost"
           className={styles.searchClear}
           onClick={() => {
             if (value === undefined) setInnerValue('')
             onValueChange?.('')
           }}
         >
-          ×
+          <X size={16} aria-hidden="true" />
         </IconButton>
       ) : null}
     </div>

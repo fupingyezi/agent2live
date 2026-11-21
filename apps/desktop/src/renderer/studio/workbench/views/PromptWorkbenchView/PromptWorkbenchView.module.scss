@@ -3,7 +3,8 @@
   width: 100%;
   min-height: 0;
   padding: var(--a2l-space-6) var(--a2l-space-8);
-  grid-template-columns: minmax(0, 736px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 336px;
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--a2l-space-5);
 }
 .wb3-prompt-wrap {

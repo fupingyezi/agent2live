@@ -2,7 +2,6 @@ import React from 'react'
 import type { ArtVersionDto } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
 import { formatDateTime } from '@studio/format'
-import { StatusPill } from '@agent2live/design-system'
 import { ART_SOURCE_LABELS } from '../../../prompt-labels'
 import styles from './ArtVersionList.module.scss'
 
@@ -22,6 +21,7 @@ const ArtVersionItem: React.FC<ArtVersionItemProps> = ({ version, active, select
       data-testid="wb3-art-version-item"
       data-version-id={version.id}
       data-state={selected ? 'selected' : 'default'}
+      data-active={active || undefined}
       aria-pressed={selected}
       onClick={onSelect}
     >
@@ -29,14 +29,11 @@ const ArtVersionItem: React.FC<ArtVersionItemProps> = ({ version, active, select
         {url ? <img src={url} alt={`第 ${version.versionNumber} 版`} /> : <span aria-hidden="true" />}
       </span>
       <span className={styles['wb3-version-copy']!}>
-        <strong>
-          第 {version.versionNumber} 版{active ? ' · 在用' : ''}
-        </strong>
+        <strong>第 {version.versionNumber} 版</strong>
         <small>
           {ART_SOURCE_LABELS[version.sourceKind]} · {formatDateTime(version.createdAt)}
         </small>
       </span>
-      {active ? <StatusPill label="在用" tone="success" /> : null}
     </button>
   )
 }

@@ -54,6 +54,28 @@ describe('overlays', () => {
       </Drawer>
     )
     expect(screen.getByRole('dialog', { name: '版本详情' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: '版本详情' })).toHaveAttribute('aria-modal', 'true')
+  })
+
+  it('renders a non-modal drawer without a backdrop or focus trap', async () => {
+    const onOpenChange = vi.fn()
+    const onPageClick = vi.fn()
+    render(
+      <>
+        <button type="button" onClick={onPageClick}>
+          页面按钮
+        </button>
+        <Drawer open modal={false} onOpenChange={onOpenChange} title="版本历史" side="right">
+          <p>内容</p>
+        </Drawer>
+      </>
+    )
+    const dialog = screen.getByRole('dialog', { name: '版本历史' })
+    expect(dialog).toHaveAttribute('aria-modal', 'false')
+    expect(dialog.parentElement).toBe(document.body)
+    await userEvent.click(screen.getByRole('button', { name: '页面按钮' }))
+    expect(onPageClick).toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   it('describes tooltip content and toggles a popover', async () => {
@@ -76,5 +98,26 @@ describe('overlays', () => {
     const popover = screen.getByRole('dialog', { name: '更多操作' })
     expect(popover).toBeVisible()
     expect(moreButton).toHaveAttribute('aria-controls', popover.id)
+  })
+
+  it('closes a popover on Escape and outside click', async () => {
+    render(
+      <>
+        <Popover trigger={<Button>更多操作</Button>} label="更多操作">
+          <p>菜单内容</p>
+        </Popover>
+        <button type="button">外部按钮</button>
+      </>
+    )
+    const moreButton = screen.getByRole('button', { name: '更多操作' })
+    await userEvent.click(moreButton)
+    expect(screen.getByRole('dialog', { name: '更多操作' })).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: '更多操作' })).not.toBeInTheDocument()
+
+    await userEvent.click(moreButton)
+    expect(screen.getByRole('dialog', { name: '更多操作' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '外部按钮' }))
+    expect(screen.queryByRole('dialog', { name: '更多操作' })).not.toBeInTheDocument()
   })
 })
