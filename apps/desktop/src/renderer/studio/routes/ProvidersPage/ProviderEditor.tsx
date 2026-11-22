@@ -115,6 +115,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             <Select
               data-testid="provider-kind"
               value={values.kind}
+              disabled={mode === 'edit' || saving}
               onValueChange={(value) =>
                 onChange({
                   kind: value as 'chat' | 'image',
@@ -130,7 +131,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             <Select
               data-testid="provider-protocol"
               value={values.adapter}
-              disabled={values.kind === 'chat'}
+              disabled={values.kind === 'chat' || mode === 'edit' || saving}
               onValueChange={(value) => onChange({ adapter: value as 'openai-compatible' | 'seedream' })}
             >
               <option value="openai-compatible">OpenAI 兼容对话</option>

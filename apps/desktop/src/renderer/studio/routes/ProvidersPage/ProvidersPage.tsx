@@ -292,6 +292,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
         const manual =
           editor.values.presetId === 'custom' &&
           (editor.models === null || editor.models.length === 0) &&
+          editor.connection.models.length === 0 &&
           editor.values.manualModel.trim()
             ? [manualModelProfile(editor.values)]
             : undefined
