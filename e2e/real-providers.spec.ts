@@ -18,7 +18,7 @@ interface ProviderCheck {
 
 interface RealProviderSettings {
   kind: 'chat' | 'image'
-  preset: 'deepseek-chat' | 'zhipu-vision' | 'seedream-image'
+  preset: 'deepseek-chat' | 'zhipu-vision' | 'volcengine-ark'
   label: string
   baseUrl: string
   model: string
@@ -59,7 +59,7 @@ function requiredSettings(): {
       chat: null,
       image: {
         kind: 'image',
-        preset: 'seedream-image',
+        preset: 'volcengine-ark',
         label: 'Real Image Smoke',
         baseUrl: imageBaseUrl,
         model: imageModel,
@@ -87,7 +87,7 @@ function requiredSettings(): {
     },
     image: {
       kind: 'image',
-      preset: 'seedream-image',
+      preset: 'volcengine-ark',
       label: 'Real Image Smoke',
       baseUrl: imageBaseUrl,
       model: imageModel,
@@ -97,16 +97,34 @@ function requiredSettings(): {
 }
 
 async function addProvider(page: Page, settings: RealProviderSettings): Promise<void> {
-  await page.locator('[data-testid="add-provider"]').click()
-  await page.locator('[data-testid="provider-preset"]').selectOption(settings.preset)
-  await page.locator('[data-testid="provider-label"]').fill(settings.label)
-  await page.locator('[data-testid="provider-base-url"]').fill(settings.baseUrl)
-  await page.locator('[data-testid="provider-model"]').fill(settings.model)
-  await page.locator('[data-testid="provider-api-key"]').fill(settings.apiKey)
-  await page.locator('[data-testid="provider-submit"]').click()
-  await expect(
-    page.locator('[data-testid="provider-card"]').filter({ hasText: settings.label })
-  ).toBeVisible()
+  await page.getByTestId('add-provider').click()
+  await page.getByTestId('provider-preset').selectOption(settings.preset)
+  await page.getByTestId('provider-label').fill(settings.label)
+  await page.getByTestId('provider-api-key').fill(settings.apiKey)
+  await page.getByTestId('provider-fetch-models').click()
+  await expect(page.getByTestId('provider-model-counts')).toBeVisible({ timeout: 120_000 })
+  await page.getByTestId('provider-submit').click()
+  await expect(page.getByTestId('provider-card').filter({ hasText: settings.label })).toBeVisible()
+}
+
+async function expectImageCatalog(page: Page, settings: RealProviderSettings): Promise<void> {
+  const card = page.getByTestId('provider-card').filter({ hasText: settings.label })
+  await expect(card).toBeVisible()
+  await expect(card).toContainText(/生图\s+[1-9]\d*/)
+}
+
+async function addCustomImageProvider(page: Page, settings: RealProviderSettings): Promise<void> {
+  await page.getByTestId('add-provider').click()
+  await page.getByTestId('provider-preset').selectOption('custom')
+  await page.getByTestId('provider-label').fill(settings.label)
+  await page.getByTestId('provider-base-url').fill(settings.baseUrl)
+  await page.getByTestId('provider-kind').selectOption('image')
+  await page.getByTestId('provider-api-key').fill(settings.apiKey)
+  await page.getByTestId('provider-fetch-models').click()
+  await expect(page.getByTestId('provider-model-counts')).toBeVisible({ timeout: 120_000 })
+  await page.getByTestId('provider-model-select').selectOption(settings.model)
+  await page.getByTestId('provider-submit').click()
+  await expect(page.getByTestId('provider-card').filter({ hasText: settings.label })).toBeVisible()
 }
 
 async function probeProvider(page: Page, settings: RealProviderSettings): Promise<ProviderCheck> {
@@ -175,8 +193,16 @@ test('runs opt-in real Chat and Image provider probes', async () => {
       checks.chat = await probeProvider(studio.page, settings.chat)
       expect(checks.chat.ok, 'real Chat provider probe').toBe(true)
     }
+    // 固定火山方舟连接的 legacy kind 是 chat；目录仍需包含 image 模型。
     await addProvider(studio.page, settings.image)
-    checks.image = await probeProvider(studio.page, settings.image)
+    await expectImageCatalog(studio.page, settings.image)
+    // 图片探针改用同源的自定义 Seedream 连接（kind: image）。
+    const imageProbe: RealProviderSettings = {
+      ...settings.image,
+      label: `${settings.image.label} Seedream`
+    }
+    await addCustomImageProvider(studio.page, imageProbe)
+    checks.image = await probeProvider(studio.page, imageProbe)
     expect(checks.image.ok, 'real Image provider probe').toBe(true)
   } finally {
     await studio.close()
@@ -237,7 +263,7 @@ test('runs the opt-in real Zhipu vision reverse pipeline', async () => {
       `/api/v1/art-projects/${encodeURIComponent(project.id)}/prompt-reverse`,
       {
         headers: { 'idempotency-key': uniqueKey('real-vision-reverse') },
-        body: { providerConnectionId: providerId }
+        body: { providerConnectionId: providerId, modelId: settings.model }
       }
     )
     const job = await api.waitForJob(created.body.jobId, 300_000)

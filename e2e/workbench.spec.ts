@@ -314,6 +314,7 @@ test('generates candidates through the dialog and saves one as an art version', 
     await studio.page.getByRole('button', { name: '生成图片', exact: true }).click()
     const dialog = studio.page.getByRole('dialog', { name: '生成图片' })
     await expect(dialog).toBeVisible()
+    await expect(dialog.getByTestId('wb3-generation-model')).toHaveValue('mock-image')
     await expect(dialog).toContainText('第 1 版')
     await dialog
       .getByRole('group', { name: '生成张数' })

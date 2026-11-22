@@ -1,3 +1,4 @@
+import type { ProviderModelProfile } from '../../packages/contracts/src/provider-catalog'
 import type { EndpointInfo } from './app'
 
 export interface AssetDto {
@@ -109,10 +110,17 @@ export interface CommitPromptResult {
 export interface ProviderConnectionDto {
   id: string
   label: string
-  kind: string
-  adapter: string
+  kind: 'chat' | 'image'
+  adapter: 'openai-compatible' | 'seedream' | 'mock'
+  baseUrl: string | null
+  model: string | null
   enabled: boolean
+  capabilities: unknown
+  models: ProviderModelProfile[]
+  modelsRefreshedAt: number | null
   hasSecret: boolean
+  createdAt: number
+  updatedAt: number
   rowVersion: number
 }
 
@@ -464,11 +472,11 @@ export class ApiClient {
     return response.body
   }
 
-  async createMockImageProvider(): Promise<ProviderConnectionDto> {
+  async createMockImageProvider(label = 'Golden Chain Mock 生图'): Promise<ProviderConnectionDto> {
     const response = await this.json<ProviderConnectionDto>('POST', '/api/v1/providers', {
       headers: { 'idempotency-key': uniqueKey('provider-mock') },
       body: {
-        label: 'Golden Chain Mock 生图',
+        label,
         kind: 'image',
         adapter: 'mock',
         capabilities: {
@@ -488,11 +496,28 @@ export class ApiClient {
     return response.body
   }
 
+  async createMockChatProvider(label = 'Mock 对话'): Promise<ProviderConnectionDto> {
+    const response = await this.json<ProviderConnectionDto>('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': uniqueKey('provider-mock') },
+      body: {
+        label,
+        kind: 'chat',
+        adapter: 'mock',
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 8, maxPromptChars: 20_000, supportsVision: true }
+        }
+      }
+    })
+    return response.body
+  }
+
   async createGeneration(input: {
     projectId: string
     promptVersionId: string
     baseArtVersionId?: string | null
     providerConnectionId: string
+    modelId?: string
     count?: number
     size?: string
     seed?: number
@@ -506,6 +531,7 @@ export class ApiClient {
           promptVersionId: input.promptVersionId,
           ...(input.baseArtVersionId === undefined ? {} : { baseArtVersionId: input.baseArtVersionId }),
           providerConnectionId: input.providerConnectionId,
+          ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
           count: input.count ?? 1,
           size: input.size ?? '512x896',
           seed: input.seed ?? 20261109
