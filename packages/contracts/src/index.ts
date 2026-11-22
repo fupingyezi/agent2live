@@ -1,4 +1,6 @@
 export * from './api'
+export * from './provider-shared'
+export * from './provider-catalog'
 export * from './prompt-reference'
 export * from './capabilities'
 export * from './character-brief'

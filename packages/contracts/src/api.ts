@@ -4,45 +4,12 @@ import { materialRoleSchema, promptRequirementSchema, providerCapabilitiesSchema
 import type { MaterialRole, PromptOperation, PromptRequirement, PromptSpecV2 } from './prompt'
 import type { PromptReference } from './prompt-reference'
 import { characterBriefContentSchema } from './character-brief'
+import { providerBaseUrlSchema, providerSecretRefSchema } from './provider-shared'
 
 const title = z.string().trim().min(1).max(100)
 const description = z.string().max(4000)
 const assetId = z.string().regex(/^ast_[0-9A-HJKMNP-TV-Z]{26}$/)
 const characterBriefVersionId = z.string().regex(/^cbv_[0-9A-HJKMNP-TV-Z]{26}$/)
-
-function isBlockedProviderHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  if (host === '169.254.169.254' || host.endsWith('.local') || host === 'metadata.google.internal') {
-    return true
-  }
-  if (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-    return true
-  }
-  if (/^(fc|fd|fe80):/i.test(host)) return true
-  return false
-}
-
-const providerBaseUrlSchema = z
-  .string()
-  .url()
-  .max(500)
-  .refine(
-    (value) => {
-      let url: URL
-      try {
-        url = new URL(value)
-      } catch {
-        return false
-      }
-      if (url.username || url.password) return false
-      if (isBlockedProviderHost(url.hostname)) return false
-      return (
-        url.protocol === 'https:' ||
-        (url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))
-      )
-    },
-    { message: 'provider URL must use HTTPS or loopback HTTP' }
-  )
 
 export const createCharacterInputSchema = z
   .object({
@@ -201,10 +168,7 @@ export const createProviderConnectionInputSchema = z
     adapter: z.enum(['openai-compatible', 'seedream', 'mock']),
     baseUrl: providerBaseUrlSchema.optional(),
     model: z.string().min(1).max(200).optional(),
-    secretRef: z
-      .string()
-      .regex(/^sec_[0-9A-HJKMNP-TV-Z]{26}$/)
-      .optional(),
+    secretRef: providerSecretRefSchema.optional(),
     enabled: z.boolean().default(true),
     capabilities: providerCapabilitiesSchema
   })
@@ -215,11 +179,7 @@ export const updateProviderConnectionInputSchema = z
     label: z.string().trim().min(1).max(80).optional(),
     baseUrl: providerBaseUrlSchema.nullable().optional(),
     model: z.string().min(1).max(200).nullable().optional(),
-    secretRef: z
-      .string()
-      .regex(/^sec_[0-9A-HJKMNP-TV-Z]{26}$/)
-      .nullable()
-      .optional(),
+    secretRef: providerSecretRefSchema.nullable().optional(),
     enabled: z.boolean().optional(),
     capabilities: providerCapabilitiesSchema.optional()
   })
