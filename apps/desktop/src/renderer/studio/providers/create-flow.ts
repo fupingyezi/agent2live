@@ -173,10 +173,8 @@ export async function updateProviderFlow(
     patch.capabilities = selectedDefault.capabilities
   }
 
-  // 只有本次编辑确实拿到过新密钥（预览时写入了草稿密钥）或连接尚无密钥时才轮换，
-  // 避免把表单里残留的 Key 当成一次未确认的轮换。
   let rotated = false
-  if (values.apiKey.trim() && (!current.hasSecret || options.draftSecretRef)) {
+  if (values.apiKey.trim()) {
     const { secretRef } = await port.storeSecret({
       label: `provider-secret:${current.id}`,
       value: values.apiKey.trim()

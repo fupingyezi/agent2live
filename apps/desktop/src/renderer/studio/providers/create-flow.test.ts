@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ProviderModelProfile } from '@studio/api'
 import {
+  ProviderActivationError,
   ProviderFormError,
   buildCreateInput,
   createProviderFlow,
@@ -138,10 +139,64 @@ describe('provider create flow', () => {
     expect(result.enabled).toBe(true)
   })
 
+  it('recovers when activation succeeded but the response was lost', async () => {
+    const created = connection({ enabled: false, hasSecret: false })
+    const active = connection({ rowVersion: 2 })
+    const p = port({
+      create: vi.fn(async () => created),
+      update: vi.fn(async () => {
+        throw new Error('network reset')
+      }),
+      get: vi.fn(async () => active)
+    })
+    await expect(createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).resolves.toEqual(active)
+    expect(p.deleteSecret).not.toHaveBeenCalled()
+  })
+
+  it('reports a partial failure with the provider id instead of retrying blindly', async () => {
+    const created = connection({ enabled: false, hasSecret: false })
+    const p = port({
+      create: vi.fn(async () => created),
+      update: vi.fn(async () => {
+        throw new Error('invalid secret reference')
+      }),
+      get: vi.fn(async () => created)
+    })
+    await expect(createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).rejects.toBeInstanceOf(
+      ProviderActivationError
+    )
+    await expect(createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).rejects.toMatchObject({
+      name: 'ProviderActivationError',
+      providerId: created.id
+    })
+  })
+
   it('never patches baseUrl for a fixed provider on update', async () => {
     const current = connection()
     const p = port({ update: vi.fn(async () => connection({ rowVersion: 2 })) })
-    await updateProviderFlow(p, current, values({ label: '改名' }), {})
+    await updateProviderFlow(p, current, values({ label: '改名', apiKey: '' }), {})
     expect(p.update).toHaveBeenCalledWith(current.id, { label: '改名' }, current.rowVersion)
+  })
+
+  it('keeps the existing secret when the update leaves the key blank', async () => {
+    const current = connection()
+    const p = port({ update: vi.fn(async () => connection({ label: '改名', rowVersion: 2 })) })
+    await updateProviderFlow(p, current, values({ label: '改名', apiKey: '' }), {})
+    expect(p.storeSecret).not.toHaveBeenCalled()
+    expect(p.update).toHaveBeenCalledWith(current.id, { label: '改名' }, current.rowVersion)
+  })
+
+  it('rotates a typed key under the stable label and deletes the draft secret', async () => {
+    const current = connection({ rowVersion: 3 })
+    const p = port({ update: vi.fn(async () => connection({ rowVersion: 4 })) })
+    await updateProviderFlow(p, current, values({ apiKey: 'sk-rotated' }), {
+      draftSecretRef: 'sec_draft'
+    })
+    expect(p.storeSecret).toHaveBeenCalledWith({
+      label: `provider-secret:${current.id}`,
+      value: 'sk-rotated'
+    })
+    expect(p.update).toHaveBeenCalledWith(current.id, { secretRef: 'sec_01J00000000000000000000002' }, 3)
+    expect(p.deleteSecret).toHaveBeenCalledWith('sec_draft')
   })
 })
