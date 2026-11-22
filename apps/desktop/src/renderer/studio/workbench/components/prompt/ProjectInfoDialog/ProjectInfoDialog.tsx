@@ -4,8 +4,6 @@ import { useAssetUrl } from '@studio/hooks'
 import { formatDateTime, formatStage, stageTone } from '@studio/format'
 import { Button, Dialog, StatusPill } from '@agent2live/design-system'
 import { ART_SOURCE_LABELS } from '../../../prompt-labels'
-import { ForkOriginBar } from '../../ForkOriginBar'
-import { ReferenceChainBar } from '../../ReferenceChainBar'
 import styles from './ProjectInfoDialog.module.scss'
 
 interface ArtThumbProps {
@@ -43,7 +41,6 @@ export interface ProjectInfoDialogProps {
   characterSummary: string | null
   promptVersion: PromptVersionDto | null
   artVersions: ArtVersionDto[]
-  activePromptVersion: PromptVersionDto | null
   onClose(): void
 }
 
@@ -54,7 +51,6 @@ export const ProjectInfoDialog: React.FC<ProjectInfoDialogProps> = ({
   characterSummary,
   promptVersion,
   artVersions,
-  activePromptVersion,
   onClose
 }) => {
   const activeArtVersion =
@@ -94,33 +90,25 @@ export const ProjectInfoDialog: React.FC<ProjectInfoDialogProps> = ({
           <StatusPill label={formatStage(project.stage)} tone={stageTone(project.stage)} />
         </div>
 
-        <div className={styles['divider']!} />
-
         <section className={styles['section']!}>
           <header className={styles['section-head']!}>
             <h3>当前内容</h3>
-            <span>只展示当前采用结果</span>
           </header>
           <div className={styles['version-table']!}>
             <VersionRow
               label="提示词"
               value={promptVersion ? `第 ${promptVersion.versionNumber} 版` : '未生成'}
-              detail={promptVersion ? `${blockCount} 块` : '还没有提示词版本'}
+              detail={promptVersion ? `${blockCount} 个条目` : '还没有提示词版本'}
             />
-            <div className={styles['divider']!} />
             <VersionRow
               label="立绘"
               value={activeArtVersion ? '当前立绘' : '未生成'}
               detail={activeArtVersion ? ART_SOURCE_LABELS[activeArtVersion.sourceKind] : '等提示词生成'}
             />
-            <div className={styles['divider']!} />
-            <VersionRow label="分层" value="未生成" detail="等立绘定下来" />
-            <div className={styles['divider']!} />
-            <VersionRow label="绑定" value="未生成" detail="等分层确认后开始" />
+            <VersionRow label="分层" value="未生成" detail="待生成" />
+            <VersionRow label="绑定" value="未生成" detail="待开始" />
           </div>
         </section>
-
-        <div className={styles['divider']!} />
 
         <div className={styles['stats']!}>
           <div>
@@ -135,13 +123,6 @@ export const ProjectInfoDialog: React.FC<ProjectInfoDialogProps> = ({
             <span>近期改动</span>
             <strong>{formatDateTime(project.updatedAt)}</strong>
           </div>
-        </div>
-
-        <div className={styles['divider']!} />
-
-        <div className={styles['supplement']!}>
-          <ReferenceChainBar project={project} activePromptVersion={activePromptVersion} />
-          <ForkOriginBar project={project} />
         </div>
       </div>
     </Dialog>

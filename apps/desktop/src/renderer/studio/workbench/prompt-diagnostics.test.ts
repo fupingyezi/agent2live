@@ -57,8 +57,7 @@ describe('prompt diagnostics', () => {
     ])
     expect(model.statuses.map((item) => [item.id, item.count])).toEqual([
       ['pending', 1],
-      ['shadowed', 1],
-      ['negative', 1]
+      ['shadowed', 1]
     ])
   })
 
@@ -85,6 +84,6 @@ describe('prompt diagnostics', () => {
 
   it('looks up block labels with a raw-id fallback', () => {
     expect(blockLabelById('hair.a', spec())).toBe('发色')
-    expect(blockLabelById('missing', spec())).toBe('missing')
+    expect(blockLabelById('missing', spec())).toBe('未知条目')
   })
 })

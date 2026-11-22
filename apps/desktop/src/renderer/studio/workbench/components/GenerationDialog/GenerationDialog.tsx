@@ -101,7 +101,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   )
   const promptVersionId = initialPromptVersionId ?? ''
   const [providerId, setProviderId] = useState('')
-  const [count, setCount] = useState(4)
+  const [count, setCount] = useState(1)
   const [size, setSize] = useState('')
   const [seed, setSeed] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
@@ -214,14 +214,11 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
         if (!next && !createMutation.isPending) onClose()
       }}
       title="生成图片"
-      description="提示词版本固定不变；参数只影响本次批次。"
+      description="配置参数，一张图片约一分钟"
       busy={createMutation.isPending}
       className={styles['wb3-generation-dialog']!}
       footer={
         <>
-          {formReady ? (
-            <span className={styles['wb3-generation-estimate']!}>生成 {count} 张，约 1 分钟</span>
-          ) : null}
           <span className={styles['wb3-dialog-spacer']!} />
           <Button variant="quiet" disabled={createMutation.isPending} onClick={onClose}>
             取消
@@ -266,11 +263,10 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             <div className={styles['wb3-generation-prompt-meta']!}>
               {selectedPrompt ? (
                 <StatusPill
-                  label={`${selectedPrompt.state.blocks.length + selectedPrompt.state.negativeBlocks.length} 块 · ${selectedPrompt.references.length} 张参考图`}
+                  label={`${selectedPrompt.state.blocks.length + selectedPrompt.state.negativeBlocks.length} 条目 · ${selectedPrompt.references.length} 张参考图`}
                   tone="accent"
                 />
               ) : null}
-              <span className={styles['wb3-generation-fixed']!}>固定不变</span>
             </div>
           </section>
 

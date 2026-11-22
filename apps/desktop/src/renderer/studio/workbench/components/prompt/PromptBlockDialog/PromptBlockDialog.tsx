@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { PROMPT_CATEGORIES } from '@agent2live/contracts/prompt'
 import type { PromptBlock, PromptSpecV2 } from '@studio/api'
-import { useAssetUrl } from '@studio/hooks'
 import {
   Button,
   ChipGroup,
@@ -13,7 +12,7 @@ import {
   TextField,
   Textarea
 } from '@agent2live/design-system'
-import { MATERIAL_ROLE_LABELS, PROMPT_STRENGTH_LABELS } from '../../../prompt-labels'
+import { PROMPT_STRENGTH_LABELS } from '../../../prompt-labels'
 import { PROMPT_CATEGORY_LABELS } from '../../../prompt-diagnostics'
 import styles from './PromptBlockDialog.module.scss'
 
@@ -21,37 +20,6 @@ const WEIGHT_OPTIONS = [0.8, 1, 1.3, 1.5, 2]
 
 function weightLabel(weight: number): string {
   return Number.isInteger(weight) ? weight.toFixed(1) : String(weight)
-}
-
-interface ReferenceOptionProps {
-  assetId: string
-  label: string
-  selected: boolean
-  disabled: boolean
-  onToggle(): void
-}
-
-const ReferenceOption: React.FC<ReferenceOptionProps> = ({
-  assetId,
-  label,
-  selected,
-  disabled,
-  onToggle
-}) => {
-  const { url } = useAssetUrl(assetId)
-  return (
-    <button
-      type="button"
-      className={styles['wb3-reference-option']!}
-      aria-pressed={selected}
-      aria-label={`引用参考图 ${label}`}
-      data-state={selected ? 'selected' : 'default'}
-      disabled={disabled}
-      onClick={onToggle}
-    >
-      {url ? <img src={url} alt="" /> : <span aria-hidden="true" />}
-    </button>
-  )
 }
 
 export interface PromptBlockDialogProps {
@@ -125,7 +93,6 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
   const isNegative = draft.category === 'negative'
   const weightOptions = [...new Set([...WEIGHT_OPTIONS, draft.weight])].sort((left, right) => left - right)
   const disabled = readOnly || saving
-  const references = spec?.materialRefs ?? []
 
   const update = (patch: Partial<PromptBlock>): void => {
     setDraft((current) => {
@@ -135,14 +102,6 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
         else if (current.category === 'negative') next.strength = 'prefer'
       }
       return next
-    })
-  }
-
-  const toggleReference = (assetId: string): void => {
-    update({
-      materialRefs: draft.materialRefs.includes(assetId)
-        ? draft.materialRefs.filter((id) => id !== assetId)
-        : [...draft.materialRefs, assetId]
     })
   }
 
@@ -263,22 +222,6 @@ export const PromptBlockDialog: React.FC<PromptBlockDialogProps> = ({
               onCheckedChange={(checked) => update({ locked: checked })}
             />
           </Field>
-          {references.length > 0 ? (
-            <ChipField label="参考图">
-              <div className={styles['wb3-reference-picker']!}>
-                {references.map((reference) => (
-                  <ReferenceOption
-                    key={reference.assetId}
-                    assetId={reference.assetId}
-                    label={MATERIAL_ROLE_LABELS[reference.role]}
-                    selected={draft.materialRefs.includes(reference.assetId)}
-                    disabled={disabled}
-                    onToggle={() => toggleReference(reference.assetId)}
-                  />
-                ))}
-              </div>
-            </ChipField>
-          ) : null}
           {localError ? (
             <div role="alert">
               <InlineNotice tone="danger">{localError}</InlineNotice>

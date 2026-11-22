@@ -2,7 +2,7 @@ import React from 'react'
 import { Undo2 } from 'lucide-react'
 import type { ArtProjectDto, PromptVersionSummaryDto } from '@studio/api'
 import { formatDateTime } from '@studio/format'
-import { Button, Drawer, IconButton, StatusPill } from '@agent2live/design-system'
+import { Drawer, IconButton, StatusPill } from '@agent2live/design-system'
 import styles from './VersionHistoryDrawer.module.scss'
 
 export interface VersionHistoryDrawerProps {
@@ -43,9 +43,7 @@ export const VersionHistoryDrawer: React.FC<VersionHistoryDrawerProps> = ({
             <h3>提示词版本</h3>
             <span>{`${ordered.length} 版`}</span>
           </header>
-          <p className={styles['note']!}>
-            立绘只维护当前一张。这里保留提示词修改记录，方便回到某版提示词后继续修改并重新生成。
-          </p>
+          <p className={styles['note']!}>点击版本回顾之前版本，点击返回按钮回到之前版本。</p>
           {ordered.length === 0 ? (
             <p className="muted">还没有提示词版本。保存当前修改后会出现在这里。</p>
           ) : (
@@ -84,16 +82,6 @@ export const VersionHistoryDrawer: React.FC<VersionHistoryDrawerProps> = ({
                         </IconButton>
                       ) : null}
                     </div>
-                    {selected ? (
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        size="sm"
-                        onClick={() => onSelectPromptVersion(version.id)}
-                      >
-                        查看此版
-                      </Button>
-                    ) : null}
                   </div>
                 )
               })}

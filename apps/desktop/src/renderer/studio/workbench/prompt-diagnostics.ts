@@ -88,7 +88,6 @@ export function promptFilterModel(spec: PromptSpecV2): PromptFilterModel {
   if (pending > 0) statuses.push({ id: 'pending', label: '待补', count: pending })
   if (shadowed.size > 0) statuses.push({ id: 'shadowed', label: '被覆盖', count: shadowed.size })
   if (locked > 0) statuses.push({ id: 'locked', label: '已锁', count: locked })
-  if (negativeCount > 0) statuses.push({ id: 'negative', label: '负向', count: negativeCount })
 
   return {
     categories,
@@ -143,5 +142,5 @@ export function promptBlockGroups(spec: PromptSpecV2, filter: PromptFilter): Pro
 
 export function blockLabelById(blockId: string, spec: PromptSpecV2): string {
   const block = [...spec.blocks, ...spec.negativeBlocks].find((item) => item.id === blockId)
-  return block?.label ?? blockId
+  return block?.label ?? '未知条目'
 }

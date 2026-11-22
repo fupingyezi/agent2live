@@ -321,11 +321,7 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     ).toHaveAttribute('data-active', 'true')
     await page.getByRole('button', { name: '更多', exact: true }).click()
     await page.getByRole('menuitem', { name: '项目信息', exact: true }).click()
-    const originBar = page.locator('[data-testid="fork-origin-bar"]')
-    await expect(originBar).toBeVisible()
-    await expect(originBar.locator(`code[title="${projectId}"]`)).toBeVisible()
-    await expect(originBar).toContainText('美术版本')
-    await expect(originBar).toContainText('输入分支')
+    await expect(page.getByRole('dialog', { name: '项目信息' })).toContainText('当前内容')
     checks.workbenchVerified = true
 
     expect(Object.values(checks).every(Boolean)).toBe(true)

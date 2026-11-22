@@ -325,7 +325,6 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
         if (!next) close()
       }}
       title="AI 改写"
-      description="说一句要改的地方，AI 会给出逐条改动建议。"
       busy={startMutation.isPending || applyMutation.isPending}
       className={styles['wb3-ai-dialog']!}
       footer={
@@ -339,9 +338,6 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
               >
                 全部拒绝
               </Button>
-              <span className={styles['wb3-generation-estimate']!} data-testid="wb3-ai-received">
-                已接收 {selected.size} 条 · 剩 {suggestion.operations.length - selected.size} 条
-              </span>
               <span className={styles['wb3-dialog-spacer']!} />
               <Button variant="quiet" disabled={applyMutation.isPending} onClick={close}>
                 关闭

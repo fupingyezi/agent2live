@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import type { PromptMaterialRef, PromptSpecV2 } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
-import { Button, ChipGroup, EmptyState, InlineNotice, TextField } from '@agent2live/design-system'
+import { Button, ChipGroup, EmptyState, InlineNotice } from '@agent2live/design-system'
 import characterEmptyArt from '@studio/assets/empty-states/character-empty.png'
 import { MATERIAL_ROLE_LABELS } from '../../../prompt-labels'
 import {
@@ -46,7 +46,7 @@ export interface PromptEditorCardProps {
   onRename?(): void
   onOpenBlock(blockId: string, negative: boolean): void
   onNewBlock(negative: boolean): void
-  onOpenAiRewrite(intent: string): void
+  onOpenAiRewrite(): void
   onOpenReverse(): void
   onOpenFullPrompt?(): void
   onOpenReferences(): void
@@ -72,25 +72,27 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
   onOpenFullPrompt,
   onOpenReferences
 }) => {
-  const [intent, setIntent] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const total = spec ? spec.blocks.length + spec.negativeBlocks.length : 0
   const model = spec ? promptFilterModel(spec) : { categories: [], statuses: [], total: 0 }
   const groups = spec ? promptBlockGroups(spec, filter) : []
   const shadowed = spec ? shadowedBlockIds(spec) : new Set<string>()
   const dropped = new Set(droppedBlockIds)
+  const addReferenceButton = (
+    <button
+      type="button"
+      className={styles['wb3-reference-add']!}
+      aria-label="添加参考图片"
+      disabled={readOnly}
+      onClick={onOpenReferences}
+    >
+      +
+    </button>
+  )
 
   useEffect(() => {
     setCollapsed({})
   }, [filter, spec, spec?.blocks.length, spec?.negativeBlocks.length])
-
-  const submitIntent = (): void => {
-    if (busy) return
-    const value = intent.trim()
-    if (value.length === 0) return
-    onOpenAiRewrite(value)
-    setIntent('')
-  }
 
   return (
     <section
@@ -118,31 +120,13 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
               完整提示词
             </Button>
           ) : null}
+          <Button variant="secondary" size="sm" disabled={readOnly || busy} onClick={onOpenAiRewrite}>
+            AI 改写
+          </Button>
           <Button variant="secondary" size="sm" disabled={readOnly || busy} onClick={() => onNewBlock(false)}>
             新增条目
           </Button>
         </div>
-      </div>
-
-      <div className={styles['wb3-ai-bar']!}>
-        <TextField
-          aria-label="AI 改写指令"
-          value={intent}
-          disabled={readOnly || busy}
-          placeholder="说一句要改的地方，比如发色偏冷一点"
-          onValueChange={setIntent}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') submitIntent()
-          }}
-        />
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={readOnly || busy || intent.trim().length === 0 || !spec}
-          onClick={submitIntent}
-        >
-          生成建议
-        </Button>
       </div>
 
       <div className={styles['wb3-filter-row']!}>
@@ -231,26 +215,12 @@ export const PromptEditorCard: React.FC<PromptEditorCardProps> = ({
             查看全部
           </Button>
         </div>
-        {spec && spec.materialRefs.length > 0 ? (
-          <div className={styles['wb3-reference-row']!}>
-            {spec.materialRefs.slice(0, 6).map((reference, index) => (
-              <ReferenceThumb key={reference.assetId} reference={reference} index={index} />
-            ))}
-            {spec.materialRefs.length < 14 ? (
-              <button
-                type="button"
-                className={styles['wb3-reference-add']!}
-                aria-label="添加参考图片"
-                disabled={readOnly}
-                onClick={onOpenReferences}
-              >
-                +
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <p className="muted">还没有参考图，按文生图生成。</p>
-        )}
+        <div className={styles['wb3-reference-row']!}>
+          {spec?.materialRefs.slice(0, 6).map((reference, index) => (
+            <ReferenceThumb key={reference.assetId} reference={reference} index={index} />
+          ))}
+          {(spec?.materialRefs.length ?? 0) < 14 ? addReferenceButton : null}
+        </div>
       </section>
 
       <footer className={styles['wb3-card-footer']!}>

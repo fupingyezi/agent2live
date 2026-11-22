@@ -61,7 +61,6 @@ export const ArtVersionView: React.FC<ArtVersionViewProps> = ({
         </section>
         <aside className={styles['wb3-current-info']!} data-testid="wb3-art-version-inspector">
           <header>
-            <span>唯一当前结果</span>
             <h2>当前立绘</h2>
           </header>
           <KeyValueList

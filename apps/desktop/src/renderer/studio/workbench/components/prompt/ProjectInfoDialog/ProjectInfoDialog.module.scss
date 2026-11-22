@@ -45,12 +45,6 @@
   font-size: var(--a2l-text-caption-size);
   line-height: var(--a2l-text-caption-line);
 }
-.divider {
-  flex: 0 0 1px;
-  width: 100%;
-  height: 1px;
-  background: var(--a2l-color-border);
-}
 .section {
   display: flex;
   flex-direction: column;
@@ -114,9 +108,4 @@
   color: var(--a2l-color-text-secondary);
   font-size: var(--a2l-text-meta-size);
   font-weight: 400;
-}
-.supplement {
-  display: flex;
-  flex-direction: column;
-  gap: var(--a2l-space-4);
 }

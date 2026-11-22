@@ -42,8 +42,8 @@ describe('clampGenerationCount', () => {
   })
 
   it('defaults to 4 and never goes below 1', () => {
-    expect(clampGenerationCount(null, 4)).toBe(4)
-    expect(clampGenerationCount(undefined, 8)).toBe(4)
+    expect(clampGenerationCount(null, 4)).toBe(1)
+    expect(clampGenerationCount(undefined, 8)).toBe(1)
     expect(clampGenerationCount(0, 4)).toBe(1)
     expect(clampGenerationCount(3, 0)).toBe(1)
   })

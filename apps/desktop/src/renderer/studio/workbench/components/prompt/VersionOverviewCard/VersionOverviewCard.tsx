@@ -57,7 +57,6 @@ export const VersionOverviewCard: React.FC<VersionOverviewCardProps> = ({
             promptVersion.versionNumber
           } 版`}
         </h2>
-        <p>立绘区域只展示唯一当前结果</p>
       </header>
 
       {currentArt ? (
@@ -68,10 +67,6 @@ export const VersionOverviewCard: React.FC<VersionOverviewCardProps> = ({
 
           <div className={styles['wb3-art-facts']!}>
             <div>
-              <span>状态</span>
-              <strong>当前立绘</strong>
-            </div>
-            <div>
               <span>来源</span>
               <strong>{ART_SOURCE_LABELS[currentArt.sourceKind]}</strong>
             </div>
@@ -80,10 +75,6 @@ export const VersionOverviewCard: React.FC<VersionOverviewCardProps> = ({
               <strong>{formatDateTime(currentArt.createdAt)}</strong>
             </div>
           </div>
-
-          <p className={styles['wb3-art-note']!}>
-            不满意时继续修改提示词并重新生成；新候选会和这张图对比后二选一替换。
-          </p>
 
           <div className={styles['wb3-art-footer']!}>
             <Button

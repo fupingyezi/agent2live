@@ -77,7 +77,7 @@ function failureFrom(error: unknown): FormFailure {
   }
   if (error instanceof ProviderActivationError) {
     return {
-      message: `${error.message}（连接 ID：${error.providerId}）`,
+      message: error.message,
       fields: {}
     }
   }

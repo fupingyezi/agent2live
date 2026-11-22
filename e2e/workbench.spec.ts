@@ -269,10 +269,10 @@ test('applies only the selected AI rewrite operation', async () => {
     await createChatProvider(api)
     await openWorkbench(studio.page, seeded.character.id, seeded.project.id)
 
-    await studio.page.getByLabel('AI 改写指令').fill('发色偏冷一点')
-    await studio.page.getByRole('button', { name: '生成建议', exact: true }).click()
-    const dialog = studio.page.getByRole('dialog')
-    await expect(dialog).toContainText('AI 改写')
+    await studio.page.getByRole('button', { name: 'AI 改写', exact: true }).click()
+    const dialog = studio.page.getByRole('dialog', { name: 'AI 改写' })
+    await dialog.getByLabel('改法').fill('发色偏冷一点')
+    await dialog.getByRole('button', { name: '生成建议', exact: true }).click()
 
     await expect(dialog.locator('[data-testid="wb3-ai-suggestions"]')).toBeVisible({
       timeout: 30_000
@@ -315,6 +315,10 @@ test('generates candidates through the dialog and saves one as an art version', 
     const dialog = studio.page.getByRole('dialog', { name: '生成图片' })
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText('第 1 版')
+    await dialog
+      .getByRole('group', { name: '生成张数' })
+      .getByRole('button', { name: '4 张', exact: true })
+      .click()
     await dialog.getByRole('button', { name: '生成图片', exact: true }).click()
 
     await expect(studio.page.locator('[data-testid="wb3-candidates-view"]')).toBeVisible({
@@ -783,9 +787,10 @@ test('confirms rollback when a clean draft is ahead of the active version', asyn
     const overview = studio.page.locator('[data-testid="wb3-version-overview"]')
     await expect(overview).toContainText('第 2 版', { timeout: 30_000 })
 
-    await studio.page.getByLabel('AI 改写指令').fill('发色偏冷一点')
-    await studio.page.getByRole('button', { name: '生成建议', exact: true }).click()
+    await studio.page.getByRole('button', { name: 'AI 改写', exact: true }).click()
     const aiDialog = studio.page.getByRole('dialog', { name: 'AI 改写' })
+    await aiDialog.getByLabel('改法').fill('发色偏冷一点')
+    await aiDialog.getByRole('button', { name: '生成建议', exact: true }).click()
     await expect(aiDialog.locator('[data-testid="wb3-ai-suggestions"]')).toBeVisible({
       timeout: 30_000
     })

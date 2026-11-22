@@ -917,9 +917,9 @@ export const Workbench: React.FC<WorkbenchProps> = ({
               setDialogError(null)
               setBlockDialog({ blockId: null, negative, block: null })
             }}
-            onOpenAiRewrite={(intent) => {
+            onOpenAiRewrite={() => {
               setActiveAiJob(null)
-              setAiRewrite({ intent, autoStart: intent.trim().length > 0 })
+              setAiRewrite({ intent: '', autoStart: false })
             }}
             onOpenReverse={() => {
               setActiveAiJob(null)
@@ -1029,9 +1029,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 ? '有未保存修改'
                 : canCommit
                   ? '草稿待提交为新版本'
-                  : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版 · ${
-                      (displaySpec?.blocks.length ?? 0) + (displaySpec?.negativeBlocks.length ?? 0)
-                    } 块`
+                  : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版`
           }
         >
           <Button
@@ -1093,7 +1091,6 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         characterSummary={characterSummary}
         promptVersion={selectedPromptVersion ?? workspace.activePromptVersion}
         artVersions={artVersions}
-        activePromptVersion={workspace.activePromptVersion}
         onClose={() => setProjectInfoOpen(false)}
       />
 

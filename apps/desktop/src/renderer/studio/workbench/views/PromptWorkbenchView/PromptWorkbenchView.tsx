@@ -26,7 +26,7 @@ export interface PromptWorkbenchViewProps {
   onRename(): void
   onOpenBlock(blockId: string, negative: boolean): void
   onNewBlock(negative: boolean): void
-  onOpenAiRewrite(intent: string): void
+  onOpenAiRewrite(): void
   onOpenReverse(): void
   onOpenFullPrompt(): void
   onOpenReferences(): void

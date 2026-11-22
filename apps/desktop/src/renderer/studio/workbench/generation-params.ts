@@ -13,8 +13,8 @@ export function clampGenerationCount(
   maxCount: number | null | undefined
 ): number {
   const max = effectiveMax(maxCount)
-  const value = count ?? 4
-  if (!Number.isFinite(value)) return Math.min(4, max)
+  const value = count ?? 1
+  if (!Number.isFinite(value)) return Math.min(1, max)
   return Math.max(1, Math.min(max, Math.floor(value)))
 }
 
