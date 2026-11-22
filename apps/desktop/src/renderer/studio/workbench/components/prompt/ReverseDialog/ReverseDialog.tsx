@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { PromptDraftDto, PromptWorkspaceDto, ProviderConnectionDto } from '@studio/api'
 import { getPromptReverseResult, isTerminalJobStatus, queryKeys, requestPromptReverse } from '@studio/api'
 import { useJob } from '@studio/hooks'
+import { providerModels } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -35,12 +36,6 @@ export interface ReverseDialogProps {
   onJobResolved(): void
 }
 
-function supportsVision(provider: ProviderConnectionDto): boolean {
-  if (!provider.capabilities || typeof provider.capabilities !== 'object') return false
-  const chat = (provider.capabilities as { chat?: { supportsVision?: unknown } }).chat
-  return chat?.supportsVision === true
-}
-
 export const ReverseDialog: React.FC<ReverseDialogProps> = ({
   open,
   projectId,
@@ -59,18 +54,30 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
   const queryClient = useQueryClient()
   const draftSpec = workspace.activeDraft?.state ?? workspace.activePromptVersion?.state ?? null
   const references = draftSpec?.materialRefs ?? []
-  const chatProviders = useMemo(
-    () => providers.filter((provider) => provider.enabled && provider.kind === 'chat'),
-    [providers]
-  )
   const available = useMemo(
-    () => (references.length > 0 ? chatProviders.filter(supportsVision) : chatProviders),
-    [chatProviders, references.length]
+    () =>
+      providers
+        .filter((provider) => provider.enabled)
+        .flatMap((provider) =>
+          providerModels(provider, 'chat')
+            .filter((model) => references.length === 0 || model.capabilities.chat?.supportsVision === true)
+            .map((model) => ({ provider, model }))
+        ),
+    [providers, references.length]
   )
-  const [providerId, setProviderId] = useState(available[0]?.id ?? '')
+  const [providerId, setProviderId] = useState(available[0]?.provider.id ?? '')
+  const [modelId, setModelId] = useState(available[0]?.model.id ?? '')
   const [activeJob, setActiveJob] = useState<ReverseJob | null>(initialJob)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const providerOptions = useMemo(
+    () => [...new Map(available.map((entry) => [entry.provider.id, entry.provider])).values()],
+    [available]
+  )
+  const modelOptions = useMemo(
+    () => available.filter((entry) => entry.provider.id === providerId),
+    [available, providerId]
+  )
 
   useEffect(() => {
     if (!open) return
@@ -79,10 +86,17 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
   }, [open, initialJob?.jobId])
 
   useEffect(() => {
-    if (!available.some((provider) => provider.id === providerId)) {
-      setProviderId(available[0]?.id ?? '')
+    if (!available.some((entry) => entry.provider.id === providerId)) {
+      const first = available[0]
+      setProviderId(first?.provider.id ?? '')
+      setModelId(first?.model.id ?? '')
     }
   }, [available, providerId])
+
+  useEffect(() => {
+    if (modelOptions.some((entry) => entry.model.id === modelId)) return
+    setModelId(modelOptions[0]?.model.id ?? '')
+  }, [modelOptions, modelId])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
   const job = jobQuery.data ?? null
@@ -102,14 +116,14 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
   const needsRetry = failed || noResult
 
   const start = (): void => {
-    if (!providerId || dirty) return
+    if (!providerId || !modelId || dirty) return
     if (needsRetry) {
       setActiveJob(null)
       onJobResolved()
     }
     setBusy(true)
     setError(null)
-    requestPromptReverse(projectId, providerId)
+    requestPromptReverse(projectId, { providerConnectionId: providerId, modelId })
       .then((created) => {
         const next = { kind: 'reverse' as const, jobId: created.jobId }
         setActiveJob(next)
@@ -146,6 +160,7 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
             busyLabel="提交任务…"
             disabled={
               !providerId ||
+              !modelId ||
               dirty ||
               providersLoading ||
               Boolean(providersError) ||
@@ -173,19 +188,34 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
             }
           />
         ) : (
-          <Field label="视觉模型">
-            <Select
-              value={providerId}
-              disabled={busy || (activeJob !== null && !needsRetry)}
-              onValueChange={setProviderId}
-            >
-              {available.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <>
+            <Field label="供应商">
+              <Select
+                value={providerId}
+                disabled={busy || (activeJob !== null && !needsRetry)}
+                onValueChange={setProviderId}
+              >
+                {providerOptions.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="视觉模型">
+              <Select
+                value={modelId}
+                disabled={busy || (activeJob !== null && !needsRetry)}
+                onValueChange={setModelId}
+              >
+                {modelOptions.map(({ model }) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name ?? model.id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
         )}
 
         {dirty ? <InlineNotice tone="warning">先保存或撤销未保存的提示词修改，再反推。</InlineNotice> : null}

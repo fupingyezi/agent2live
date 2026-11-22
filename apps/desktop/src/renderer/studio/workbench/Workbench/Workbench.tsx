@@ -23,7 +23,7 @@ import {
 } from '@studio/api'
 import { AsyncButton, Button, Dialog, InlineNotice } from '@agent2live/design-system'
 import { StudioError, StudioLoading } from '@studio/components'
-import { findDefaultTextProvider } from '@studio/providers'
+import { findDefaultTextSelection, providerDisplayName } from '@studio/providers'
 import { useWorkbenchStore } from '../store'
 import { WorkbenchMoreMenu } from '../components/WorkbenchMoreMenu'
 import { GenerationDialog, type GenerationDefaults } from '../components/GenerationDialog'
@@ -268,10 +268,16 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
   }, [generationDetail?.id, generationDetail?.status, project.id, queryClient])
 
-  const providerLabel =
-    providers.find((provider) => provider.id === candidateGeneration?.providerConnectionId)?.model ??
-    providers.find((provider) => provider.id === candidateGeneration?.providerConnectionId)?.label ??
-    '未指定'
+  const candidateProvider = providers.find(
+    (provider) => provider.id === candidateGeneration?.providerConnectionId
+  )
+  const providerLabel = candidateGeneration
+    ? `${candidateProvider ? providerDisplayName(candidateProvider) : '未指定'} · ${candidateGeneration.modelId ?? '默认模型'}`
+    : '未指定'
+  const defaultTextSelection = findDefaultTextSelection(providers)
+  const defaultTextLabel = defaultTextSelection
+    ? `${providerDisplayName(defaultTextSelection.provider)} · ${defaultTextSelection.model.name ?? defaultTextSelection.model.id}`
+    : '未配置文字模型'
 
   const promptVersionNumberForGeneration = useMemo(() => {
     const versionId = candidateGeneration?.promptVersionId
@@ -454,13 +460,14 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     if (liveLastEdited !== 'references') {
       if (providersQuery.isPending) throw new Error('模型连接仍在加载，请稍后重试保存。')
       if (providersQuery.isError) throw new Error('模型连接加载失败，请重试后再保存。')
-      const provider = findDefaultTextProvider(providers)
-      if (provider) {
+      const selection = findDefaultTextSelection(providers)
+      if (selection) {
         const sync = await requestPromptSync(
           project.id,
           activeDraft.id,
           {
-            providerConnectionId: provider.id,
+            providerConnectionId: selection.provider.id,
+            modelId: selection.model.id,
             source: liveLastEdited === 'blocks' ? 'blocks' : 'full',
             mode: 'sync',
             state: liveDraft
@@ -751,10 +758,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     })
     setGenerationDefaults({
       providerId: candidateGeneration.providerConnectionId,
-      count: candidateGeneration.count,
-      size: candidateGeneration.size,
-      seed: candidateGeneration.seed,
-      ...overrides
+      modelId: candidateGeneration.modelId,
+      count: overrides?.count ?? candidateGeneration.count,
+      size: overrides?.size ?? candidateGeneration.size,
+      seed: overrides?.seed ?? candidateGeneration.seed
     })
     setGenerationDialogOpen(true)
   }
@@ -858,6 +865,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       : viewState.view === 'versions'
         ? '当前立绘'
         : '提示词工作台'
+  const saveStatus = readOnly
+    ? '历史版本只读'
+    : dirty
+      ? '有未保存修改'
+      : canCommit
+        ? '草稿待提交为新版本'
+        : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版`
 
   const handleSubmitVersion = (): void => {
     setVersionSubmitting(true)
@@ -1023,13 +1037,10 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       {viewState.view === 'prompt' ? (
         <WorkbenchActionBar
           status={
-            readOnly
-              ? '历史版本只读'
-              : dirty
-                ? '有未保存修改'
-                : canCommit
-                  ? '草稿待提交为新版本'
-                  : `当前 第 ${selectedPromptVersion?.versionNumber ?? '—'} 版`
+            <>
+              {saveStatus}
+              <span className="studio-meta">同步模型：{defaultTextLabel}</span>
+            </>
           }
         >
           <Button

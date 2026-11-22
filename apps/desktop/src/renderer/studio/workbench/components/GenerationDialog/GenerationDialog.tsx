@@ -9,6 +9,7 @@ import type {
 } from '@studio/api'
 import { ApiError, createGeneration, getPromptVersion, queryKeys } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
+import { providerModels } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -25,20 +26,12 @@ import { MATERIAL_ROLE_LABELS } from '../../prompt-labels'
 import { clampGenerationCount, generationCountOptions } from '../../generation-params'
 import styles from './GenerationDialog.module.scss'
 
-interface ImageCapabilities {
-  image?: { sizes?: string[]; maxCount?: number; supportsSeed?: boolean }
-}
-
 export interface GenerationDefaults {
   providerId?: string | null
+  modelId?: string | null
   count?: number | null
   size?: string | null
   seed?: number | null
-}
-
-function imageCapabilities(provider: ProviderConnectionDto): ImageCapabilities['image'] | undefined {
-  if (!provider.capabilities || typeof provider.capabilities !== 'object') return undefined
-  return (provider.capabilities as ImageCapabilities).image
 }
 
 function generationStorageKey(projectId: string): string {
@@ -96,11 +89,12 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const imageProviders = useMemo(
-    () => providers.filter((provider) => provider.enabled && provider.kind === 'image'),
+    () => providers.filter((provider) => provider.enabled && providerModels(provider, 'image').length > 0),
     [providers]
   )
   const promptVersionId = initialPromptVersionId ?? ''
   const [providerId, setProviderId] = useState('')
+  const [modelId, setModelId] = useState('')
   const [count, setCount] = useState(1)
   const [size, setSize] = useState('')
   const [seed, setSeed] = useState('')
@@ -108,7 +102,12 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
 
   const selectedProvider =
     imageProviders.find((provider) => provider.id === providerId) ?? imageProviders[0] ?? null
-  const caps = selectedProvider ? imageCapabilities(selectedProvider) : undefined
+  const imageModels = useMemo(
+    () => (selectedProvider ? providerModels(selectedProvider, 'image') : []),
+    [selectedProvider]
+  )
+  const selectedModel = imageModels.find((model) => model.id === modelId) ?? imageModels[0] ?? null
+  const caps = selectedModel?.capabilities.image
   const sizes = caps?.sizes ?? []
   const seedSupported = caps?.supportsSeed !== false
   const maxCount = Math.min(8, caps?.maxCount ?? 1)
@@ -124,8 +123,11 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       imageProviders.find((provider) => provider.id === initialParams?.providerId) ??
       imageProviders[0] ??
       null
+    const nextModels = nextProvider ? providerModels(nextProvider, 'image') : []
+    const nextModel = nextModels.find((model) => model.id === initialParams?.modelId) ?? nextModels[0] ?? null
     setProviderId(nextProvider?.id ?? '')
-    const nextCaps = nextProvider ? imageCapabilities(nextProvider) : undefined
+    setModelId(nextModel?.id ?? '')
+    const nextCaps = nextModel?.capabilities.image
     const nextMax = Math.min(8, nextCaps?.maxCount ?? 1)
     setCount(clampGenerationCount(initialParams?.count, nextMax))
     setSize(initialParams?.size ?? nextCaps?.sizes?.[0] ?? '')
@@ -139,10 +141,18 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     open,
     providersLoading,
     initialParams?.providerId,
+    initialParams?.modelId,
     initialParams?.count,
     initialParams?.size,
     initialParams?.seed
   ])
+
+  useEffect(() => {
+    if (!selectedProvider) return
+    if (!imageModels.some((model) => model.id === modelId)) {
+      setModelId(imageModels[0]?.id ?? '')
+    }
+  }, [selectedProvider?.id, imageModels, modelId])
 
   useEffect(() => {
     setCount((current) => clampGenerationCount(current, maxCount))
@@ -171,6 +181,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     mutationFn: async () => {
       if (!promptVersionId) throw new Error('请先选择已保存的提示词版本。')
       if (!selectedProvider) throw new Error('没有可用的图像模型连接。')
+      if (!selectedModel) throw new Error('没有可用的图片模型。')
       let parsedSeed: number | null | undefined
       if (seedSupported && seed.trim()) {
         const value = Number(seed)
@@ -182,6 +193,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       return createGeneration(project.id, {
         promptVersionId,
         providerConnectionId: selectedProvider.id,
+        modelId: selectedModel.id,
         count,
         ...(size ? { size } : {}),
         ...(parsedSeed !== undefined ? { seed: parsedSeed } : {})
@@ -205,7 +217,11 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   })
 
   const formReady =
-    promptVersionId !== '' && !providersLoading && providersError === null && imageProviders.length > 0
+    promptVersionId !== '' &&
+    !providersLoading &&
+    providersError === null &&
+    imageProviders.length > 0 &&
+    selectedModel !== null
 
   return (
     <Dialog
@@ -227,7 +243,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             variant="primary"
             busy={createMutation.isPending}
             busyLabel="提交生成…"
-            disabled={!formReady || !selectedProvider}
+            disabled={!formReady || !selectedProvider || !selectedModel}
             onClick={() => createMutation.mutate()}
           >
             生成图片
@@ -246,7 +262,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       ) : imageProviders.length === 0 ? (
         <EmptyState
           title="没有可用的图像模型"
-          description="在设置中添加 Seedream 或兼容图像连接，并启用它。"
+          description="在设置中保存包含生图模型的连接。"
           action={
             <Button asChild variant="secondary">
               <Link to="/settings/providers">去设置</Link>
@@ -270,11 +286,25 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             </div>
           </section>
 
-          <Field label="图片模型">
+          <Field label="供应商">
             <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
               {imageProviders.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="图片模型">
+            <Select
+              data-testid="wb3-generation-model"
+              value={selectedModel?.id ?? ''}
+              onValueChange={setModelId}
+            >
+              {imageModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name ?? model.id}
                 </option>
               ))}
             </Select>

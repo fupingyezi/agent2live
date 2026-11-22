@@ -41,7 +41,7 @@ import type {
   PromptDraftDto
 } from '@studio/api'
 import { Eye, Pencil, X } from 'lucide-react'
-import { findDefaultTextProvider, findDefaultVisionProvider } from '@studio/providers'
+import { findDefaultTextSelection, findDefaultVisionSelection } from '@studio/providers'
 import { CharacterReferenceEditor } from '../new-character/CharacterReferenceEditor'
 import {
   normalizeCharacterReferences,
@@ -370,10 +370,10 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       providersFailed = true
     }
 
-    const textProvider = findDefaultTextProvider(providers)
+    const textSelection = findDefaultTextSelection(providers)
     if (providersFailed) {
       textWarning = 'text-optimize-failed'
-    } else if (!textProvider) {
+    } else if (!textSelection) {
       textWarning = 'no-text-provider'
     } else {
       try {
@@ -381,7 +381,8 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
           projectId,
           submitted.draft.id,
           {
-            providerConnectionId: textProvider.id,
+            providerConnectionId: textSelection.provider.id,
+            modelId: textSelection.model.id,
             source: 'full',
             mode: 'optimize',
             state: submitted.draft.state
@@ -422,12 +423,15 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
       if (providersFailed) {
         aiWarning = 'vision-start-failed'
       } else {
-        const provider = findDefaultVisionProvider(providers)
-        if (!provider) {
+        const visionSelection = findDefaultVisionSelection(providers)
+        if (!visionSelection) {
           aiWarning = 'no-vision-provider'
         } else {
           try {
-            const reverse = await requestPromptReverse(projectId, provider.id)
+            const reverse = await requestPromptReverse(projectId, {
+              providerConnectionId: visionSelection.provider.id,
+              modelId: visionSelection.model.id
+            })
             initialReverseJobId = reverse.jobId
           } catch {
             aiWarning = 'vision-start-failed'

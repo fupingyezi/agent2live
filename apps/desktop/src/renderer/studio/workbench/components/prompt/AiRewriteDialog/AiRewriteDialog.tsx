@@ -12,6 +12,7 @@ import {
 } from '@studio/api'
 import type { PromptSpecV2 } from '@studio/api'
 import { useJob } from '@studio/hooks'
+import { providerModels } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -153,15 +154,21 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const chatProviders = useMemo(
-    () => providers.filter((provider) => provider.enabled && provider.kind === 'chat'),
+    () => providers.filter((provider) => provider.enabled && providerModels(provider, 'chat').length > 0),
     [providers]
   )
   const [intent, setIntent] = useState(initialIntent)
   const [providerId, setProviderId] = useState(chatProviders[0]?.id ?? '')
+  const [modelId, setModelId] = useState('')
   const [activeJob, setActiveJob] = useState<SuggestJob | null>(initialJob)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [localError, setLocalError] = useState<string | null>(null)
   const startedRef = useRef(false)
+  const selectedProvider = chatProviders.find((provider) => provider.id === providerId)
+  const chatModels = useMemo(
+    () => (selectedProvider ? providerModels(selectedProvider, 'chat') : []),
+    [selectedProvider]
+  )
 
   useEffect(() => {
     if (!open) return
@@ -180,6 +187,12 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
       setProviderId(chatProviders[0]?.id ?? '')
     }
   }, [chatProviders, providerId])
+
+  useEffect(() => {
+    if (!chatModels.some((model) => model.id === modelId)) {
+      setModelId(chatModels[0]?.id ?? '')
+    }
+  }, [chatModels, modelId])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
   const job = jobQuery.data ?? null
@@ -204,18 +217,22 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   const startMutation = useMutation({
     mutationFn: async () => {
       if (!providerId) throw new Error('请选择聊天模型连接。')
+      if (!modelId) throw new Error('请选择聊天模型。')
       if (intent.trim().length === 0) throw new Error('请描述希望修改的地方。')
       await onPrepare()
       if (workspace.activeDraft) {
-        return requestPromptSuggestionFromDraft(
-          projectId,
-          workspace.activeDraft.id,
-          providerId,
-          intent.trim()
-        )
+        return requestPromptSuggestionFromDraft(projectId, workspace.activeDraft.id, {
+          providerConnectionId: providerId,
+          modelId,
+          intent: intent.trim()
+        })
       }
       if (workspace.activePromptVersion) {
-        return requestPromptSuggestionFromVersion(workspace.activePromptVersion.id, providerId, intent.trim())
+        return requestPromptSuggestionFromVersion(workspace.activePromptVersion.id, {
+          providerConnectionId: providerId,
+          modelId,
+          intent: intent.trim()
+        })
       }
       throw new Error('当前没有可用的提示词版本。')
     },
@@ -243,6 +260,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
       return
     }
     if (!providerId || !chatProviders.some((provider) => provider.id === providerId)) return
+    if (!modelId || !chatModels.some((model) => model.id === modelId)) return
     if (intent !== initialIntent || intent.trim().length === 0) return
     if (startMutation.isPending) return
     startedRef.current = true
@@ -256,7 +274,9 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
     providersLoading,
     providersError,
     chatProviders,
-    providerId
+    providerId,
+    chatModels,
+    modelId
   ])
 
   const applyMutation = useMutation({
@@ -307,6 +327,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   const jobRunning = activeJob !== null && !terminal && !failed
   const canStart =
     chatProviders.length > 0 &&
+    modelId !== '' &&
     intent.trim().length > 0 &&
     !startMutation.isPending &&
     !providersLoading &&
@@ -405,6 +426,19 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 </Select>
               </Field>
             ) : null}
+            <Field label="模型">
+              <Select
+                value={modelId}
+                disabled={startMutation.isPending || (activeJob !== null && !needsRetry)}
+                onValueChange={setModelId}
+              >
+                {chatModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name ?? model.id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
         )}
 
