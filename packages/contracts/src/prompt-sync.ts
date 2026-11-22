@@ -6,6 +6,7 @@ export type PromptEditSource = 'full' | 'blocks' | 'references'
 export const promptSyncInputSchema = z
   .object({
     providerConnectionId: z.string().min(1).max(64),
+    modelId: z.string().min(1).max(200).optional(),
     source: z.enum(['full', 'blocks']),
     mode: z.enum(['sync', 'optimize']).default('sync'),
     state: promptSpecSchema

@@ -8,9 +8,43 @@ import {
   createProviderConnectionInputSchema,
   promptInputMetadataSchema,
   promptInputMultipartMetadataSchema,
+  promptReverseInputSchema,
+  promptSuggestionInputSchema,
   providerProbeDtoSchema,
-  providerProbeInputSchema
+  providerProbeInputSchema,
+  updateProviderConnectionInputSchema
 } from './api'
+import { promptSyncInputSchema } from './prompt-sync'
+import { getErrorDefinition } from './errors'
+
+const CHAT_MODEL = {
+  id: 'chat-1',
+  name: null,
+  kind: 'chat' as const,
+  adapter: 'openai-compatible' as const,
+  capabilities: {
+    schemaVersion: 'provider-capabilities/1' as const,
+    chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+  }
+}
+const IMAGE_MODEL = {
+  id: 'image-1',
+  name: 'Seedream',
+  kind: 'image' as const,
+  adapter: 'seedream' as const,
+  capabilities: {
+    schemaVersion: 'provider-capabilities/1' as const,
+    image: {
+      maxReferenceImages: 4,
+      maxPromptChars: 20_000,
+      supportsNegativePrompt: false,
+      supportsWeightSyntax: false,
+      supportsSeed: true,
+      maxCount: 4,
+      sizes: ['1024x1024']
+    }
+  }
+}
 
 describe('API schemas', () => {
   it('applies generation defaults and accepts an optional base artwork without changing references', () => {
@@ -304,5 +338,74 @@ describe('API schemas', () => {
     expect(() =>
       acceptSuggestionInputSchema.parse({ expectedDraftRowVersion: 3, operationIndexes: [1, 1] })
     ).toThrow(/unique/i)
+  })
+})
+
+it('accepts a fixed preset with a model catalog', () => {
+  const parsed = createProviderConnectionInputSchema.parse({
+    label: '火山方舟',
+    kind: 'chat',
+    adapter: 'openai-compatible',
+    model: 'chat-1',
+    capabilities: CHAT_MODEL.capabilities,
+    presetId: 'volcengine-ark',
+    models: [CHAT_MODEL, IMAGE_MODEL]
+  })
+  expect(parsed).toMatchObject({ presetId: 'volcengine-ark', models: [CHAT_MODEL, IMAGE_MODEL] })
+  expect(updateProviderConnectionInputSchema.parse({ models: [CHAT_MODEL] })).toMatchObject({
+    models: [CHAT_MODEL]
+  })
+})
+
+it('adds modelId to generation and prompt task inputs', () => {
+  expect(
+    createGenerationInputSchema.parse({
+      promptVersionId: 'v1',
+      providerConnectionId: 'c1',
+      modelId: 'image-1',
+      count: 1
+    })
+  ).toMatchObject({ modelId: 'image-1' })
+  expect(promptReverseInputSchema.parse({ providerConnectionId: 'c1', modelId: 'chat-1' })).toMatchObject({
+    modelId: 'chat-1'
+  })
+  expect(
+    promptSuggestionInputSchema.parse({
+      providerConnectionId: 'c1',
+      intent: '更冷一点',
+      modelId: 'chat-1'
+    })
+  ).toMatchObject({ modelId: 'chat-1' })
+  expect(
+    promptSyncInputSchema.parse({
+      providerConnectionId: 'c1',
+      source: 'full',
+      state: {
+        schemaVersion: 'prompt-spec/2',
+        fullPrompt: '',
+        lockAll: false,
+        sourceRequirements: [],
+        materialRefs: [],
+        blocks: [],
+        negativeBlocks: [],
+        constraints: {
+          canvas: { width: 1024, height: 1024 },
+          background: 'unspecified',
+          aspect: 'square'
+        }
+      },
+      modelId: 'chat-1'
+    })
+  ).toMatchObject({ modelId: 'chat-1' })
+})
+
+it('registers model discovery and task-selection errors', () => {
+  expect(getErrorDefinition('PROVIDER_MODELS_UNSUPPORTED')).toMatchObject({
+    code: 'PROVIDER_MODELS_UNSUPPORTED',
+    httpStatus: 404
+  })
+  expect(getErrorDefinition('PROVIDER_MODEL_NOT_AVAILABLE')).toMatchObject({
+    code: 'PROVIDER_MODEL_NOT_AVAILABLE',
+    httpStatus: 422
   })
 })

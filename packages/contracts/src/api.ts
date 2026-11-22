@@ -5,6 +5,8 @@ import type { MaterialRole, PromptOperation, PromptRequirement, PromptSpecV2 } f
 import type { PromptReference } from './prompt-reference'
 import { characterBriefContentSchema } from './character-brief'
 import { providerBaseUrlSchema, providerSecretRefSchema } from './provider-shared'
+import { providerPresetIdSchema, providerModelProfilesSchema } from './provider-catalog'
+import type { ProviderModelProfile } from './provider-catalog'
 
 const title = z.string().trim().min(1).max(100)
 const description = z.string().max(4000)
@@ -170,7 +172,9 @@ export const createProviderConnectionInputSchema = z
     model: z.string().min(1).max(200).optional(),
     secretRef: providerSecretRefSchema.optional(),
     enabled: z.boolean().default(true),
-    capabilities: providerCapabilitiesSchema
+    capabilities: providerCapabilitiesSchema,
+    presetId: providerPresetIdSchema.optional(),
+    models: providerModelProfilesSchema.optional()
   })
   .strict()
 
@@ -181,7 +185,8 @@ export const updateProviderConnectionInputSchema = z
     model: z.string().min(1).max(200).nullable().optional(),
     secretRef: providerSecretRefSchema.nullable().optional(),
     enabled: z.boolean().optional(),
-    capabilities: providerCapabilitiesSchema.optional()
+    capabilities: providerCapabilitiesSchema.optional(),
+    models: providerModelProfilesSchema.optional()
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: 'patch is empty' })
@@ -221,6 +226,7 @@ export const createGenerationInputSchema = z
     promptVersionId: z.string().min(1).max(64),
     baseArtVersionId: z.string().min(1).max(64).nullable().optional(),
     providerConnectionId: z.string().min(1).max(64),
+    modelId: z.string().min(1).max(200).optional(),
     count: z.number().int().min(1).max(8).default(1),
     size: z
       .string()
@@ -233,6 +239,7 @@ export const createGenerationInputSchema = z
 export const promptReverseInputSchema = z
   .object({
     providerConnectionId: z.string().min(1).max(64),
+    modelId: z.string().min(1).max(200).optional(),
     inputSubmissionId: z.string().min(1).max(64).optional()
   })
   .strict()
@@ -240,6 +247,7 @@ export const promptReverseInputSchema = z
 export const promptSuggestionInputSchema = z
   .object({
     providerConnectionId: z.string().min(1).max(64),
+    modelId: z.string().min(1).max(200).optional(),
     intent: z.string().trim().min(1).max(2000)
   })
   .strict()
@@ -503,6 +511,8 @@ export interface ProviderConnectionDto {
   model: string | null
   enabled: boolean
   capabilities: unknown
+  models: ProviderModelProfile[]
+  modelsRefreshedAt: number | null
   hasSecret: boolean
   createdAt: number
   updatedAt: number
@@ -656,6 +666,7 @@ export interface GenerationDto {
   promptVersionId: string
   baseArtVersionId: string | null
   providerConnectionId: string | null
+  modelId: string | null
   jobId: string
   status: JobStatus
   attempts: number

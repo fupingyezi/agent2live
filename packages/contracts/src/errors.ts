@@ -946,6 +946,35 @@ export const ERROR_REGISTRY = {
     '请更换支持参考图的生图模型',
     z.object({ capability: z.string().max(80) }).strict()
   ),
+  PROVIDER_MODELS_UNSUPPORTED: def(
+    'PROVIDER_MODELS_UNSUPPORTED',
+    404,
+    'dependency',
+    false,
+    'warning',
+    'errors.providerModelsUnsupported',
+    'choose_other',
+    '该服务商不支持模型发现',
+    '可改用自定义连接并手工填写模型'
+  ),
+  PROVIDER_MODEL_NOT_AVAILABLE: def(
+    'PROVIDER_MODEL_NOT_AVAILABLE',
+    422,
+    'validation',
+    false,
+    'warning',
+    'errors.providerModelNotAvailable',
+    'choose_other',
+    '所选模型不可用',
+    '该连接目录中没有符合要求的模型，请刷新目录或选择其他模型',
+    z
+      .object({
+        connectionId: z.string().max(64).optional(),
+        kind: z.enum(['chat', 'image']).optional(),
+        modelId: z.string().max(200).optional()
+      })
+      .strict()
+  ),
   PROVIDER_BILLABLE_CONFIRMATION_REQUIRED: def(
     'PROVIDER_BILLABLE_CONFIRMATION_REQUIRED',
     422,
