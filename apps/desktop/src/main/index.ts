@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { createPetWindow, createStudioWindow } from './windows'
 import { registerSecretIpc, registerWindowIpc } from './ipc'
 import { registerModelProtocol, registerModelScheme } from './model-protocol'
+import { cleanupDraftSecrets } from './secrets'
 import { startSidecar, stopSidecar, watchSidecarForDev } from './sidecar'
 
 app.setName('agent2live')
@@ -27,6 +28,7 @@ function shouldOpenPet(): boolean {
 }
 
 async function bootstrap(): Promise<void> {
+  cleanupDraftSecrets()
   registerModelProtocol(modelRoot)
   registerWindowIpc()
   registerSecretIpc()

@@ -62,6 +62,18 @@ describe('secret vault', () => {
     expect(JSON.parse(raw).entries).toHaveLength(1)
   })
 
+  it('deletes only entries whose label starts with the draft prefix', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'vault-draft-')), 'vault.json')
+    const vault = new VaultFile(file, crypto)
+    const stable = vault.put('provider-secret:conn_1', 'sk-stable')
+    const draft = vault.put('provider-draft:abc', 'sk-draft')
+    vault.deleteByLabelPrefix('provider-draft:')
+    expect(vault.resolve(stable.secretRef)).toBe('sk-stable')
+    expect(vault.resolve(draft.secretRef)).toBeNull()
+    expect(readFileSync(file, 'utf8')).not.toContain('sk-stable')
+    expect(readFileSync(file, 'utf8')).not.toContain('sk-draft')
+  })
+
   it('VaultFile.put fails without overwriting the vault and without leaking its path', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agent2live-vault-'))
     const file = join(dir, 'vault.json')

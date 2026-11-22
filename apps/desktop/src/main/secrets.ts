@@ -16,3 +16,12 @@ export function getSecretVault(): VaultFile {
   vault = new VaultFile(join(app.getPath('userData'), 'secrets', 'vault.json'), crypto)
   return vault
 }
+
+export function cleanupDraftSecrets(): void {
+  try {
+    getSecretVault().deleteByLabelPrefix('provider-draft:')
+  } catch (error) {
+    // 启动清理失败不影响应用启动；草稿密钥仍是加密存储。
+    console.error('failed to clean provider draft secrets', error)
+  }
+}

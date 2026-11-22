@@ -127,6 +127,13 @@ export class VaultFile {
     this.save(deleteSecret(this.load(), secretRef))
   }
 
+  deleteByLabelPrefix(prefix: string): void {
+    const state = this.load()
+    const entries = state.entries.filter((entry) => !entry.label.startsWith(prefix))
+    if (entries.length === state.entries.length) return
+    this.save({ ...state, entries })
+  }
+
   has(secretRef: string): boolean {
     return this.load().entries.some((entry) => entry.secretRef === secretRef)
   }
