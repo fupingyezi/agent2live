@@ -1,4 +1,5 @@
 import { ApiClient, newIdempotencyKey } from './client'
+import type { ProviderModelsPreviewInput } from '@agent2live/contracts'
 import type {
   CreateProviderConnectionInput,
   PromptInputMultipartMetadata,
@@ -35,6 +36,7 @@ import type {
   PromptVersionSummaryDto,
   PromptWorkspaceDto,
   ProviderConnectionDto,
+  ProviderModelProfile,
   ProviderProbeDto,
   SubmitPromptInputResult
 } from './types'
@@ -246,12 +248,12 @@ export function getPromptVersion(
 
 export function requestPromptReverse(
   projectId: string,
-  providerConnectionId: string,
+  input: { providerConnectionId: string; modelId?: string },
   idempotencyKey = newIdempotencyKey()
 ): Promise<{ jobId: string; baseDraftRevision: number; baseDraftRowVersion: number }> {
   return api.request(`/api/v1/art-projects/${encodeURIComponent(projectId)}/prompt-reverse`, {
     method: 'POST',
-    body: { providerConnectionId },
+    body: input,
     idempotencyKey
   })
 }
@@ -311,25 +313,23 @@ export function discardPromptReverseResult(resultId: string): Promise<PromptReve
 export function requestPromptSuggestionFromDraft(
   projectId: string,
   draftId: string,
-  providerConnectionId: string,
-  intent: string,
+  input: { providerConnectionId: string; intent: string; modelId?: string },
   idempotencyKey = newIdempotencyKey()
 ): Promise<{ jobId: string; baseContentHash: string }> {
   return api.request(
     `/api/v1/art-projects/${encodeURIComponent(projectId)}/prompt-drafts/${encodeURIComponent(draftId)}/suggestions`,
-    { method: 'POST', body: { providerConnectionId, intent }, idempotencyKey }
+    { method: 'POST', body: input, idempotencyKey }
   )
 }
 
 export function requestPromptSuggestionFromVersion(
   versionId: string,
-  providerConnectionId: string,
-  intent: string,
+  input: { providerConnectionId: string; intent: string; modelId?: string },
   idempotencyKey = newIdempotencyKey()
 ): Promise<{ jobId: string; baseContentHash: string }> {
   return api.request(`/api/v1/prompt-versions/${encodeURIComponent(versionId)}/suggestions`, {
     method: 'POST',
-    body: { providerConnectionId, intent },
+    body: input,
     idempotencyKey
   })
 }
@@ -399,6 +399,7 @@ export function createGeneration(
     promptVersionId: string
     baseArtVersionId?: string | null
     providerConnectionId: string
+    modelId?: string
     count: number
     size?: string
     seed?: number | null
@@ -553,6 +554,26 @@ export function updateProvider(
     body: input,
     ifMatch: rowVersion
   })
+}
+
+export async function previewProviderModels(
+  input: ProviderModelsPreviewInput
+): Promise<ProviderModelProfile[]> {
+  const response = await api.request<{ items: ProviderModelProfile[] }>('/api/v1/provider-models', {
+    method: 'POST',
+    body: input
+  })
+  return response.items
+}
+
+export function refreshProviderModels(
+  connectionId: string,
+  rowVersion: number
+): Promise<ProviderConnectionDto> {
+  return api.request<ProviderConnectionDto>(
+    `/api/v1/providers/${encodeURIComponent(connectionId)}/models/refresh`,
+    { method: 'POST', ifMatch: rowVersion }
+  )
 }
 
 export function testProviderConnection(

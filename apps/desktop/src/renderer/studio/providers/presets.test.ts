@@ -1,187 +1,85 @@
 import { describe, expect, it } from 'vitest'
 import type { ProviderConnectionDto } from '@studio/api'
 import {
-  PROVIDER_PRESETS,
-  findDefaultTextProvider,
-  findDefaultVisionProvider,
-  getProviderPreset,
+  FIXED_PROVIDER_PRESETS,
+  findDefaultTextSelection,
+  findDefaultVisionSelection,
   initialProviderValues,
-  presetIdForConnection
+  presetIdForConnection,
+  providerCounts,
+  providerModels
 } from './presets'
+
+const CHAT = {
+  schemaVersion: 'provider-capabilities/1' as const,
+  chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+}
+const VISION = {
+  schemaVersion: 'provider-capabilities/1' as const,
+  chat: { maxImages: 8, maxPromptChars: 20_000, supportsVision: true }
+}
+const IMAGE = {
+  schemaVersion: 'provider-capabilities/1' as const,
+  image: {
+    maxReferenceImages: 4,
+    maxPromptChars: 20_000,
+    supportsNegativePrompt: false,
+    supportsWeightSyntax: false,
+    supportsSeed: true,
+    maxCount: 4,
+    sizes: ['1024x1024']
+  }
+}
 
 function connection(patch: Partial<ProviderConnectionDto> = {}): ProviderConnectionDto {
   return {
-    id: 'conn_test',
-    label: 'Test',
+    id: 'conn_1',
+    label: '火山方舟',
     kind: 'chat',
     adapter: 'openai-compatible',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'glm-5.3-flash',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    model: 'chat-a',
     enabled: true,
-    capabilities: {
-      schemaVersion: 'provider-capabilities/1',
-      chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
-    },
+    capabilities: CHAT,
+    models: [
+      { id: 'chat-a', name: null, kind: 'chat', adapter: 'openai-compatible', capabilities: CHAT },
+      { id: 'vision-a', name: null, kind: 'chat', adapter: 'openai-compatible', capabilities: VISION },
+      { id: 'image-a', name: null, kind: 'image', adapter: 'seedream', capabilities: IMAGE }
+    ],
+    modelsRefreshedAt: '2026-11-23T00:00:00.000Z',
     hasSecret: true,
-    createdAt: '2026-11-16T00:00:00.000Z',
-    updatedAt: '2026-11-16T00:00:00.000Z',
+    createdAt: '2026-11-23T00:00:00.000Z',
+    updatedAt: '2026-11-23T00:00:00.000Z',
     rowVersion: 1,
     ...patch
   }
 }
 
-describe('provider presets', () => {
-  it('offers the six Phase 1 connection shapes', () => {
-    expect(PROVIDER_PRESETS.map((preset) => preset.id)).toEqual([
-      'openai-chat',
+describe('provider catalog helpers', () => {
+  it('exposes the four create targets and seeds fixed values', () => {
+    expect(FIXED_PROVIDER_PRESETS.map((preset) => preset.id)).toEqual([
       'deepseek-chat',
       'zhipu-vision',
-      'seedream-image',
-      'mock-chat',
-      'mock-image'
+      'volcengine-ark'
     ])
-    expect(getProviderPreset('deepseek-chat')).toMatchObject({
-      kind: 'chat',
-      adapter: 'openai-compatible',
+    expect(initialProviderValues('deepseek-chat')).toMatchObject({
+      presetId: 'deepseek-chat',
+      label: 'DeepSeek',
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-flash',
-      requiresSecret: true
-    })
-    expect(getProviderPreset('deepseek-chat').capabilities.chat).toMatchObject({
-      maxImages: 0,
-      supportsVision: false
-    })
-    expect(getProviderPreset('zhipu-vision')).toMatchObject({
-      name: '智谱多模态',
       kind: 'chat',
-      adapter: 'openai-compatible',
-      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-      model: 'glm-5.3-flash',
-      requiresSecret: true
+      adapter: 'openai-compatible'
     })
-    expect(getProviderPreset('zhipu-vision').capabilities.chat).toMatchObject({
-      maxImages: 6,
-      supportsVision: true
-    })
-    expect(getProviderPreset('seedream-image')).toMatchObject({
-      kind: 'image',
-      adapter: 'seedream',
-      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-      model: 'doubao-seedream-5-0-pro-260628',
-      requiresSecret: true
-    })
-    expect(getProviderPreset('seedream-image').capabilities.image?.maxCount).toBe(4)
-    expect(getProviderPreset('openai-chat').capabilities.chat?.supportsVision).toBe(true)
-    expect(getProviderPreset('mock-chat').requiresSecret).toBe(false)
-    expect(getProviderPreset('mock-image').capabilities.image?.sizes).toEqual(['512x896', '1024x1792'])
+    expect(initialProviderValues('custom')).toMatchObject({ presetId: 'custom', label: '自定义' })
   })
 
-  it('selects any enabled vision chat connection, preferring Zhipu GLM', () => {
-    const zhipu = connection({ id: 'conn_zhipu' })
-    const openai = connection({
-      id: 'conn_openai',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4.1-mini'
-    })
-    expect(findDefaultVisionProvider([zhipu])?.id).toBe('conn_zhipu')
-    expect(findDefaultVisionProvider([openai])?.id).toBe('conn_openai')
-    expect(findDefaultVisionProvider([openai, zhipu])?.id).toBe('conn_zhipu')
-    expect(findDefaultVisionProvider([zhipu, openai])?.id).toBe('conn_zhipu')
-
-    expect(
-      findDefaultVisionProvider([
-        connection({
-          id: 'conn_glm_text',
-          baseUrl: 'https://api.zhipu.test/v4',
-          model: 'glm-5.3-flash',
-          capabilities: {
-            schemaVersion: 'provider-capabilities/1',
-            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
-          }
-        }),
-        connection({ id: 'conn_disabled', enabled: false }),
-        connection({
-          id: 'conn_no_vision',
-          capabilities: {
-            schemaVersion: 'provider-capabilities/1',
-            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
-          }
-        }),
-        connection({ id: 'conn_image', kind: 'image' })
-      ])
-    ).toBeNull()
-  })
-
-  it('selects only an enabled DeepSeek text connection', () => {
-    expect(
-      findDefaultTextProvider([
-        connection({
-          id: 'conn_deepseek',
-          baseUrl: 'https://api.deepseek.com/v1',
-          model: 'deepseek-chat',
-          capabilities: {
-            schemaVersion: 'provider-capabilities/1',
-            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
-          }
-        })
-      ])?.id
-    ).toBe('conn_deepseek')
-
-    expect(
-      findDefaultTextProvider([
-        connection({ id: 'conn_zhipu' }),
-        connection({ id: 'conn_disabled', enabled: false }),
-        connection({
-          id: 'conn_openai',
-          baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-4.1-mini',
-          capabilities: {
-            schemaVersion: 'provider-capabilities/1',
-            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
-          }
-        })
-      ])
-    ).toBeNull()
-  })
-
-  it('seeds editable values and never invents an API key', () => {
-    const values = initialProviderValues(getProviderPreset('openai-chat'))
-    expect(values).toEqual({
-      presetId: 'openai-chat',
-      label: 'OpenAI 兼容对话',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4.1-mini',
-      apiKey: '',
-      enabled: true
-    })
-    expect(initialProviderValues(getProviderPreset('mock-image'))).toMatchObject({
-      baseUrl: '',
-      model: '',
-      apiKey: '',
-      enabled: true
-    })
-  })
-
-  it('maps an existing connection back to its editing preset', () => {
-    expect(presetIdForConnection({ adapter: 'seedream', kind: 'image' })).toBe('seedream-image')
-    expect(
-      presetIdForConnection({
-        adapter: 'openai-compatible',
-        kind: 'chat',
-        baseUrl: 'https://api.deepseek.com/v1',
-        model: 'deepseek-flash'
-      })
-    ).toBe('deepseek-chat')
-    expect(
-      presetIdForConnection({
-        adapter: 'openai-compatible',
-        kind: 'chat',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4.1-mini'
-      })
-    ).toBe('openai-chat')
-    expect(presetIdForConnection({ adapter: 'mock', kind: 'chat' })).toBe('mock-chat')
-    expect(presetIdForConnection({ adapter: 'mock', kind: 'image' })).toBe('mock-image')
-    expect(() => getProviderPreset('nope')).toThrow('未知的连接类型')
+  it('derives preset ids, counts and default selections from the catalog', () => {
+    const ark = connection()
+    expect(presetIdForConnection(ark)).toBe('volcengine-ark')
+    expect(presetIdForConnection(connection({ baseUrl: 'https://example.com/v1' }))).toBe('custom')
+    expect(presetIdForConnection(connection({ adapter: 'mock', baseUrl: null }))).toBeNull()
+    expect(providerCounts(ark)).toEqual({ chat: 1, vision: 1, image: 1 })
+    expect(providerModels(ark, 'chat').map((model) => model.id)).toEqual(['chat-a', 'vision-a'])
+    expect(findDefaultTextSelection([ark])).toMatchObject({ model: { id: 'chat-a' } })
+    expect(findDefaultVisionSelection([ark])).toMatchObject({ model: { id: 'vision-a' } })
   })
 })

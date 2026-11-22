@@ -29,6 +29,8 @@ import type {
   PromptVersionSummary as ContractPromptVersionSummary,
   PromptWorkspaceDto as ContractPromptWorkspaceDto,
   ProviderConnectionDto as ContractProviderConnectionDto,
+  ProviderModelProfile as ContractProviderModelProfile,
+  ProviderModelSelection as ContractProviderModelSelection,
   ProviderProbeDto as ContractProviderProbeDto
 } from '@agent2live/contracts'
 
@@ -100,6 +102,8 @@ export type JobEventDto = WithIsoTimestamps<ContractJobEventDto>
 export type AssetDto = WithIsoTimestamps<ContractAssetDto>
 export type ProviderConnectionDto = WithIsoTimestamps<ContractProviderConnectionDto>
 export type ProviderProbeDto = WithIsoTimestamps<ContractProviderProbeDto>
+export type ProviderModelProfile = ContractProviderModelProfile
+export type ProviderModelSelection = ContractProviderModelSelection
 export type CharacterBackupDto = WithIsoTimestamps<ContractCharacterBackupDto>
 
 export type PromptDraftDto = WithIsoTimestamps<ContractPromptDraftDto>
