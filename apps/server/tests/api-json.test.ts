@@ -35,6 +35,18 @@ describe('API JSON timestamp boundary', () => {
     expect(result.payload).toEqual({ createdAt: '2026-11-09T04:05:06.000Z', seq: 7 })
   })
 
+  it('serializes provider model refresh timestamps', () => {
+    expect(
+      serializeApiTimestamps({
+        modelsRefreshedAt: 1_700_000_000_000,
+        nested: { modelsRefreshedAt: 1_700_000_001_000 }
+      })
+    ).toEqual({
+      modelsRefreshedAt: '2023-11-14T22:13:20.000Z',
+      nested: { modelsRefreshedAt: '2023-11-14T22:13:21.000Z' }
+    })
+  })
+
   it('is installed on replies built by buildApp', async () => {
     const app = buildApp({ token: 'test-token' })
     app.get('/__test__/timestamps', async () => ({

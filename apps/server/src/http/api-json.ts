@@ -15,7 +15,8 @@ const TIMESTAMP_KEYS: ReadonlySet<string> = new Set([
   'resolvedAt',
   'discardedAt',
   'publishedAt',
-  'lastSeenAt'
+  'lastSeenAt',
+  'modelsRefreshedAt'
 ])
 
 function isRecord(value: unknown): value is Record<string, unknown> {

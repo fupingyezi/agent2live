@@ -75,6 +75,7 @@ type TimestampKey =
   | 'publishedAt'
   | 'lastSeenAt'
   | 'checkedAt'
+  | 'modelsRefreshedAt'
 
 type IsoTimestamp<T> = T extends number ? string : T extends number | null ? string | null : T
 
