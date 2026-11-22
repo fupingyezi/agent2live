@@ -168,6 +168,31 @@
   font-size: var(--a2l-text-meta-size);
   line-height: var(--a2l-text-meta-line);
 }
+.provider-fetch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.provider-model-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow: auto;
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    border-radius: var(--a2l-radius-xs);
+    background: var(--a2l-color-surface-subtle);
+  }
+}
 
 @media (max-width: 900px) {
   .studio-settings-layout {
