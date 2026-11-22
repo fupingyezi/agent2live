@@ -3,7 +3,6 @@ import type Database from 'better-sqlite3'
 import {
   getErrorDefinition,
   newId,
-  providerCapabilitiesSchema,
   type ArtProjectStage,
   type CreateGenerationInput,
   type GenerationCandidateDto,
@@ -161,11 +160,9 @@ export class GenerationService {
     if (!connection.enabled) {
       throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId: connection.id })
     }
-    if (connection.kind !== 'image') {
-      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image' })
-    }
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
-    const image = capabilities.image
+    // Ark connections keep the legacy chat kind while their catalog holds image models.
+    const selection = this.deps.connections.resolveModel(connection.id, 'image', input.modelId)
+    const image = selection.capabilities.image
     if (!image) {
       throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image' })
     }
@@ -213,6 +210,7 @@ export class GenerationService {
       promptVersionId: version.id,
       baseArtVersionId,
       providerConnectionId: connection.id,
+      model: selection,
       promptContentHash: version.contentHash,
       compiled: { ...compiled, warnings },
       referenceAssetIds: referencePlan.sentAssetIds,
@@ -310,6 +308,7 @@ export class GenerationService {
       promptVersionId: row.prompt_version_id,
       baseArtVersionId: row.base_art_version_id,
       providerConnectionId: row.provider_connection_id,
+      modelId: request?.model.modelId ?? null,
       jobId: row.job_id,
       status: job.status as JobStatus,
       attempts: job.attempts,
@@ -403,10 +402,10 @@ export class GenerationService {
     }
 
     const connection = this.deps.connections.getRow(request.providerConnectionId)
-    if (!connection.enabled || connection.kind !== 'image') {
+    if (!connection.enabled) {
       throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId: connection.id })
     }
-    const provider = await this.deps.registry.image(connection.id)
+    const provider = await this.deps.registry.image(connection.id, request.model)
     const planned = new Map(request.references.requested.map((reference) => [reference.assetId, reference]))
     const references = request.referenceAssetIds.map((assetId) => {
       const opened = this.deps.assets.openContent(assetId)
@@ -427,7 +426,7 @@ export class GenerationService {
       connectionId: connection.id,
       purpose: 'image.generate',
       requestHash: request.requestHash,
-      model: connection.model
+      model: request.model.modelId
     })
     const startedAt = this.deps.clock.now()
     let providerResult: Awaited<ReturnType<typeof provider.generate>>

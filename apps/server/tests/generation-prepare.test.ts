@@ -116,6 +116,23 @@ describe('generation references', () => {
       promptVersionId: 'pv_1',
       baseArtVersionId: 'av_1',
       providerConnectionId: 'pc_1',
+      model: {
+        providerConnectionId: 'pc_1',
+        modelId: 'mock-image-a',
+        adapter: 'mock' as const,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1' as const,
+          image: {
+            maxReferenceImages: 8,
+            maxPromptChars: 20_000,
+            supportsNegativePrompt: true,
+            supportsWeightSyntax: true,
+            supportsSeed: true,
+            maxCount: 4,
+            sizes: ['512x896']
+          }
+        }
+      },
       promptContentHash: hashCanonical({ prompt: 'x' }),
       compiled: {
         prompt: 'x',

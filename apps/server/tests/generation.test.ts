@@ -118,6 +118,71 @@ async function mockImageConnection(ctx: Ctx, overrides: Record<string, unknown> 
   return response.json<{ id: string }>()
 }
 
+async function multiModelImageConnection(ctx: Ctx) {
+  const response = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/v1/providers',
+    headers: { ...ctx.auth, 'idempotency-key': nextProviderKey('provider-mock-image-multi') },
+    payload: {
+      label: 'Mock image multi',
+      kind: 'image',
+      adapter: 'mock',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        image: {
+          maxReferenceImages: 4,
+          maxPromptChars: 20_000,
+          supportsNegativePrompt: true,
+          supportsWeightSyntax: true,
+          supportsSeed: true,
+          maxCount: 4,
+          sizes: ['512x896', '1024x1792']
+        }
+      },
+      models: [
+        {
+          id: 'mock-image-a',
+          name: null,
+          kind: 'image',
+          adapter: 'mock',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            image: {
+              maxReferenceImages: 4,
+              maxPromptChars: 20_000,
+              supportsNegativePrompt: true,
+              supportsWeightSyntax: true,
+              supportsSeed: true,
+              maxCount: 4,
+              sizes: ['512x896', '1024x1792']
+            }
+          }
+        },
+        {
+          id: 'mock-image-b',
+          name: null,
+          kind: 'image',
+          adapter: 'mock',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            image: {
+              maxReferenceImages: 0,
+              maxPromptChars: 20_000,
+              supportsNegativePrompt: false,
+              supportsWeightSyntax: false,
+              supportsSeed: false,
+              maxCount: 1,
+              sizes: ['1024x1024']
+            }
+          }
+        }
+      ]
+    }
+  })
+  expect(response.statusCode).toBe(201)
+  return response.json<{ id: string }>()
+}
+
 function seedArtVersion(
   ctx: Ctx,
   projectId: string,
@@ -355,6 +420,76 @@ describe('generation jobs', () => {
       expect(unsupportedSeed.json()).toMatchObject({
         error: { code: 'PROVIDER_CAPABILITY_UNSUPPORTED' }
       })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('snapshots the selected image model and its capabilities', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const connection = await multiModelImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-model-selection-0001' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          modelId: 'mock-image-b',
+          count: 1,
+          size: '1024x1024'
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const body = created.json<{ generationId: string }>()
+      const detail = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${body.generationId}`,
+        headers: ctx.auth
+      })
+      expect(detail.json()).toMatchObject({
+        modelId: 'mock-image-b',
+        request: {
+          model: {
+            providerConnectionId: connection.id,
+            modelId: 'mock-image-b',
+            adapter: 'mock',
+            capabilities: {
+              image: { maxCount: 1, sizes: ['1024x1024'] }
+            }
+          }
+        }
+      })
+      await ctx.services.jobs.tick()
+      const invocation = ctx.db
+        .prepare('select model from provider_invocations order by started_at desc limit 1')
+        .get() as { model: string } | undefined
+      expect(invocation?.model).toBe('mock-image-b')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects an image model missing from the catalog', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version } = await committedPrompt(ctx)
+      const connection = await multiModelImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-model-missing-0001' },
+        payload: {
+          promptVersionId: version.id,
+          providerConnectionId: connection.id,
+          modelId: 'missing-model',
+          count: 1
+        }
+      })
+      expect(created.statusCode).toBe(422)
+      expect(created.json()).toMatchObject({ error: { code: 'PROVIDER_MODEL_NOT_AVAILABLE' } })
     } finally {
       await ctx.close()
     }

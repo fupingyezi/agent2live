@@ -4,6 +4,7 @@ import {
   hashSchema,
   promptReferenceRoleSchema,
   promptReferenceSetSchema,
+  providerModelSelectionSchema,
   type PromptReference
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
@@ -117,6 +118,7 @@ export const generationRequestSchema = z
     promptVersionId: z.string().min(1).max(64),
     baseArtVersionId: z.string().min(1).max(64).nullable(),
     providerConnectionId: z.string().min(1).max(64),
+    model: providerModelSelectionSchema,
     promptContentHash: hashSchema,
     compiled: compiledPromptSnapshotSchema,
     referenceAssetIds: z.array(assetId).max(14),
@@ -128,6 +130,9 @@ export const generationRequestSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.model.providerConnectionId !== value.providerConnectionId) {
+      ctx.addIssue({ code: 'custom', message: 'model selection must match the connection' })
+    }
     if (
       value.referenceAssetIds.length !== value.references.sentAssetIds.length ||
       value.referenceAssetIds.some((id, index) => id !== value.references.sentAssetIds[index])
