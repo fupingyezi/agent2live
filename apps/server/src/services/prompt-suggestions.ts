@@ -5,7 +5,6 @@ import {
   newId,
   promptSpecSchema,
   promptSuggestionOutputSchema,
-  providerCapabilitiesSchema,
   type CharacterBriefVersion,
   type PromptSpecV2,
   type PromptSuggestionDto,
@@ -24,7 +23,7 @@ import type { ProjectService } from './projects'
 import { normalizeSpecForSubmission, type PromptDraftDto, type PromptDraftService } from './prompt-drafts'
 import type { PromptVersionDto, PromptVersionService } from './prompt-versions'
 import type { PromptSubmissionRepository } from './prompt-submissions'
-import type { ProviderConnectionRow, ProviderConnectionService } from './provider-connections'
+import type { ProviderConnectionService } from './provider-connections'
 import type { ProviderInvocationService } from './provider-invocations'
 import type { ProviderRegistry } from './provider-registry'
 import type { RequestIds } from './request-ids'
@@ -36,6 +35,7 @@ import { providerFailureAppError, providerFailureDetail } from './provider-diagn
 
 export interface PromptSuggestionInput {
   providerConnectionId: string
+  modelId?: string | undefined
   intent: string
 }
 
@@ -101,16 +101,17 @@ export class PromptSuggestionService {
     this.deps.projects.getWritable(version.artProjectId)
     if (version.state.lockAll) throw new AppError('PROMPT_BLOCK_LOCKED', { blockId: '*' })
     const submission = this.deps.submissions.get(version.artProjectId, version.inputSubmissionId)
-    const connection = this.requireChatConnection(input.providerConnectionId)
+    const selection = this.deps.connections.resolveModel(input.providerConnectionId, 'chat', input.modelId)
     return {
       baseKind: 'prompt_version',
       baseVersionId: version.id,
       artProjectId: version.artProjectId,
-      providerConnectionId: connection.id,
+      providerConnectionId: selection.providerConnectionId,
+      model: selection,
       characterBriefVersionId: submission.characterBriefVersionId,
       intent: input.intent,
       baseContentHash: version.contentHash,
-      mockProtocol: connection.adapter === 'mock'
+      mockProtocol: selection.adapter === 'mock'
     }
   }
 
@@ -130,18 +131,19 @@ export class PromptSuggestionService {
     const submission = this.deps.submissions.get(projectId, draft.input_submission_id)
     const state = this.parseStoredState(draft.state_json)
     if (state.lockAll) throw new AppError('PROMPT_BLOCK_LOCKED', { blockId: '*' })
-    const connection = this.requireChatConnection(input.providerConnectionId)
+    const selection = this.deps.connections.resolveModel(input.providerConnectionId, 'chat', input.modelId)
     return {
       baseKind: 'prompt_draft',
       baseDraftId: draft.id,
       baseDraftRevision: draft.revision,
       baseDraftRowVersion: draft.row_version,
       artProjectId: projectId,
-      providerConnectionId: connection.id,
+      providerConnectionId: selection.providerConnectionId,
+      model: selection,
       characterBriefVersionId: submission.characterBriefVersionId,
       intent: input.intent,
       baseContentHash: draft.content_hash,
-      mockProtocol: connection.adapter === 'mock'
+      mockProtocol: selection.adapter === 'mock'
     }
   }
 
@@ -154,28 +156,31 @@ export class PromptSuggestionService {
     const payload = context.payload
     const base = this.loadFreshBase(payload)
     const brief = this.loadPinnedBrief(payload)
-    const connection = this.requireChatConnection(payload.providerConnectionId)
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
+    const capabilities = payload.model.capabilities
+    if (!capabilities.chat) {
+      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
+    }
     const prompt = buildSuggestionPrompt(
       base,
       brief,
       payload.intent,
       payload.mockProtocol,
-      capabilities.chat!.maxPromptChars
+      capabilities.chat.maxPromptChars
     )
-    const provider = await this.deps.registry.chat(connection.id)
+    const provider = await this.deps.registry.chat(payload.providerConnectionId, payload.model)
     const startedAt = this.deps.clock.now()
     const invocationId = this.deps.invocations.start({
-      connectionId: connection.id,
+      connectionId: payload.providerConnectionId,
       purpose: 'prompt.suggestion',
       requestHash: hashCanonical({
         purpose: 'prompt.suggestion',
         baseHash: payload.baseContentHash,
         intent: payload.intent,
-        connectionId: connection.id,
+        connectionId: payload.providerConnectionId,
+        modelId: payload.model.modelId,
         schema: 'prompt-suggestion/1'
       }),
-      model: connection.model
+      model: payload.model.modelId
     })
     context.progress(20, 'calling provider')
     let responseText: string
@@ -581,18 +586,6 @@ export class PromptSuggestionService {
     }
     const draft = this.deps.drafts.getActiveRow(row.artProjectId)
     return draft && draft.id === row.baseDraftId ? draft.content_hash : '0'.repeat(64)
-  }
-
-  private requireChatConnection(connectionId: string): ProviderConnectionRow {
-    const connection = this.deps.connections.getRow(connectionId)
-    if (!connection.enabled) {
-      throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId })
-    }
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
-    if (connection.kind !== 'chat' || !capabilities.chat) {
-      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
-    }
-    return connection
   }
 
   private requireVersion(versionId: string): PromptVersionDto {

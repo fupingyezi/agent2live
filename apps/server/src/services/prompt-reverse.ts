@@ -3,7 +3,6 @@ import {
   hashCanonical,
   newId,
   promptSpecSchema,
-  providerCapabilitiesSchema,
   type PromptReverseResultDto,
   type PromptReverseResultStatus,
   type PromptSpecV2
@@ -79,7 +78,11 @@ export class PromptReverseService {
 
   prepare(
     projectId: string,
-    input: { providerConnectionId: string; inputSubmissionId?: string | undefined },
+    input: {
+      providerConnectionId: string
+      modelId?: string | undefined
+      inputSubmissionId?: string | undefined
+    },
     _key: string
   ): {
     payload: PromptReversePayload
@@ -94,17 +97,9 @@ export class PromptReverseService {
     const state = storedState(draft.state_json)
     if (state.lockAll) throw new AppError('PROMPT_BLOCK_LOCKED', { blockId: '*' })
     const submission = this.deps.submissions.get(projectId, draft.input_submission_id)
-    const connection = this.deps.connections.getRow(input.providerConnectionId)
-    if (!connection.enabled) {
-      throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId: connection.id })
-    }
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
-    if (connection.kind !== 'chat' || !capabilities.chat) {
-      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
-    }
-    if (state.materialRefs.length > 0 && !capabilities.chat.supportsVision) {
-      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'vision' })
-    }
+    const selection = this.deps.connections.resolveModel(input.providerConnectionId, 'chat', input.modelId, {
+      requireVision: state.materialRefs.length > 0
+    })
     return {
       payload: {
         artProjectId: projectId,
@@ -114,8 +109,9 @@ export class PromptReverseService {
         baseDraftRevision: draft.revision,
         baseDraftRowVersion: draft.row_version,
         baseContentHash: draft.content_hash,
-        providerConnectionId: connection.id,
-        mockProtocol: connection.adapter === 'mock'
+        providerConnectionId: selection.providerConnectionId,
+        model: selection,
+        mockProtocol: selection.adapter === 'mock'
       },
       base: { revision: draft.revision, rowVersion: draft.row_version }
     }
@@ -150,13 +146,9 @@ export class PromptReverseService {
     const brief = submission.characterBriefVersionId
       ? this.deps.briefs.get(submission.characterBriefVersionId)
       : null
-    const connection = this.deps.connections.getRow(payload.providerConnectionId)
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
-    if (!connection.enabled || connection.kind !== 'chat' || !capabilities.chat) {
+    const capabilities = payload.model.capabilities
+    if (!capabilities.chat) {
       throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
-    }
-    if (base.materialRefs.length > 0 && !capabilities.chat.supportsVision) {
-      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'vision' })
     }
     const images = base.materialRefs.slice(0, capabilities.chat.maxImages).map((material) => {
       const { asset, bytes } = this.deps.assets.openContent(material.assetId)
@@ -170,21 +162,22 @@ export class PromptReverseService {
       mockProtocol: payload.mockProtocol,
       maxPromptChars: capabilities.chat.maxPromptChars
     })
-    const provider = await this.deps.registry.chat(connection.id)
+    const provider = await this.deps.registry.chat(payload.providerConnectionId, payload.model)
     const requestHash = hashCanonical({
       purpose: 'prompt.reverse',
       artProjectId: payload.artProjectId,
       submissionId: payload.inputSubmissionId,
       baseContentHash: payload.baseContentHash,
       providerConnectionId: payload.providerConnectionId,
+      modelId: payload.model.modelId,
       schema: 'prompt-reverse/1'
     })
     const startedAt = this.deps.clock.now()
     const invocationId = this.deps.invocations.start({
-      connectionId: connection.id,
+      connectionId: payload.providerConnectionId,
       purpose: 'prompt.reverse',
       requestHash,
-      model: connection.model
+      model: payload.model.modelId
     })
     context.progress(10, 'calling provider')
     let outputText: string

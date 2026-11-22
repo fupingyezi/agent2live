@@ -1,10 +1,5 @@
 import type Database from 'better-sqlite3'
-import {
-  hashCanonical,
-  providerCapabilitiesSchema,
-  type PromptSyncInput,
-  type PromptSyncResultDto
-} from '@agent2live/contracts'
+import { hashCanonical, type PromptSyncInput, type PromptSyncResultDto } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import { parsePromptSyncOutput, applyPromptSyncOutput, buildPromptSyncMessages } from '../prompt/sync'
 import type { JobHandlerContext } from '../jobs/types'
@@ -48,11 +43,12 @@ export class PromptSyncService {
       throw new AppError('PROMPT_INPUT_REQUIRED', { artProjectId: projectId })
     }
     const submission = this.deps.submissions.get(projectId, draft.input_submission_id)
-    const connection = this.requireChatConnection(input.providerConnectionId)
+    const selection = this.deps.connections.resolveModel(input.providerConnectionId, 'chat', input.modelId)
     return {
       artProjectId: projectId,
       draftId,
-      providerConnectionId: connection.id,
+      providerConnectionId: selection.providerConnectionId,
+      model: selection,
       characterBriefVersionId: submission.characterBriefVersionId,
       source: input.source,
       mode: input.mode,
@@ -60,7 +56,7 @@ export class PromptSyncService {
       baseDraftRevision: draft.revision,
       baseDraftRowVersion: draft.row_version,
       baseContentHash: draft.content_hash,
-      mockProtocol: connection.adapter === 'mock'
+      mockProtocol: selection.adapter === 'mock'
     }
   }
 
@@ -87,8 +83,11 @@ export class PromptSyncService {
     const brief = submission.characterBriefVersionId
       ? this.deps.briefs.get(submission.characterBriefVersionId)
       : null
-    const connection = this.requireChatConnection(payload.providerConnectionId)
-    const provider = await this.deps.registry.chat(connection.id)
+    const capabilities = payload.model.capabilities
+    if (!capabilities.chat) {
+      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
+    }
+    const provider = await this.deps.registry.chat(payload.providerConnectionId, payload.model)
     const { messages } = buildPromptSyncMessages(
       {
         providerConnectionId: payload.providerConnectionId,
@@ -107,14 +106,15 @@ export class PromptSyncService {
       fullPrompt: payload.state.fullPrompt,
       blocks: payload.state.blocks,
       providerConnectionId: payload.providerConnectionId,
+      modelId: payload.model.modelId,
       schema: 'prompt-sync/1'
     })
     const startedAt = this.deps.clock.now()
     const invocationId = this.deps.invocations.start({
-      connectionId: connection.id,
+      connectionId: payload.providerConnectionId,
       purpose: 'prompt.suggestion',
       requestHash,
-      model: connection.model
+      model: payload.model.modelId
     })
     context.progress(20, 'calling provider')
     let responseText: string
@@ -160,14 +160,5 @@ export class PromptSyncService {
       metadata: { source: payload.source, conflicts: result.conflicts.length }
     })
     return result
-  }
-
-  private requireChatConnection(connectionId: string) {
-    const connection = this.deps.connections.getRow(connectionId)
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
-    if (!connection.enabled || connection.kind !== 'chat' || !capabilities.chat) {
-      throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'chat' })
-    }
-    return connection
   }
 }

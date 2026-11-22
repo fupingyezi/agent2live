@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { promptSpecSchema } from '@agent2live/contracts'
+import { promptSpecSchema, providerModelSelectionSchema } from '@agent2live/contracts'
 import type { JobDefinition } from './types'
 import type { PromptSyncService } from '../services/prompt-sync'
 
@@ -10,6 +10,7 @@ export const promptSyncPayloadSchema = z
     artProjectId: z.string().min(1).max(64),
     draftId: z.string().min(1).max(64),
     providerConnectionId: z.string().min(1).max(64),
+    model: providerModelSelectionSchema,
     characterBriefVersionId: z
       .string()
       .regex(/^cbv_[0-9A-HJKMNP-TV-Z]{26}$/)

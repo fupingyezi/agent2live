@@ -85,14 +85,55 @@ async function enqueueReverse(
   ctx: Awaited<ReturnType<typeof createTestApp>>,
   projectId: string,
   connectionId: string,
-  key: string
+  key: string,
+  modelId?: string
 ) {
   return ctx.app.inject({
     method: 'POST',
     url: `/api/v1/art-projects/${projectId}/prompt-reverse`,
     headers: { ...ctx.auth, 'idempotency-key': key },
-    payload: { providerConnectionId: connectionId }
+    payload: {
+      providerConnectionId: connectionId,
+      ...(modelId === undefined ? {} : { modelId })
+    }
   })
+}
+
+async function createReverseChat(
+  ctx: Awaited<ReturnType<typeof createTestApp>>,
+  key: string,
+  models: Array<{ id: string; supportsVision: boolean }>
+) {
+  const response = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/v1/providers',
+    headers: { ...ctx.auth, 'idempotency-key': key },
+    payload: {
+      label: 'Reverse Multi',
+      kind: 'chat',
+      adapter: 'mock',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        chat: { maxImages: 8, maxPromptChars: 20_000, supportsVision: true }
+      },
+      models: models.map((model) => ({
+        id: model.id,
+        name: null,
+        kind: 'chat',
+        adapter: 'mock',
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: {
+            maxImages: model.supportsVision ? 8 : 0,
+            maxPromptChars: 20_000,
+            supportsVision: model.supportsVision
+          }
+        }
+      }))
+    }
+  })
+  expect(response.statusCode).toBe(201)
+  return response.json<{ id: string }>()
 }
 
 async function readyResult(ctx: Awaited<ReturnType<typeof createTestApp>>, key: string) {
@@ -452,6 +493,49 @@ describe('prompt reverse', () => {
       })
       expect(wrongVersion.statusCode).toBe(409)
       expect(wrongVersion.json()).toMatchObject({ error: { code: 'ROW_VERSION_CONFLICT' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('rejects a reverse task when the draft has references and no model supports vision', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await prepareDraft(ctx)
+      const provider = await createReverseChat(ctx, 'provider-reverse-text-0001', [
+        { id: 'text-only', supportsVision: false }
+      ])
+      const rejected = await enqueueReverse(ctx, project.id, provider.id, 'reverse-no-vision-0001')
+      expect(rejected.statusCode).toBe(422)
+      expect(rejected.json()).toMatchObject({ error: { code: 'PROVIDER_MODEL_NOT_AVAILABLE' } })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('records the requested vision model in the reverse job payload', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project } = await prepareDraft(ctx)
+      const provider = await createReverseChat(ctx, 'provider-reverse-vision-0001', [
+        { id: 'text-only', supportsVision: false },
+        { id: 'vision-model', supportsVision: true }
+      ])
+      const created = await enqueueReverse(
+        ctx,
+        project.id,
+        provider.id,
+        'reverse-vision-0001',
+        'vision-model'
+      )
+      expect(created.statusCode).toBe(202)
+      const jobId = created.json<{ jobId: string }>().jobId
+      const job = ctx.db.prepare('select payload_json from jobs where id = ?').get(jobId) as {
+        payload_json: string
+      }
+      expect(JSON.parse(job.payload_json)).toMatchObject({
+        model: { providerConnectionId: provider.id, modelId: 'vision-model', adapter: 'mock' }
+      })
     } finally {
       await ctx.close()
     }

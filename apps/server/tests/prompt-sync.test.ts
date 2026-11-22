@@ -51,6 +51,12 @@ async function prepareDraft(ctx: Ctx) {
   }
 }
 
+let providerCreateSeq = 0
+function nextProviderKey(prefix: string): string {
+  providerCreateSeq += 1
+  return `${prefix}-${String(providerCreateSeq).padStart(4, '0')}`
+}
+
 async function createChat(ctx: Ctx) {
   const response = await ctx.app.inject({
     method: 'POST',
@@ -67,6 +73,47 @@ async function createChat(ctx: Ctx) {
       }
     }
   })
+  return response.json<{ id: string }>()
+}
+
+async function createMultiModelChat(ctx: Ctx) {
+  const response = await ctx.app.inject({
+    method: 'POST',
+    url: '/api/v1/providers',
+    headers: { ...ctx.auth, 'idempotency-key': nextProviderKey('provider-chat-multi') },
+    payload: {
+      label: 'Prompt Sync Multi',
+      kind: 'chat',
+      adapter: 'mock',
+      capabilities: {
+        schemaVersion: 'provider-capabilities/1',
+        chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+      },
+      models: [
+        {
+          id: 'sync-chat-a',
+          name: null,
+          kind: 'chat',
+          adapter: 'mock',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+          }
+        },
+        {
+          id: 'sync-chat-b',
+          name: null,
+          kind: 'chat',
+          adapter: 'mock',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+          }
+        }
+      ]
+    }
+  })
+  expect(response.statusCode).toBe(201)
   return response.json<{ id: string }>()
 }
 
@@ -210,6 +257,51 @@ describe('prompt sync API', () => {
       })
       expect(response.statusCode).toBe(409)
       expect(response.json<{ error: { code: string } }>().error.code).toBe('ROW_VERSION_CONFLICT')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('records the requested chat model in the job payload and invocation', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await prepareDraft(ctx)
+      const connection = await createMultiModelChat(ctx)
+      vi.spyOn(ctx.services.providerRegistry, 'chat').mockResolvedValue(
+        providerReturning({
+          fullPrompt: '同步后的完整提示词',
+          operations: [],
+          conflicts: [],
+          warnings: []
+        })
+      )
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${prepared.project.id}/prompt-drafts/${prepared.draft.id}/sync`,
+        headers: {
+          ...ctx.auth,
+          'if-match': `"${prepared.draft.rowVersion}"`,
+          'idempotency-key': 'prompt-sync-model-0001'
+        },
+        payload: {
+          providerConnectionId: connection.id,
+          modelId: 'sync-chat-b',
+          source: 'full',
+          state: prepared.state
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const jobId = created.json<{ jobId: string }>().jobId
+      const job = ctx.db.prepare('select payload_json from jobs where id = ?').get(jobId) as {
+        payload_json: string
+      }
+      expect(JSON.parse(job.payload_json)).toMatchObject({
+        model: { providerConnectionId: connection.id, modelId: 'sync-chat-b', adapter: 'mock' }
+      })
+      await ctx.services.jobs.tick()
+      expect(
+        ctx.db.prepare('select model from provider_invocations order by started_at desc limit 1').get()
+      ).toEqual({ model: 'sync-chat-b' })
     } finally {
       await ctx.close()
     }

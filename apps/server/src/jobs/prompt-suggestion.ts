@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { providerModelSelectionSchema } from '@agent2live/contracts'
 import type { JobDefinition } from './types'
 import type { PromptSuggestionService } from '../services/prompt-suggestions'
 
@@ -7,6 +8,7 @@ export const PROMPT_SUGGESTION_JOB_TYPE = 'prompt.suggestion'
 const baseSchema = z.object({
   artProjectId: z.string().min(1).max(64),
   providerConnectionId: z.string().min(1).max(64),
+  model: providerModelSelectionSchema,
   characterBriefVersionId: z
     .string()
     .regex(/^cbv_[0-9A-HJKMNP-TV-Z]{26}$/)

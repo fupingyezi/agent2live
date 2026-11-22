@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { providerModelSelectionSchema } from '@agent2live/contracts'
 import type { JobDefinition } from './types'
 import type { PromptReverseService } from '../services/prompt-reverse'
 
@@ -17,6 +18,7 @@ export const promptReversePayloadSchema = z
     baseDraftRowVersion: z.number().int().positive(),
     baseContentHash: z.string().regex(/^[0-9a-f]{64}$/),
     providerConnectionId: z.string().min(1).max(64),
+    model: providerModelSelectionSchema,
     mockProtocol: z.boolean()
   })
   .strict()
