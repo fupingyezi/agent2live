@@ -852,6 +852,64 @@ describe('generation jobs', () => {
     }
   })
 
+  it('keeps historical request parameters when request_json predates the model field', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await committedPrompt(ctx)
+      const connection = await mockImageConnection(ctx)
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${prepared.project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'gen-legacy-request-0001' },
+        payload: {
+          promptVersionId: prepared.version.id,
+          providerConnectionId: connection.id,
+          count: 2,
+          size: '512x896',
+          seed: 9
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const generationId = created.json<{ generationId: string }>().generationId
+      const row = ctx.db
+        .prepare('select request_json from generation_jobs where id = ?')
+        .get(generationId) as {
+        request_json: string
+      }
+      const legacy = JSON.parse(row.request_json) as Record<string, unknown>
+      delete legacy.model
+      ctx.db
+        .prepare('update generation_jobs set request_json = ? where id = ?')
+        .run(JSON.stringify(legacy), generationId)
+
+      const detail = await ctx.app.inject({
+        method: 'GET',
+        url: `/api/v1/generations/${generationId}`,
+        headers: ctx.auth
+      })
+      expect(detail.statusCode).toBe(200)
+      const dto = detail.json<{
+        modelId: string | null
+        count: number
+        size: string
+        seed: number | null
+        droppedBlockIds: string[]
+        compiledWarnings: string[]
+        request: { model?: unknown } | null
+      }>()
+      expect(dto.modelId).toBeNull()
+      expect(dto.count).toBe(2)
+      expect(dto.size).toBe('512x896')
+      expect(dto.seed).toBe(9)
+      expect(Array.isArray(dto.droppedBlockIds)).toBe(true)
+      expect(Array.isArray(dto.compiledWarnings)).toBe(true)
+      expect(dto.request).not.toBeNull()
+      expect(dto.request).not.toHaveProperty('model')
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('discards ready candidates and stays idempotent', async () => {
     const ctx = await createTestApp()
     try {

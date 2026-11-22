@@ -110,24 +110,30 @@ export const referencePlanSchema = z
 
 export type ReferencePlan = z.infer<typeof referencePlanSchema>
 
+const generationRequestFields = {
+  schemaVersion: z.literal('generation-request/1'),
+  generationJobId: generationId,
+  artProjectId: z.string().min(1).max(64),
+  promptVersionId: z.string().min(1).max(64),
+  baseArtVersionId: z.string().min(1).max(64).nullable(),
+  providerConnectionId: z.string().min(1).max(64),
+  promptContentHash: hashSchema,
+  compiled: compiledPromptSnapshotSchema,
+  referenceAssetIds: z.array(assetId).max(14),
+  references: referencePlanSchema,
+  count: z.number().int().min(1).max(15),
+  size: z.string().regex(/^\d{3,4}x\d{3,4}$/),
+  seed: z.number().int().min(0).max(2_147_483_647).nullable(),
+  requestHash: hashSchema
+}
+
+/**
+ * 严格的任务载荷：新入队任务必须携带模型选择，执行端按此解析。
+ * 升级前入队的任务没有 model，会解析失败；开发阶段需在升级时排空或重新入队。
+ * 历史记录展示请使用 generationRequestDisplaySchema。
+ */
 export const generationRequestSchema = z
-  .object({
-    schemaVersion: z.literal('generation-request/1'),
-    generationJobId: generationId,
-    artProjectId: z.string().min(1).max(64),
-    promptVersionId: z.string().min(1).max(64),
-    baseArtVersionId: z.string().min(1).max(64).nullable(),
-    providerConnectionId: z.string().min(1).max(64),
-    model: providerModelSelectionSchema,
-    promptContentHash: hashSchema,
-    compiled: compiledPromptSnapshotSchema,
-    referenceAssetIds: z.array(assetId).max(14),
-    references: referencePlanSchema,
-    count: z.number().int().min(1).max(15),
-    size: z.string().regex(/^\d{3,4}x\d{3,4}$/),
-    seed: z.number().int().min(0).max(2_147_483_647).nullable(),
-    requestHash: hashSchema
-  })
+  .object({ ...generationRequestFields, model: providerModelSelectionSchema })
   .strict()
   .superRefine((value, ctx) => {
     if (value.model.providerConnectionId !== value.providerConnectionId) {
@@ -141,7 +147,16 @@ export const generationRequestSchema = z
     }
   })
 
+/**
+ * 仅用于历史记录展示：旧记录的 request_json 没有 model，
+ * 但仍应能展示 count/size/seed/warnings；任务执行仍走上面的严格 schema。
+ */
+export const generationRequestDisplaySchema = z
+  .object({ ...generationRequestFields, model: providerModelSelectionSchema.optional() })
+  .strict()
+
 export type GenerationRequest = z.infer<typeof generationRequestSchema>
+export type GenerationRequestDisplay = z.infer<typeof generationRequestDisplaySchema>
 export type PreparedGeneration = Omit<GenerationRequest, 'schemaVersion' | 'generationJobId' | 'requestHash'>
 
 export function planReferences(input: { references: PromptReference[]; limit: number }): ReferencePlan {

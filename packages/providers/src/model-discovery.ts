@@ -12,8 +12,8 @@ export type ModelDiscoveryFlavor = 'deepseek' | 'zhipu' | 'ark' | 'custom-chat' 
 const EXCLUDED_ZHIPU = /embedding|cogview|cogvideo|tts|asr|rerank|image|video|audio|moderation|voice/i
 const EXCLUDED_CHAT =
   /embedding|rerank|tts|asr|image|video|audio|cogview|wanx|seedream|dall-e|flux|sdxl|stable-diffusion/i
-const IMAGE_FAMILY =
-  /seedream|seededit|gpt-image|dall-e|qwen-image|wanx|cogview|flux|sdxl|stable-diffusion|imagen|kolors|hunyuan-image|image/i
+// 自定义生图只有 Seedream 适配器；其他生图家族的模型无法按该协议调用，不能自动展示。
+const IMAGE_FAMILY = /seedream|seededit/i
 const ARK_NON_CHAT = /seedream|seedance|embedding|tts|asr|video|audio/i
 
 interface RawModel {

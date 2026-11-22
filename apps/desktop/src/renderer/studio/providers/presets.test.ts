@@ -82,4 +82,15 @@ describe('provider catalog helpers', () => {
     expect(findDefaultTextSelection([ark])).toMatchObject({ model: { id: 'chat-a' } })
     expect(findDefaultVisionSelection([ark])).toMatchObject({ model: { id: 'vision-a' } })
   })
+
+  it('falls back to a vision chat model when the catalog has no text-only model', () => {
+    const visionOnly = connection({
+      models: [
+        { id: 'vision-only', name: null, kind: 'chat', adapter: 'openai-compatible', capabilities: VISION },
+        { id: 'image-a', name: null, kind: 'image', adapter: 'seedream', capabilities: IMAGE }
+      ]
+    })
+    expect(findDefaultTextSelection([visionOnly])).toMatchObject({ model: { id: 'vision-only' } })
+    expect(findDefaultTextSelection([connection({ enabled: false })])).toBeNull()
+  })
 })

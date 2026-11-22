@@ -16,8 +16,8 @@ import {
 } from './provider-diagnostics'
 import { withEvents } from './events-buffer'
 import { compilePrompt } from '../prompt/compile'
-import { generationRequestSchema, planReferences } from '../generation/request'
-import type { GenerationRequest, PreparedGeneration } from '../generation/request'
+import { generationRequestDisplaySchema, planReferences } from '../generation/request'
+import type { GenerationRequest, GenerationRequestDisplay, PreparedGeneration } from '../generation/request'
 import type { AssetService } from './assets'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
@@ -80,7 +80,7 @@ interface JobRow {
 export type { GenerationCandidateDto }
 
 export type GenerationDto = Omit<ContractGenerationDto, 'request'> & {
-  request: GenerationRequest | null
+  request: GenerationRequestDisplay | null
 }
 
 function parseCheckpoint(json: string | null): { progress: number | null } {
@@ -296,9 +296,10 @@ export class GenerationService {
     const assets = this.deps.assets.listByIds(candidateRows.map((candidate) => candidate.asset_id))
     const byId = new Map(assets.map((asset) => [asset.id, asset]))
     const checkpoint = parseCheckpoint(job.checkpoint_json)
-    let request: GenerationRequest | null = null
+    let request: GenerationRequestDisplay | null = null
     try {
-      request = generationRequestSchema.parse(JSON.parse(row.request_json))
+      // 展示用 schema 容忍升级前没有 model 的历史行；入队/执行仍用严格 schema。
+      request = generationRequestDisplaySchema.parse(JSON.parse(row.request_json))
     } catch {
       request = null
     }
@@ -308,7 +309,7 @@ export class GenerationService {
       promptVersionId: row.prompt_version_id,
       baseArtVersionId: row.base_art_version_id,
       providerConnectionId: row.provider_connection_id,
-      modelId: request?.model.modelId ?? null,
+      modelId: request?.model?.modelId ?? null,
       jobId: row.job_id,
       status: job.status as JobStatus,
       attempts: job.attempts,

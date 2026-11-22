@@ -134,6 +134,29 @@ export interface UpdateProviderOptions {
   draftSecretRef?: string | null
 }
 
+/**
+ * 编辑模式应提交的模型目录补丁。
+ * 仅轮换密钥时保留已保存目录；自定义 Base URL 变更后旧目录属于旧端点，
+ * 必须携带刚拉取的模型或手工模型，不能让旧目录静默通过。
+ */
+export function editCatalogPatch(
+  values: ProviderFormValues,
+  current: ProviderConnectionRecord,
+  models: ProviderModelProfile[] | null
+): ProviderModelProfile[] | undefined {
+  if (values.presetId !== 'custom') return undefined
+  const urlChanged = values.baseUrl.trim() !== (current.baseUrl ?? '')
+  if (urlChanged) {
+    if (models !== null && models.length > 0) return models
+    return values.manualModel.trim() ? [manualModelProfile(values)] : undefined
+  }
+  if (models !== null && JSON.stringify(models) !== JSON.stringify(current.models)) return models
+  if (models === null && current.models.length === 0 && values.manualModel.trim()) {
+    return [manualModelProfile(values)]
+  }
+  return undefined
+}
+
 export async function updateProviderFlow(
   port: ProviderFlowPort,
   current: ProviderConnectionRecord,

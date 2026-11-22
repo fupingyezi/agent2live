@@ -95,13 +95,12 @@ export function findDefaultTextSelection(
   const candidates = providers
     .filter((provider) => provider.enabled)
     .flatMap((provider) =>
-      provider.models
-        .filter((model) => model.kind === 'chat' && model.capabilities.chat?.supportsVision !== true)
-        .map((model) => ({ provider, model }))
+      provider.models.filter((model) => model.kind === 'chat').map((model) => ({ provider, model }))
     )
-  return (
-    candidates.find(({ provider }) => provider.baseUrl?.includes('api.deepseek.com')) ?? candidates[0] ?? null
-  )
+  // 优先纯文本模型；若目录里只有 VLM，服务端 resolveModel('chat') 仍会用它们做文本任务。
+  const textOnly = candidates.filter(({ model }) => model.capabilities.chat?.supportsVision !== true)
+  const pool = textOnly.length > 0 ? textOnly : candidates
+  return pool.find(({ provider }) => provider.baseUrl?.includes('api.deepseek.com')) ?? pool[0] ?? null
 }
 
 export function findDefaultVisionSelection(

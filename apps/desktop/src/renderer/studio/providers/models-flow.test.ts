@@ -69,4 +69,28 @@ describe('model preview flow', () => {
       )
     ).rejects.toBeInstanceOf(ProviderFormError)
   })
+
+  it('deletes the draft secret when the preview fails', async () => {
+    const failure = new Error('provider rejected the key')
+    const p = port({
+      previewModels: vi.fn(async () => {
+        throw failure
+      })
+    })
+    await expect(previewModelsForForm(p, values(), 'provider-draft:test')).rejects.toBe(failure)
+    expect(p.deleteSecret).toHaveBeenCalledWith('sec_01J00000000000000000000001')
+  })
+
+  it('rethrows the preview error even when the draft cleanup fails', async () => {
+    const failure = new Error('provider rejected the key')
+    const p = port({
+      previewModels: vi.fn(async () => {
+        throw failure
+      }),
+      deleteSecret: vi.fn(async () => {
+        throw new Error('vault unavailable')
+      })
+    })
+    await expect(previewModelsForForm(p, values(), 'provider-draft:test')).rejects.toBe(failure)
+  })
 })

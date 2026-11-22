@@ -5,6 +5,7 @@ import {
   ProviderFormError,
   buildCreateInput,
   createProviderFlow,
+  editCatalogPatch,
   updateProviderFlow,
   type ProviderFlowPort
 } from './create-flow'
@@ -198,5 +199,75 @@ describe('provider create flow', () => {
     })
     expect(p.update).toHaveBeenCalledWith(current.id, { secretRef: 'sec_01J00000000000000000000002' }, 3)
     expect(p.deleteSecret).toHaveBeenCalledWith('sec_draft')
+  })
+})
+
+function customConnection(overrides: Record<string, unknown> = {}) {
+  return connection({ label: '自定义', baseUrl: 'https://old.example.com/v1', ...overrides })
+}
+
+function customValues(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues {
+  return values({
+    presetId: 'custom',
+    label: '自定义',
+    baseUrl: 'https://new.example.com/v1',
+    apiKey: '',
+    ...overrides
+  })
+}
+
+describe('provider custom endpoint edit', () => {
+  it('keeps the saved catalog when only the key is rotated', () => {
+    const current = customConnection()
+    expect(
+      editCatalogPatch(
+        customValues({ baseUrl: 'https://old.example.com/v1', apiKey: 'sk-rotated' }),
+        current,
+        null
+      )
+    ).toBeUndefined()
+  })
+
+  it('requires fresh models or a manual profile after a custom URL change', async () => {
+    const current = customConnection()
+    const changed = customValues()
+    expect(editCatalogPatch(changed, current, null)).toBeUndefined()
+    const p = port()
+    await expect(updateProviderFlow(p, current, changed, {})).rejects.toMatchObject({
+      fields: { model: expect.any(String) }
+    })
+    expect(p.update).not.toHaveBeenCalled()
+  })
+
+  it('replaces the old catalog with freshly fetched models after a URL change', async () => {
+    const current = customConnection()
+    const changed = customValues()
+    const fresh: ProviderModelProfile = { ...CHAT_MODEL, id: 'new-model' }
+    const models = editCatalogPatch(changed, current, [fresh])
+    expect(models).toEqual([fresh])
+    // 重新拉取到相同目录时也视为新目录，不再沿用旧端点的缓存。
+    expect(editCatalogPatch(changed, current, [...current.models])).toEqual(current.models)
+
+    const p = port({ update: vi.fn(async () => connection({ rowVersion: 2 })) })
+    await updateProviderFlow(p, current, changed, { models: models! })
+    expect(p.update).toHaveBeenCalledWith(
+      current.id,
+      expect.objectContaining({ baseUrl: 'https://new.example.com/v1', models: [fresh] }),
+      current.rowVersion
+    )
+  })
+
+  it('sends the manual model profile instead of the old catalog after a URL change', async () => {
+    const current = customConnection()
+    const changed = customValues({ manualModel: 'manual-model' })
+    const models = editCatalogPatch(changed, current, null)
+    expect(models).toEqual([expect.objectContaining({ id: 'manual-model', kind: 'chat' })])
+    const p = port()
+    await updateProviderFlow(p, current, changed, { models: models! })
+    expect(p.update).toHaveBeenCalledWith(
+      current.id,
+      expect.objectContaining({ baseUrl: 'https://new.example.com/v1', models }),
+      current.rowVersion
+    )
   })
 })

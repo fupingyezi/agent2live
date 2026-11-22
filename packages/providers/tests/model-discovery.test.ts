@@ -86,7 +86,7 @@ describe('model discovery', () => {
     expect(profiles[0]!.capabilities.chat?.supportsVision).toBe(true)
   })
 
-  it('maps custom chat and custom image families separately', async () => {
+  it('maps custom chat and narrows custom image to Seedream-compatible families', async () => {
     server = await startTestServer((_request, response) =>
       sendJson(response, 200, {
         data: [{ id: 'my-chat-model' }, { id: 'gpt-image-1' }, { id: 'text-embedding-3' }]
@@ -102,7 +102,13 @@ describe('model discovery', () => {
     server = null
     server = await startTestServer((_request, response) =>
       sendJson(response, 200, {
-        data: [{ id: 'my-chat-model' }, { id: 'gpt-image-1' }, { id: 'seedream-4' }]
+        data: [
+          { id: 'my-chat-model' },
+          { id: 'gpt-image-1' },
+          { id: 'flux-1.1-pro' },
+          { id: 'seedream-4' },
+          { id: 'seededit-3-0' }
+        ]
       })
     )
     const image = await discoverModels({
@@ -111,8 +117,8 @@ describe('model discovery', () => {
       flavor: 'custom-image',
       requestId: 'req-custom-image'
     })
-    expect(image.map((profile) => profile.id)).toEqual(['gpt-image-1', 'seedream-4'])
-    expect(image[0]!.adapter).toBe('seedream')
+    expect(image.map((profile) => profile.id)).toEqual(['seedream-4', 'seededit-3-0'])
+    expect(image.every((profile) => profile.adapter === 'seedream')).toBe(true)
   })
 
   it('maps 404 to PROVIDER_MODELS_UNSUPPORTED and rejects invalid bodies', async () => {

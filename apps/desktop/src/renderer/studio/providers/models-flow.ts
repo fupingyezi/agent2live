@@ -35,6 +35,12 @@ export async function previewModelsForForm(
       : { target: 'preset', presetId: values.presetId, secretRef: '' }
 
   const { secretRef } = await port.storeSecret({ label: draftLabel, value: apiKey })
-  const models = await port.previewModels({ ...input, secretRef })
-  return { secretRef, models }
+  try {
+    const models = await port.previewModels({ ...input, secretRef })
+    return { secretRef, models }
+  } catch (error) {
+    // 预览失败时草稿密钥不会回到页面，必须就地清理，不能留到启动清扫。
+    await port.deleteSecret(secretRef).catch(() => undefined)
+    throw error
+  }
 }

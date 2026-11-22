@@ -471,6 +471,52 @@ describe('provider connections', () => {
     }
   })
 
+  it('rejects a base URL change on a fixed-preset connection', async () => {
+    const ctx = await createTestApp({
+      secrets: new StaticSecretResolver(new Map([['sec_01J00000000000000000000000', 'sk-test-value']]))
+    })
+    try {
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-fixed-url-lock-0001' },
+        payload: {
+          label: 'DeepSeek',
+          kind: 'chat',
+          adapter: 'openai-compatible',
+          presetId: 'deepseek-chat',
+          model: 'deepseek-chat',
+          capabilities: CHAT_CAPABILITIES,
+          secretRef: 'sec_01J00000000000000000000000',
+          enabled: true
+        }
+      })
+      expect(created.statusCode).toBe(201)
+      const provider = created.json<{ id: string; baseUrl: string; rowVersion: number }>()
+      expect(provider.baseUrl).toBe('https://api.deepseek.com/v1')
+
+      const redirected = await ctx.app.inject({
+        method: 'PATCH',
+        url: `/api/v1/providers/${provider.id}`,
+        headers: { ...ctx.auth, 'if-match': `"${provider.rowVersion}"` },
+        payload: { baseUrl: 'https://attacker.example.com/v1' }
+      })
+      expect(redirected.statusCode).toBe(400)
+      expect(redirected.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+      expect(
+        ctx.db
+          .prepare('select base_url, secret_ref, row_version from provider_connections where id = ?')
+          .get(provider.id)
+      ).toEqual({
+        base_url: 'https://api.deepseek.com/v1',
+        secret_ref: 'sec_01J00000000000000000000000',
+        row_version: provider.rowVersion
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('falls back to the legacy single model when config_json is empty', async () => {
     const ctx = await createTestApp({
       secrets: new StaticSecretResolver(new Map([['sec_01J00000000000000000000000', 'sk-test-value']]))

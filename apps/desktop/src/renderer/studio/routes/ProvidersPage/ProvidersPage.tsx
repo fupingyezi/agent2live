@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AsyncButton,
@@ -29,8 +29,8 @@ import {
   ProviderActivationError,
   ProviderFormError,
   createProviderFlow,
+  editCatalogPatch,
   initialProviderValues,
-  manualModelProfile,
   presetIdForConnection,
   previewModelsForForm,
   providerModels,
@@ -104,6 +104,17 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
   const [pendingImageProbe, setPendingImageProbe] = useState<ProviderConnectionDto | null>(null)
   const [probeResults, setProbeResults] = useState<Record<string, ProviderProbeState>>({})
   const [pageError, setPageError] = useState<string | null>(null)
+  // 页面卸载时编辑器里的草稿密钥不会经过 closeEditor，需要在卸载清理里兜底删除。
+  const draftSecretRef = useRef<string | null>(null)
+  useEffect(() => {
+    draftSecretRef.current = editor?.draftSecretRef ?? null
+  }, [editor?.draftSecretRef])
+  useEffect(() => {
+    return () => {
+      const draft = draftSecretRef.current
+      if (draft) void port.deleteSecret(draft).catch(() => undefined)
+    }
+  }, [])
 
   const query = useQuery({
     queryKey: queryKeys.providers,
@@ -171,10 +182,17 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
       patch.apiKey !== undefined ||
       (custom && (patch.baseUrl !== undefined || patch.kind !== undefined || patch.adapter !== undefined))
     if (catalogInvalidated) discardDraft(editor.draftSecretRef)
+    const endpointChanged =
+      editor.mode === 'edit' &&
+      custom &&
+      patch.baseUrl !== undefined &&
+      patch.baseUrl.trim() !== (editor.connection?.baseUrl ?? '')
     const values: ProviderFormValues = {
       ...editor.values,
       ...patch,
-      ...(editor.mode === 'create' && patch.apiKey !== undefined ? { manualModel: '' } : {})
+      ...(editor.mode === 'create' && patch.apiKey !== undefined ? { manualModel: '' } : {}),
+      // 旧模型名属于旧端点；URL 变更后必须重新获取目录或手工填写。
+      ...(endpointChanged ? { manualModel: '' } : {})
     }
     const customUrlChanged =
       editor.mode === 'edit' && custom && values.baseUrl.trim() !== (editor.connection?.baseUrl ?? '')
@@ -289,17 +307,9 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
           await invalidate()
           return
         }
-        const manual =
-          editor.values.presetId === 'custom' &&
-          (editor.models === null || editor.models.length === 0) &&
-          editor.connection.models.length === 0 &&
-          editor.values.manualModel.trim()
-            ? [manualModelProfile(editor.values)]
-            : undefined
-        const modelsChanged =
-          editor.models !== null && JSON.stringify(editor.models) !== JSON.stringify(editor.connection.models)
+        const models = editCatalogPatch(editor.values, editor.connection, editor.models)
         await updateProviderFlow(port, editor.connection, editor.values, {
-          ...(modelsChanged ? { models: editor.models! } : manual ? { models: manual } : {}),
+          ...(models ? { models } : {}),
           draftSecretRef: editor.draftSecretRef
         })
         setNotice('连接已更新。')

@@ -111,7 +111,14 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
       {legacyMock || values.presetId !== 'custom' ? null : (
         <>
-          <Field label="类型">
+          <Field
+            label="类型"
+            {...(values.kind === 'image'
+              ? {
+                  description: '自动发现只列出 Seedream/SeedEdit 兼容模型；其他生图模型请手工填写模型名。'
+                }
+              : {})}
+          >
             <Select
               data-testid="provider-kind"
               value={values.kind}

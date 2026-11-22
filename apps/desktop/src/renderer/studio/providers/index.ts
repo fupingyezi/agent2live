@@ -19,6 +19,7 @@ export {
   ProviderFormError,
   buildCreateInput,
   createProviderFlow,
+  editCatalogPatch,
   updateProviderFlow
 } from './create-flow'
 export type {

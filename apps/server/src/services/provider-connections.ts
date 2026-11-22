@@ -4,6 +4,7 @@ import {
   fixedPresetForBaseUrl,
   getFixedProviderPreset,
   newId,
+  normalizeProviderUrl,
   providerCapabilitiesSchema,
   providerConfigSchema,
   providerModelProfilesSchema,
@@ -225,6 +226,15 @@ export class ProviderConnectionService {
         expected: expectedVersion,
         actual: current.row_version
       })
+    }
+    // 固定服务商的 Base URL 以服务端目录为准；PATCH 不得把已保存的密钥重定向到别的主机。
+    // Seedream 端点形态先按适配器归一化，等价写法仍然允许。
+    const fixedPreset = fixedPresetForBaseUrl(current.base_url)
+    if (fixedPreset && patch.baseUrl !== undefined) {
+      const nextBaseUrl = normalizeProviderBaseUrl(current.adapter, patch.baseUrl)
+      if (normalizeProviderUrl(nextBaseUrl ?? '') !== normalizeProviderUrl(fixedPreset.baseUrl)) {
+        throw new AppError('REQUEST_INVALID', { reason: 'fixed provider base URL cannot be changed' })
+      }
     }
     const currentConfig = parseConfig(current)
     const models =
