@@ -1,8 +1,4 @@
-import {
-  providerCapabilitiesSchema,
-  type ProviderProbeDto,
-  type ProviderProbeInput
-} from '@agent2live/contracts'
+import type { ProviderProbeDto, ProviderProbeInput } from '@agent2live/contracts'
 import { ProviderError } from '@agent2live/providers'
 import { AppError } from '../errors'
 import type { Clock } from './clock'
@@ -10,7 +6,7 @@ import type { ProviderConnectionService } from './provider-connections'
 import type { ProviderRegistry } from './provider-registry'
 
 interface ProviderProbeDeps {
-  connections: Pick<ProviderConnectionService, 'getRow'>
+  connections: Pick<ProviderConnectionService, 'getRow' | 'resolveModel'>
   registry: Pick<ProviderRegistry, 'chat' | 'image'>
   clock: Pick<Clock, 'now'>
 }
@@ -26,8 +22,10 @@ export class ProviderProbeService {
   async probe(connectionId: string, input: ProviderProbeInput, requestId: string): Promise<ProviderProbeDto> {
     const connection = this.deps.connections.getRow(connectionId)
     const startedAt = Date.now()
+    const selection = this.deps.connections.resolveModel(connection.id, connection.kind)
+
     if (connection.kind === 'chat') {
-      const provider = await this.deps.registry.chat(connectionId)
+      const provider = await this.deps.registry.chat(connectionId, selection)
       try {
         const result = await provider.generate(
           {
@@ -39,7 +37,7 @@ export class ProviderProbeService {
         return {
           ok: true,
           kind: 'chat',
-          adapter: connection.adapter,
+          adapter: selection.adapter,
           model: result.model,
           latencyMs: Math.max(0, Date.now() - startedAt),
           checkedAt: this.deps.clock.now(),
@@ -53,10 +51,11 @@ export class ProviderProbeService {
     if (!input.allowBillableRequest) {
       throw new AppError('PROVIDER_BILLABLE_CONFIRMATION_REQUIRED', { connectionId })
     }
-    const capabilities = providerCapabilitiesSchema.parse(JSON.parse(connection.capabilities_json))
-    const size = capabilities.image?.sizes[0]
+    const image = selection.capabilities.image
+    if (!image) throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image' })
+    const size = image.sizes[0]
     if (!size) throw new AppError('PROVIDER_CAPABILITY_UNSUPPORTED', { capability: 'image' })
-    const provider = await this.deps.registry.image(connectionId)
+    const provider = await this.deps.registry.image(connectionId, selection)
     try {
       const result = await provider.generate(
         {
@@ -72,7 +71,7 @@ export class ProviderProbeService {
       return {
         ok: true,
         kind: 'image',
-        adapter: connection.adapter,
+        adapter: selection.adapter,
         model: result.model,
         latencyMs: Math.max(0, Date.now() - startedAt),
         checkedAt: this.deps.clock.now(),

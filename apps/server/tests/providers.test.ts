@@ -260,13 +260,15 @@ describe('provider connections', () => {
         },
         ids
       )
-      const image = await ctx.services.providerRegistry.image(imageConnection.id)
+      const imageSelection = ctx.services.providerConnections.resolveModel(imageConnection.id, 'image')
+      const image = await ctx.services.providerRegistry.image(imageConnection.id, imageSelection)
       const generated = await image.generate(
         { prompt: 'a prompt', size: '512x896', count: 1 },
         { requestId: 'req_image' }
       )
       expect(generated.images).toHaveLength(1)
-      const chat = await ctx.services.providerRegistry.chat(chatConnection.id)
+      const chatSelection = ctx.services.providerConnections.resolveModel(chatConnection.id, 'chat')
+      const chat = await ctx.services.providerRegistry.chat(chatConnection.id, chatSelection)
       const completion = await chat.generate(
         { messages: [{ role: 'user', content: 'hi' }] },
         { requestId: 'req_chat' }
@@ -495,6 +497,50 @@ describe('provider connections', () => {
       ])
       const selection = ctx.services.providerConnections.resolveModel(provider.id, 'chat')
       expect(selection.modelId).toBe('legacy-model')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('uses the selected model id and adapter instead of the legacy model field', async () => {
+    const ctx = await createTestApp()
+    try {
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-registry-selection-0001' },
+        payload: {
+          label: 'Mock Chat',
+          kind: 'chat',
+          adapter: 'mock',
+          capabilities: CHAT_CAPABILITIES,
+          models: [
+            {
+              id: 'mock-chat-a',
+              name: null,
+              kind: 'chat',
+              adapter: 'mock',
+              capabilities: CHAT_CAPABILITIES
+            },
+            {
+              id: 'mock-chat-b',
+              name: null,
+              kind: 'chat',
+              adapter: 'mock',
+              capabilities: CHAT_CAPABILITIES
+            }
+          ]
+        }
+      })
+      const provider = created.json<{ id: string }>()
+      const selection = ctx.services.providerConnections.resolveModel(provider.id, 'chat', 'mock-chat-b')
+      expect(selection.modelId).toBe('mock-chat-b')
+      const chat = await ctx.services.providerRegistry.chat(provider.id, selection)
+      const result = await chat.generate(
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { requestId: 'req-selection' }
+      )
+      expect(result.model).toBe('mock-art')
     } finally {
       await ctx.close()
     }

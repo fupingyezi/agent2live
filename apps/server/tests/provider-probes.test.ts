@@ -29,6 +29,20 @@ const CHAT_CAPABILITIES = {
   chat: { maxImages: 8, maxPromptChars: 20000, supportsVision: true }
 } satisfies ProviderCapabilities
 
+const CHAT_SELECTION = {
+  providerConnectionId: 'conn_chat',
+  modelId: 'mock-chat',
+  adapter: 'mock' as const,
+  capabilities: CHAT_CAPABILITIES
+}
+
+const IMAGE_SELECTION = {
+  providerConnectionId: 'conn_image',
+  modelId: 'mock-image',
+  adapter: 'mock' as const,
+  capabilities: IMAGE_CAPABILITIES
+}
+
 function connectionRow(
   kind: 'chat' | 'image',
   adapter: 'mock' | 'openai-compatible' | 'seedream'
@@ -59,17 +73,21 @@ function chatServiceFixture() {
   }))
   const provider: ChatProvider = { kind: 'chat', generate }
   const row = connectionRow('chat', 'mock')
+  const registryChat = vi.fn(async (_id: string, _selection: unknown) => provider)
   const service = new ProviderProbeService({
-    connections: { getRow: () => row },
+    connections: {
+      getRow: () => row,
+      resolveModel: () => CHAT_SELECTION
+    },
     registry: {
-      chat: async () => provider,
+      chat: registryChat,
       image: async () => {
         throw new Error('unused image provider')
       }
     },
     clock: { now: () => 1_763_000_000_000 }
   })
-  return { service, generate }
+  return { service, generate, registryChat }
 }
 
 function imageServiceFixture() {
@@ -88,17 +106,21 @@ function imageServiceFixture() {
   }))
   const provider: ImageProvider = { kind: 'image', generate }
   const row = connectionRow('image', 'mock')
+  const registryImage = vi.fn(async (_id: string, _selection: unknown) => provider)
   const service = new ProviderProbeService({
-    connections: { getRow: () => row },
+    connections: {
+      getRow: () => row,
+      resolveModel: () => IMAGE_SELECTION
+    },
     registry: {
       chat: async () => {
         throw new Error('unused chat provider')
       },
-      image: async () => provider
+      image: registryImage
     },
     clock: { now: () => 1_763_000_000_000 }
   })
-  return { service, generate }
+  return { service, generate, registryImage }
 }
 
 describe('provider probe service', () => {
@@ -125,6 +147,12 @@ describe('provider probe service', () => {
     expect(JSON.stringify(result)).not.toMatch(/secret|apiKey|responseText/)
   })
 
+  it('passes the resolved selection to the registry', async () => {
+    const { service, registryChat } = chatServiceFixture()
+    await service.probe('conn_chat', { allowBillableRequest: false }, 'req_probe')
+    expect(registryChat).toHaveBeenCalledWith('conn_chat', CHAT_SELECTION)
+  })
+
   it('requires explicit billing confirmation before probing an image provider', async () => {
     const { service, generate } = imageServiceFixture()
 
@@ -135,9 +163,10 @@ describe('provider probe service', () => {
   })
 
   it('requests and discards exactly one image after billing confirmation', async () => {
-    const { service, generate } = imageServiceFixture()
+    const { service, generate, registryImage } = imageServiceFixture()
     const result = await service.probe('conn_image', { allowBillableRequest: true }, 'req_probe')
 
+    expect(registryImage).toHaveBeenCalledWith('conn_image', IMAGE_SELECTION)
     expect(generate).toHaveBeenCalledTimes(1)
     expect(generate.mock.calls[0]?.[0]).toMatchObject({
       prompt: 'A single small neutral color square.',
@@ -161,8 +190,14 @@ describe('provider probe service', () => {
     ['PROVIDER_INVALID_RESPONSE', 'upstream body sk-secret']
   ] as const)('normalizes %s without leaking provider text', async (code, message) => {
     const row = connectionRow('chat', 'openai-compatible')
+    const selection = {
+      providerConnectionId: row.id,
+      modelId: row.model ?? 'mock-chat',
+      adapter: row.adapter,
+      capabilities: CHAT_CAPABILITIES
+    }
     const service = new ProviderProbeService({
-      connections: { getRow: () => row },
+      connections: { getRow: () => row, resolveModel: () => selection },
       registry: {
         chat: async () => ({
           kind: 'chat',
