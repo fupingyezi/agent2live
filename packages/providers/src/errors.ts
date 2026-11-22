@@ -8,7 +8,8 @@ export const PROVIDER_ERROR_CODES = [
   'PROVIDER_INVALID_REQUEST',
   'PROVIDER_CONTENT_REJECTED',
   'PROVIDER_INVALID_RESPONSE',
-  'PROVIDER_CANCELLED'
+  'PROVIDER_CANCELLED',
+  'PROVIDER_MODELS_UNSUPPORTED'
 ] as const
 
 export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number]
@@ -95,7 +96,8 @@ const MESSAGES: Record<ProviderErrorCode, string> = {
   PROVIDER_INVALID_REQUEST: 'provider rejected the request',
   PROVIDER_CONTENT_REJECTED: 'provider rejected the content',
   PROVIDER_INVALID_RESPONSE: 'provider returned an invalid response',
-  PROVIDER_CANCELLED: 'provider request cancelled'
+  PROVIDER_CANCELLED: 'provider request cancelled',
+  PROVIDER_MODELS_UNSUPPORTED: 'provider does not support model discovery'
 }
 
 export function providerHttpError(

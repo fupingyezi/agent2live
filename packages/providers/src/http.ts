@@ -89,6 +89,24 @@ function authHeaders(apiKey: string, contentType: string): Record<string, string
   }
 }
 
+async function readJsonResponse(
+  response: Response
+): Promise<{ json: Record<string, unknown>; headers: Headers }> {
+  const text = await response.text()
+  if (Buffer.byteLength(text, 'utf8') > MAX_TEXT_BYTES) {
+    throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider response too large')
+  }
+  try {
+    const json = JSON.parse(text) as unknown
+    if (!json || typeof json !== 'object' || Array.isArray(json)) {
+      throw new Error('not an object')
+    }
+    return { json: json as Record<string, unknown>, headers: response.headers }
+  } catch {
+    throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider returned invalid JSON')
+  }
+}
+
 export async function postJson(
   url: string,
   apiKey: string,
@@ -107,19 +125,23 @@ export async function postJson(
     timeoutMs
   )
   if (!response.ok) throw await errorFromResponse(response)
-  const text = await response.text()
-  if (Buffer.byteLength(text, 'utf8') > MAX_TEXT_BYTES) {
-    throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider response too large')
-  }
-  try {
-    const json = JSON.parse(text) as unknown
-    if (!json || typeof json !== 'object' || Array.isArray(json)) {
-      throw new Error('not an object')
-    }
-    return { json: json as Record<string, unknown>, headers: response.headers }
-  } catch {
-    throw new ProviderError('PROVIDER_INVALID_RESPONSE', 'provider returned invalid JSON')
-  }
+  return readJsonResponse(response)
+}
+
+export async function getJson(
+  url: string,
+  apiKey: string,
+  context: ProviderRequestContext,
+  timeoutMs = 30_000
+): Promise<{ json: Record<string, unknown>; headers: Headers }> {
+  const response = await fetchChecked(
+    url,
+    { method: 'GET', headers: authHeaders(apiKey, 'application/json') },
+    context,
+    timeoutMs
+  )
+  if (!response.ok) throw await errorFromResponse(response)
+  return readJsonResponse(response)
 }
 
 export async function fetchImageBytes(
