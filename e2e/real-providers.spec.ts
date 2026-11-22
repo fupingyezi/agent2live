@@ -149,11 +149,13 @@ async function probeProvider(page: Page, settings: RealProviderSettings): Promis
   }
   const text = await result.innerText()
   const match = text.match(/耗时\s+(\d+)\s+ms/)
+  // 卡片渲染的是探针实际调用的模型；固定连接的目录顺序可能与配置目标不同。
+  const probedModel = text.match(/耗时\s+\d+\s+ms\s+·\s*(.+)/)?.[1]?.trim()
   return {
     ok: true,
     kind: settings.kind,
     adapter: settings.kind === 'chat' ? 'openai-compatible' : 'seedream',
-    model: settings.model,
+    model: probedModel && probedModel !== '默认模型' ? probedModel : settings.model,
     latencyMs: match ? Number(match[1]) : 0
   }
 }

@@ -53,6 +53,11 @@ async function startModelStub(): Promise<{
       authorization: request.headers.authorization
     })
     if (request.method === 'GET' && request.url === '/v1/models') {
+      if (request.headers.authorization !== `Bearer ${MODEL_STUB_SECRET}`) {
+        response.writeHead(401, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { message: 'unauthorized' } }))
+        return
+      }
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(
         JSON.stringify({
@@ -208,13 +213,14 @@ test('stores provider secrets in the vault and never exposes them through the AP
     await expect
       .poll(() => stub.requests.filter((request) => request.url === '/v1/models').length)
       .toBeGreaterThan(modelRequestsBeforeRefresh)
+    const modelRequestsAfterRefresh = stub.requests.filter((request) => request.url === '/v1/models')
+    expect(modelRequestsAfterRefresh[modelRequestsAfterRefresh.length - 1]?.authorization).toBe(
+      `Bearer ${MODEL_STUB_SECRET}`
+    )
     await expect(studio.getByTestId('provider-model-counts')).toBeVisible()
     await expect(studio.getByText('模型目录已刷新。')).toBeVisible()
     await studio.getByTestId('provider-submit').click()
     await expect(studio.getByRole('dialog')).toBeHidden()
-    expect(stub.requests.some((request) => request.authorization === `Bearer ${MODEL_STUB_SECRET}`)).toBe(
-      true
-    )
 
     // 轮换密钥：复用同一个连接 id 与稳定 vault label，不新增连接。
     await customCard.getByRole('button', { name: '编辑', exact: true }).click()
