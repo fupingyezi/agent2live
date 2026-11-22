@@ -112,4 +112,67 @@ describe('provider image URL safety', () => {
     ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_RESPONSE' })
     expect(requests).toBe(0)
   })
+
+  it('rejects redirects to blocked hosts before following them', async () => {
+    server = await startTestServer((request, response) => {
+      if (request.url === '/redirect.png') {
+        response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data' })
+        response.end()
+        return
+      }
+      response.writeHead(200, { 'content-type': 'image/png' })
+      response.end(Buffer.from([1, 2, 3]))
+    })
+
+    await expect(
+      fetchImageBytes(`${server.url}/redirect.png`, { requestId: 'req-redirect-blocked' }, { maxBytes: 1024 })
+    ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_RESPONSE' })
+    expect(server.requests).toHaveLength(1)
+  })
+
+  it('rejects redirects without a location', async () => {
+    server = await startTestServer((_request, response) => {
+      response.writeHead(302)
+      response.end()
+    })
+
+    await expect(
+      fetchImageBytes(`${server.url}/redirect.png`, { requestId: 'req-redirect-missing' }, { maxBytes: 1024 })
+    ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_RESPONSE' })
+  })
+
+  it('follows safe redirects and enforces the hop limit', async () => {
+    let loopRequests = 0
+    server = await startTestServer((request, response) => {
+      if (request.url === '/start.png') {
+        response.writeHead(302, { location: '/final.png' })
+        response.end()
+        return
+      }
+      if (request.url === '/final.png') {
+        response.writeHead(200, { 'content-type': 'image/png' })
+        response.end(Buffer.from([7, 8, 9]))
+        return
+      }
+      if (request.url === '/loop.png') {
+        loopRequests += 1
+        response.writeHead(302, { location: '/loop.png' })
+        response.end()
+        return
+      }
+      response.writeHead(404).end()
+    })
+
+    const result = await fetchImageBytes(
+      `${server.url}/start.png`,
+      { requestId: 'req-redirect-safe' },
+      { maxBytes: 1024 }
+    )
+    expect(result.bytes).toEqual(Buffer.from([7, 8, 9]))
+
+    await expect(
+      fetchImageBytes(`${server.url}/loop.png`, { requestId: 'req-redirect-loop' }, { maxBytes: 1024 })
+    ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_RESPONSE' })
+    expect(loopRequests).toBe(5)
+  })
 })

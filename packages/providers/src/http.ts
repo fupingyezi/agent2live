@@ -5,6 +5,7 @@ import type { ProviderRequestContext } from './types'
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
 
 const LOOPBACK_IMAGE_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
+const MAX_IMAGE_REDIRECTS = 4
 
 type Ipv4 = readonly [number, number, number, number]
 
@@ -72,6 +73,10 @@ function embeddedIpv4(groups: number[]): Ipv4 | null {
     return null
   }
   return [value >>> 24, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]
+}
+
+function isLoopbackImageHost(hostname: string): boolean {
+  return LOOPBACK_IMAGE_HOSTS.has(hostname.toLowerCase().replace(/\.+$/, ''))
 }
 
 function isBlockedImageHost(hostname: string): boolean {
@@ -252,13 +257,45 @@ export function assertSafeImageUrl(value: string): void {
   }
 }
 
+async function fetchImageResponse(
+  url: string,
+  context: ProviderRequestContext,
+  timeoutMs: number
+): Promise<Response> {
+  let currentUrl = url
+  for (let redirects = 0; ; redirects += 1) {
+    assertSafeImageUrl(currentUrl)
+    const response = await fetchChecked(currentUrl, { method: 'GET', redirect: 'manual' }, context, timeoutMs)
+    if (response.status < 300 || response.status >= 400) return response
+    if (redirects >= MAX_IMAGE_REDIRECTS) {
+      throw invalidImageUrl('provider image redirect limit exceeded')
+    }
+    const location = response.headers.get('location')
+    if (!location) {
+      throw invalidImageUrl('provider image redirect missing location')
+    }
+    let next: URL
+    try {
+      next = new URL(location, currentUrl)
+    } catch {
+      throw invalidImageUrl('provider image redirect location invalid')
+    }
+    assertSafeImageUrl(next.toString())
+    const currentIsLoopback = isLoopbackImageHost(new URL(currentUrl).hostname)
+    if (!currentIsLoopback && isLoopbackImageHost(next.hostname)) {
+      throw invalidImageUrl('provider image redirect must not target a loopback host')
+    }
+    await response.body?.cancel().catch(() => {})
+    currentUrl = next.toString()
+  }
+}
+
 export async function fetchImageBytes(
   url: string,
   context: ProviderRequestContext,
   options: { maxBytes: number; timeoutMs?: number }
 ): Promise<{ bytes: Buffer; contentType: string | null }> {
-  assertSafeImageUrl(url)
-  const response = await fetchChecked(url, { method: 'GET' }, context, options.timeoutMs ?? 60_000)
+  const response = await fetchImageResponse(url, context, options.timeoutMs ?? 60_000)
   if (!response.ok) throw await errorFromResponse(response)
   const declared = Number(response.headers.get('content-length') ?? '0')
   if (declared > options.maxBytes) {
