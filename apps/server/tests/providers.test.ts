@@ -22,6 +22,35 @@ const CHAT_CAPABILITIES = {
   chat: { maxImages: 8, maxPromptChars: 20000, supportsVision: true }
 } satisfies ProviderCapabilities
 
+const ARK_CHAT_MODEL = {
+  id: 'doubao-seed-1-6',
+  name: 'Doubao Seed',
+  kind: 'chat' as const,
+  adapter: 'openai-compatible' as const,
+  capabilities: {
+    schemaVersion: 'provider-capabilities/1' as const,
+    chat: { maxImages: 8, maxPromptChars: 20_000, supportsVision: true }
+  }
+}
+const ARK_IMAGE_MODEL = {
+  id: 'doubao-seedream-5-0-pro',
+  name: 'Seedream',
+  kind: 'image' as const,
+  adapter: 'seedream' as const,
+  capabilities: {
+    schemaVersion: 'provider-capabilities/1' as const,
+    image: {
+      maxReferenceImages: 4,
+      maxPromptChars: 20_000,
+      supportsNegativePrompt: false,
+      supportsWeightSyntax: false,
+      supportsSeed: true,
+      maxCount: 4,
+      sizes: ['1024x1024']
+    }
+  }
+}
+
 describe('provider connections', () => {
   it('creates a mock connection idempotently, hides secret fields, and updates with CAS', async () => {
     const ctx = await createTestApp()
@@ -385,6 +414,87 @@ describe('provider connections', () => {
       expect(disabledProbe.json()).toMatchObject({
         error: { code: 'PROVIDER_NOT_CONFIGURED' }
       })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('stores a multi-model catalog on a fixed Ark connection and resolves selections', async () => {
+    const ctx = await createTestApp({
+      secrets: new StaticSecretResolver(new Map([['sec_01J00000000000000000000000', 'sk-test-value']]))
+    })
+    try {
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-ark-catalog-0001' },
+        payload: {
+          label: '火山方舟',
+          kind: 'chat',
+          adapter: 'openai-compatible',
+          model: ARK_CHAT_MODEL.id,
+          capabilities: ARK_CHAT_MODEL.capabilities,
+          presetId: 'volcengine-ark',
+          models: [ARK_CHAT_MODEL, ARK_IMAGE_MODEL],
+          secretRef: 'sec_01J00000000000000000000000',
+          enabled: true
+        }
+      })
+      expect(created.statusCode).toBe(201)
+      const provider = created.json<{
+        id: string
+        baseUrl: string
+        models: Array<{ id: string; kind: string }>
+        modelsRefreshedAt: string | null
+        rowVersion: number
+      }>()
+      expect(provider.baseUrl).toBe('https://ark.cn-beijing.volces.com/api/v3')
+      expect(provider.models).toHaveLength(2)
+      expect(provider.modelsRefreshedAt).toBe(new Date(ctx.clock.now()).toISOString())
+      expect(ctx.services.providerConnections.get(provider.id).modelsRefreshedAt).toBe(ctx.clock.now())
+
+      const chat = ctx.services.providerConnections.resolveModel(provider.id, 'chat')
+      expect(chat).toMatchObject({ modelId: 'doubao-seed-1-6', adapter: 'openai-compatible' })
+      const image = ctx.services.providerConnections.resolveModel(
+        provider.id,
+        'image',
+        'doubao-seedream-5-0-pro'
+      )
+      expect(image).toMatchObject({ modelId: 'doubao-seedream-5-0-pro', adapter: 'seedream' })
+      expect(() =>
+        ctx.services.providerConnections.resolveModel(provider.id, 'image', 'missing-model')
+      ).toThrow(expect.objectContaining({ code: 'PROVIDER_MODEL_NOT_AVAILABLE' }))
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('falls back to the legacy single model when config_json is empty', async () => {
+    const ctx = await createTestApp({
+      secrets: new StaticSecretResolver(new Map([['sec_01J00000000000000000000000', 'sk-test-value']]))
+    })
+    try {
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/providers',
+        headers: { ...ctx.auth, 'idempotency-key': 'provider-legacy-model-0001' },
+        payload: {
+          label: 'Legacy',
+          kind: 'chat',
+          adapter: 'openai-compatible',
+          baseUrl: 'https://api.example.com/v1',
+          model: 'legacy-model',
+          capabilities: CHAT_CAPABILITIES,
+          secretRef: 'sec_01J00000000000000000000000',
+          enabled: true
+        }
+      })
+      const provider = created.json<{ id: string; models: Array<{ id: string; kind: string }> }>()
+      expect(provider.models).toEqual([
+        expect.objectContaining({ id: 'legacy-model', kind: 'chat', adapter: 'openai-compatible' })
+      ])
+      const selection = ctx.services.providerConnections.resolveModel(provider.id, 'chat')
+      expect(selection.modelId).toBe('legacy-model')
     } finally {
       await ctx.close()
     }
