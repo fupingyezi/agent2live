@@ -8,6 +8,7 @@ import { AssetService } from './assets'
 import { AuditService } from './audit'
 import { IdempotencyService } from './idempotency'
 import { ProviderConnectionService } from './provider-connections'
+import { ProviderModelsService } from './provider-models'
 import { ProviderRegistry } from './provider-registry'
 import { ProviderInvocationService } from './provider-invocations'
 import { ProviderProbeService } from './provider-probes'
@@ -52,6 +53,7 @@ export interface Services {
   idempotency: IdempotencyService
   secrets: SecretResolver
   providerConnections: ProviderConnectionService
+  providerModels: ProviderModelsService
   providerRegistry: ProviderRegistry
   providerInvocations: ProviderInvocationService
   providerProbes: ProviderProbeService
@@ -81,6 +83,10 @@ export function createServices(deps: ServiceDeps): Services {
   const idempotency = new IdempotencyService(db, clock)
   const assets = new AssetService({ db, blobs, events, audit, clock })
   const providerConnections = new ProviderConnectionService({ db, events, audit, clock })
+  const providerModels = new ProviderModelsService({
+    connections: providerConnections,
+    secrets
+  })
   const providerRegistry = new ProviderRegistry(providerConnections, secrets)
   const providerInvocations = new ProviderInvocationService(db, clock)
   const providerProbes = new ProviderProbeService({
@@ -217,6 +223,7 @@ export function createServices(deps: ServiceDeps): Services {
     idempotency,
     secrets,
     providerConnections,
+    providerModels,
     providerRegistry,
     providerInvocations,
     providerProbes,

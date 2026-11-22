@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   hashCanonical,
   createProviderConnectionInputSchema,
+  providerModelsPreviewInputSchema,
   providerProbeInputSchema,
   updateProviderConnectionInputSchema
 } from '@agent2live/contracts'
@@ -9,6 +10,7 @@ import { AppError } from '../errors'
 import { parseIfMatch } from '../http/conditional'
 import type { IdempotencyService } from '../services/idempotency'
 import type { ProviderConnectionDto, ProviderConnectionService } from '../services/provider-connections'
+import type { ProviderModelsService } from '../services/provider-models'
 import type { ProviderProbeService } from '../services/provider-probes'
 import type { SecretResolver } from '../services/secret-resolver'
 import { idsOf, requireIdempotencyKey } from './helpers'
@@ -30,6 +32,7 @@ export function registerProviderRoutes(
   deps: {
     connections: ProviderConnectionService
     probes: ProviderProbeService
+    models: ProviderModelsService
     secrets: SecretResolver
     idempotency: IdempotencyService
   }
@@ -74,5 +77,19 @@ export function registerProviderRoutes(
     const id = (request.params as { id: string }).id
     const input = providerProbeInputSchema.parse(request.body)
     return deps.probes.probe(id, input, request.id)
+  })
+
+  app.post('/api/v1/provider-models', async (request) => {
+    const input = providerModelsPreviewInputSchema.parse(request.body)
+    return deps.models.preview(input, request.id)
+  })
+
+  app.post('/api/v1/providers/:id/models/refresh', async (request, reply) => {
+    const id = (request.params as { id: string }).id
+    const header = request.headers['if-match']
+    const expected = parseIfMatch(Array.isArray(header) ? header[0] : header)
+    const dto = await deps.models.refresh(id, expected, idsOf(request))
+    reply.header('etag', `"${dto.rowVersion}"`)
+    return dto
   })
 }
