@@ -104,4 +104,17 @@ describe('openapi manifest groups', () => {
       ])
     )
   })
+
+  it('covers providers, assets, and backups', () => {
+    const group = manifest.filter((operation) => operation.group === 'resources')
+    expect(group).toHaveLength(14)
+    expect(group.map((operation) => `${operation.method} ${operation.path}`)).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/assets',
+        'GET /api/v1/assets/:id/content',
+        'POST /api/v1/providers/:id/test',
+        'GET /api/v1/backups/:backupId/download'
+      ])
+    )
+  })
 })
