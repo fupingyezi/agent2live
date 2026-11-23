@@ -160,7 +160,7 @@ export class ForkService {
             .get(row.parent_project_id, branchLabel, row.id)
           if (conflict) {
             throw new AppError('FORK_BRANCH_CONFLICT', {
-              parentProjectId: row.parent_project_id,
+              parentArtProjectId: row.parent_project_id,
               branchLabel
             })
           }
@@ -172,7 +172,7 @@ export class ForkService {
         } catch (error) {
           if (isBranchUniqueViolation(error)) {
             throw new AppError('FORK_BRANCH_CONFLICT', {
-              parentProjectId: row.parent_project_id,
+              parentArtProjectId: row.parent_project_id,
               branchLabel
             })
           }
@@ -209,7 +209,7 @@ export class ForkService {
       if (!updated) throw new AppError('SYS_INTERNAL', { reason: 'fork row missing' })
       return {
         fork: toForkLinkDto(updated),
-        childProject: this.deps.projects.get(projectId)
+        childArtProject: this.deps.projects.get(projectId)
       }
     })
   }
@@ -262,9 +262,9 @@ export class ForkService {
       nextStack.add(id)
       const forkRow = forkByChild.get(id) ?? null
       const parent = forkRow ? rowById.get(forkRow.parent_project_id) : undefined
-      const project = this.deps.projects.get(id, { includeDeleted: true })
+      const artProject = this.deps.projects.get(id, { includeDeleted: true })
       return {
-        project,
+        artProject,
         fork: forkRow ? toForkLinkDto(forkRow) : null,
         parentDeleted: parent?.deleted_at !== null && parent?.deleted_at !== undefined,
         children: (activeChildren.get(id) ?? [])
@@ -317,14 +317,14 @@ export class ForkService {
         .get(source.projectId, branchLabel)
       if (existing) {
         throw new AppError('FORK_BRANCH_CONFLICT', {
-          parentProjectId: source.projectId,
+          parentArtProjectId: source.projectId,
           branchLabel
         })
       }
       const prior = this.deps.db
         .prepare('select root_project_id from project_forks where child_project_id = ?')
         .get(source.projectId) as { root_project_id: string } | undefined
-      const rootProjectId = prior?.root_project_id ?? source.projectId
+      const rootArtProjectId = prior?.root_project_id ?? source.projectId
 
       const now = this.deps.clock.now()
       const forkId = newId('projectFork')
@@ -395,7 +395,7 @@ export class ForkService {
             forkId,
             childId,
             source.projectId,
-            rootProjectId,
+            rootArtProjectId,
             input.sourceKind,
             input.sourceVersionId,
             source.sourceHash,
@@ -405,7 +405,7 @@ export class ForkService {
       } catch (error) {
         if (isBranchUniqueViolation(error)) {
           throw new AppError('FORK_BRANCH_CONFLICT', {
-            parentProjectId: source.projectId,
+            parentArtProjectId: source.projectId,
             branchLabel
           })
         }
@@ -423,7 +423,7 @@ export class ForkService {
         metadata: {
           forkId,
           parentProjectId: source.projectId,
-          rootProjectId,
+          rootProjectId: rootArtProjectId,
           sourceIsArt: input.sourceKind === 'art_version',
           sourceVersionId: input.sourceVersionId,
           branchLabelHash: hashCanonical(branchLabel),
@@ -451,7 +451,7 @@ export class ForkService {
       if (!forkRow) throw new AppError('SYS_INTERNAL', { reason: 'fork row missing' })
       return {
         fork: toForkLinkDto(forkRow),
-        childProject: this.deps.projects.get(childId),
+        childArtProject: this.deps.projects.get(childId),
         seedPromptVersion: this.deps.promptVersions.get(childId, seedPrompt.id),
         seedArtVersion: seedArtVersionId ? this.deps.artVersions.get(childId, seedArtVersionId) : null
       }

@@ -4,8 +4,8 @@ import type { ProviderConnectionDto, ProviderProbeDto } from '@studio/api'
 import {
   modelOptionLabel,
   presetIdForConnection,
-  providerCounts,
-  providerDisplayName
+  connectionModelCounts,
+  connectionDisplayName
 } from '@studio/providers'
 import styles from './ProvidersPage.module.scss'
 
@@ -14,7 +14,7 @@ export interface ProviderProbeState {
   error?: string
 }
 
-export interface ProviderCardProps {
+export interface ProviderConnectionCardProps {
   connection: ProviderConnectionDto
   toggling: boolean
   probing: boolean
@@ -24,7 +24,7 @@ export interface ProviderCardProps {
   onProbe(connection: ProviderConnectionDto): void
 }
 
-export const ProviderCard: React.FC<ProviderCardProps> = ({
+export const ProviderConnectionCard: React.FC<ProviderConnectionCardProps> = ({
   connection,
   toggling,
   probing,
@@ -33,12 +33,12 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   onToggle,
   onProbe
 }) => {
-  const counts = providerCounts(connection)
+  const modelCounts = connectionModelCounts(connection)
   const canToggle = connection.adapter === 'mock' || connection.hasSecret
-  const displayName = providerDisplayName(connection)
+  const displayName = connectionDisplayName(connection)
   const selectedModel = connection.models.find((model) => model.id === connection.model)
   const selectedLabel = selectedModel ? modelOptionLabel(selectedModel) : (connection.model ?? '未选择')
-  const fixedProvider = connection.adapter !== 'mock' && presetIdForConnection(connection) !== 'custom'
+  const isFixedPreset = connection.adapter !== 'mock' && presetIdForConnection(connection) !== 'custom'
 
   return (
     <SurfaceCard asChild>
@@ -54,7 +54,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           </span>
           <SectionHeader
             title={displayName}
-            description={`默认 ${selectedLabel} · 对话 ${counts.chat} · 视觉 ${counts.vision} · 生图 ${counts.image}`}
+            description={`默认 ${selectedLabel} · 对话 ${modelCounts.chat} · 视觉 ${modelCounts.vision} · 生图 ${modelCounts.image}`}
             actions={
               <StatusPill
                 label={connection.enabled ? '已启用' : '已停用'}
@@ -64,7 +64,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           />
         </div>
         <dl className={styles['provider-meta']!}>
-          {connection.baseUrl && !fixedProvider ? (
+          {connection.baseUrl && !isFixedPreset ? (
             <>
               <dt>Base URL</dt>
               <dd>

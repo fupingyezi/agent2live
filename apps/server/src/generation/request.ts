@@ -113,6 +113,7 @@ export type ReferencePlan = z.infer<typeof referencePlanSchema>
 
 const generationRequestFields = {
   schemaVersion: z.literal('generation-request/1'),
+  // 该字段属于已持久化的任务载荷，保留 generationJobId 以兼容历史 request_json；对外 DTO 使用 generationId。
   generationJobId: generationId,
   artProjectId: z.string().min(1).max(64),
   promptVersionId: z.string().min(1).max(64),

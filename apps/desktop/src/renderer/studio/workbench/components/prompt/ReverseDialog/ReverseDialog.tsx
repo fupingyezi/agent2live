@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { PromptDraftDto, PromptWorkspaceDto, ProviderConnectionDto } from '@studio/api'
 import { getPromptReverseResult, isTerminalJobStatus, queryKeys, requestPromptReverse } from '@studio/api'
 import { useJob } from '@studio/hooks'
-import { modelOptionLabel, providerDisplayName, providerModels } from '@studio/providers'
+import { connectionDisplayName, connectionModels, modelOptionLabel } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -59,7 +59,7 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
       providers
         .filter((provider) => provider.enabled)
         .flatMap((provider) =>
-          providerModels(provider, 'chat')
+          connectionModels(provider, 'chat')
             .filter((model) => references.length === 0 || model.capabilities.chat?.supportsVision === true)
             .map((model) => ({ provider, model }))
         ),
@@ -202,7 +202,7 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
               >
                 {providerOptions.map((provider) => (
                   <option key={provider.id} value={provider.id}>
-                    {providerDisplayName(provider)}
+                    {connectionDisplayName(provider)}
                   </option>
                 ))}
               </Select>

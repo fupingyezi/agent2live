@@ -1,9 +1,9 @@
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { sidecarEndpointFileSchema, type SidecarEndpointFile } from '@agent2live/contracts'
+import { localServiceEndpointFileSchema, type LocalServiceEndpointFile } from '@agent2live/contracts'
 
-export const endpointSchema = sidecarEndpointFileSchema
+export const endpointSchema = localServiceEndpointFileSchema
 
-export type EndpointFile = SidecarEndpointFile
+export type EndpointFile = LocalServiceEndpointFile
 
 export function writeEndpointFile(file: string, input: Omit<EndpointFile, 'schemaVersion'>): EndpointFile {
   const value: EndpointFile = endpointSchema.parse({ schemaVersion: 'endpoint/1', ...input })

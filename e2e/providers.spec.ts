@@ -42,10 +42,10 @@ async function readRawProviders(page: Awaited<ReturnType<typeof studioPage>>): P
   return page.evaluate(async () => {
     const bridge = (
       window as unknown as {
-        agent2live: { getServerInfo(): Promise<{ baseUrl: string; token: string }> }
+        agent2live: { getLocalServiceInfo(): Promise<{ baseUrl: string; token: string }> }
       }
     ).agent2live
-    const info = await bridge.getServerInfo()
+    const info = await bridge.getLocalServiceInfo()
     const response = await fetch(`${info.baseUrl}/api/v1/providers`, {
       headers: { authorization: `Bearer ${info.token}`, accept: 'application/json' }
     })

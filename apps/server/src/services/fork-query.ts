@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { ForkLinkDto, ProjectForkSlice } from '@agent2live/contracts'
+import type { ArtProjectForkSlice, ForkLinkDto } from '@agent2live/contracts'
 
 export type { ForkLinkDto }
 
@@ -17,9 +17,9 @@ export interface ForkLinkRow {
   detached_at: number | null
 }
 
-export function loadForkLinkRow(db: Database.Database, childProjectId: string): ForkLinkRow | null {
+export function loadForkLinkRow(db: Database.Database, childArtProjectId: string): ForkLinkRow | null {
   return (
-    (db.prepare('select * from project_forks where child_project_id = ?').get(childProjectId) as
+    (db.prepare('select * from project_forks where child_project_id = ?').get(childArtProjectId) as
       | ForkLinkRow
       | undefined) ?? null
   )
@@ -28,9 +28,9 @@ export function loadForkLinkRow(db: Database.Database, childProjectId: string): 
 export function toForkLinkDto(row: ForkLinkRow): ForkLinkDto {
   return {
     id: row.id,
-    childProjectId: row.child_project_id,
-    parentProjectId: row.parent_project_id,
-    rootProjectId: row.root_project_id,
+    childArtProjectId: row.child_project_id,
+    parentArtProjectId: row.parent_project_id,
+    rootArtProjectId: row.root_project_id,
     sourceKind: row.source_kind,
     sourceVersionId: row.source_version_id,
     sourceHash: row.source_hash,
@@ -41,16 +41,16 @@ export function toForkLinkDto(row: ForkLinkRow): ForkLinkDto {
   }
 }
 
-export function projectForkSlice(db: Database.Database, projectId: string): ProjectForkSlice | null {
-  const row = loadForkLinkRow(db, projectId)
+export function artProjectForkSlice(db: Database.Database, artProjectId: string): ArtProjectForkSlice | null {
+  const row = loadForkLinkRow(db, artProjectId)
   if (!row) return null
   const parent = db.prepare('select deleted_at from art_projects where id = ?').get(row.parent_project_id) as
     | { deleted_at: number | null }
     | undefined
   return {
     forkId: row.id,
-    parentProjectId: row.parent_project_id,
-    rootProjectId: row.root_project_id,
+    parentArtProjectId: row.parent_project_id,
+    rootArtProjectId: row.root_project_id,
     sourceKind: row.source_kind,
     sourceVersionId: row.source_version_id,
     branchLabel: row.branch_label,

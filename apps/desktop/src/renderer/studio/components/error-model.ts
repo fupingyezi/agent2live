@@ -21,7 +21,7 @@ export function describeStudioError(error: unknown): StudioErrorCopy {
     }
   }
 
-  if (error.code === 'SYS_SIDECAR_UNAVAILABLE') {
+  if (error.code === 'SYS_LOCAL_SERVICE_UNAVAILABLE') {
     return {
       title: '无法连接本地工作台',
       description: error.message,

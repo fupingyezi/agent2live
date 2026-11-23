@@ -1,5 +1,5 @@
 import { problemDetailsSchema } from '@agent2live/contracts/errors'
-import type { FieldError, ProblemDetails, SidecarInfo, UserAction } from '@agent2live/contracts'
+import type { FieldError, LocalServiceInfo, ProblemDetails, UserAction } from '@agent2live/contracts'
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
@@ -38,11 +38,11 @@ export class ApiError extends Error {
   }
 }
 
-const SIDECAR_UNAVAILABLE_DETAIL = '本地服务正在启动或已退出，请稍后重试'
+const LOCAL_SERVICE_UNAVAILABLE_DETAIL = '本地服务正在启动或已退出，请稍后重试'
 const INVALID_JSON_DETAIL = '本地服务返回了无法解析的数据。'
 
 function syntheticProblem(
-  code: 'SYS_INTERNAL' | 'SYS_SIDECAR_UNAVAILABLE',
+  code: 'SYS_INTERNAL' | 'SYS_LOCAL_SERVICE_UNAVAILABLE',
   status: number,
   retryable: boolean,
   detail: string
@@ -60,7 +60,7 @@ function syntheticProblem(
     retryAfterMs: null,
     error: {
       code,
-      category: code === 'SYS_SIDECAR_UNAVAILABLE' ? 'dependency' : 'internal',
+      category: code === 'SYS_LOCAL_SERVICE_UNAVAILABLE' ? 'dependency' : 'internal',
       severity: 'error',
       messageKey: code,
       userAction: retryable ? 'retry' : 'contact_support',
@@ -71,8 +71,10 @@ function syntheticProblem(
   }
 }
 
-function sidecarUnavailable(): ApiError {
-  return new ApiError(syntheticProblem('SYS_SIDECAR_UNAVAILABLE', 503, true, SIDECAR_UNAVAILABLE_DETAIL))
+function localServiceUnavailable(): ApiError {
+  return new ApiError(
+    syntheticProblem('SYS_LOCAL_SERVICE_UNAVAILABLE', 503, true, LOCAL_SERVICE_UNAVAILABLE_DETAIL)
+  )
 }
 
 export function formatIfMatch(value: number | string | null | undefined): string | null {
@@ -91,11 +93,11 @@ function joinUrl(baseUrl: string, path: string): string {
 }
 
 export class ApiClient {
-  private readonly getServerInfo: () => Promise<SidecarInfo>
+  private readonly getLocalServiceInfo: () => Promise<LocalServiceInfo>
   private readonly fetchImpl: FetchLike
 
-  constructor(options: { getServerInfo: () => Promise<SidecarInfo>; fetchImpl?: FetchLike }) {
-    this.getServerInfo = options.getServerInfo
+  constructor(options: { getLocalServiceInfo: () => Promise<LocalServiceInfo>; fetchImpl?: FetchLike }) {
+    this.getLocalServiceInfo = options.getLocalServiceInfo
     this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init))
   }
 
@@ -121,11 +123,11 @@ export class ApiClient {
   }
 
   private async send(path: string, options: ApiRequestOptions, defaultAccept: string): Promise<Response> {
-    let info: SidecarInfo
+    let info: LocalServiceInfo
     try {
-      info = await this.getServerInfo()
+      info = await this.getLocalServiceInfo()
     } catch {
-      throw sidecarUnavailable()
+      throw localServiceUnavailable()
     }
 
     const headers = new Headers(options.headers)
@@ -187,7 +189,7 @@ export class ApiClient {
     } catch (error) {
       if (error instanceof ApiError) throw error
       if (callerSignal?.aborted) throw error
-      throw sidecarUnavailable()
+      throw localServiceUnavailable()
     } finally {
       if (timer !== undefined) clearTimeout(timer)
       if (callerSignal !== undefined) callerSignal.removeEventListener('abort', abortFromCaller)

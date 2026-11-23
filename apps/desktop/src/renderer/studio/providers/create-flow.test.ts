@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ProviderModelProfile } from '@studio/api'
 import {
-  ProviderActivationError,
-  ProviderFormError,
-  buildCreateInput,
-  createProviderFlow,
-  editCatalogPatch,
-  updateProviderFlow,
-  type ProviderFlowPort
+  ProviderConnectionActivationError,
+  ProviderConnectionFormError,
+  buildCreateConnectionInput,
+  createProviderConnectionFlow,
+  editConnectionCatalogPatch,
+  updateProviderConnectionFlow,
+  type ProviderConnectionFlowPort
 } from './create-flow'
-import type { ProviderFormValues } from './presets'
+import type { ProviderConnectionFormValues } from './presets'
 
 const CHAT_MODEL: ProviderModelProfile = {
   id: 'chat-a',
@@ -40,14 +40,15 @@ const IMAGE_MODEL: ProviderModelProfile = {
   }
 }
 
-function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues {
+function values(overrides: Partial<ProviderConnectionFormValues> = {}): ProviderConnectionFormValues {
   return {
     presetId: 'volcengine-ark',
     label: '火山方舟',
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     kind: 'chat',
     adapter: 'openai-compatible',
-    manualModel: '',
+    defaultModelId: '',
+    customModelId: '',
     apiKey: 'sk-test',
     enabled: true,
     ...overrides
@@ -74,7 +75,7 @@ function connection(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function port(overrides: Partial<ProviderFlowPort> = {}): ProviderFlowPort {
+function port(overrides: Partial<ProviderConnectionFlowPort> = {}): ProviderConnectionFlowPort {
   return {
     create: vi.fn(async () => connection({ enabled: false, hasSecret: false })),
     update: vi.fn(async (_id, patch, rowVersion) => connection({ ...patch, rowVersion: rowVersion + 1 })),
@@ -82,12 +83,12 @@ function port(overrides: Partial<ProviderFlowPort> = {}): ProviderFlowPort {
     storeSecret: vi.fn(async () => ({ secretRef: 'sec_01J00000000000000000000002' })),
     deleteSecret: vi.fn(async () => undefined),
     ...overrides
-  } as ProviderFlowPort
+  } as ProviderConnectionFlowPort
 }
 
 describe('provider create flow', () => {
   it('builds a fixed preset create input from the catalog', () => {
-    const input = buildCreateInput(values(), [CHAT_MODEL, IMAGE_MODEL])
+    const input = buildCreateConnectionInput(values(), [CHAT_MODEL, IMAGE_MODEL])
     expect(input).toMatchObject({
       label: '火山方舟',
       kind: 'chat',
@@ -102,7 +103,7 @@ describe('provider create flow', () => {
   })
 
   it('uses built-in models for fixed providers and allows manual custom models', () => {
-    const fixed = buildCreateInput(values(), [])
+    const fixed = buildCreateConnectionInput(values(), [])
     expect(fixed).toMatchObject({
       presetId: 'volcengine-ark',
       kind: 'chat',
@@ -110,12 +111,12 @@ describe('provider create flow', () => {
       model: 'doubao-seed-2-1-pro-260915'
     })
     expect(fixed.models).toHaveLength(9)
-    const custom = buildCreateInput(
+    const custom = buildCreateConnectionInput(
       values({
         presetId: 'custom',
         label: '自定义',
         baseUrl: 'https://example.com/v1',
-        manualModel: 'my-image-model',
+        customModelId: 'my-image-model',
         kind: 'image',
         adapter: 'seedream'
       }),
@@ -138,13 +139,13 @@ describe('provider create flow', () => {
       models: [CHAT_MODEL, IMAGE_MODEL]
     })
     await expect(
-      updateProviderFlow(port(), current, values({ manualModel: 'image-a', apiKey: '' }))
+      updateProviderConnectionFlow(port(), current, values({ defaultModelId: 'image-a', apiKey: '' }))
     ).rejects.toMatchObject({ fields: { model: '所选模型类型与连接类型不一致。' } })
   })
 
   it('stores the key, activates, and deletes the draft secret', async () => {
     const p = port()
-    const result = await createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], 'sec_draft')
+    const result = await createProviderConnectionFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], 'sec_draft')
     expect(p.create).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'volcengine-ark' }))
     expect(p.storeSecret).toHaveBeenCalledWith({
       label: 'provider-secret:conn_01J0000000000000000000000',
@@ -169,11 +170,13 @@ describe('provider create flow', () => {
       }),
       get: vi.fn(async () => active)
     })
-    await expect(createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).resolves.toEqual(active)
+    await expect(createProviderConnectionFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).resolves.toEqual(
+      active
+    )
     expect(p.deleteSecret).not.toHaveBeenCalled()
   })
 
-  it('reports a partial failure with the provider id instead of retrying blindly', async () => {
+  it('reports a partial failure with the connection id instead of retrying blindly', async () => {
     const created = connection({ enabled: false, hasSecret: false })
     const p = port({
       create: vi.fn(async () => created),
@@ -182,26 +185,28 @@ describe('provider create flow', () => {
       }),
       get: vi.fn(async () => created)
     })
-    await expect(createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).rejects.toBeInstanceOf(
-      ProviderActivationError
-    )
-    await expect(createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)).rejects.toMatchObject({
-      name: 'ProviderActivationError',
-      providerId: created.id
+    await expect(
+      createProviderConnectionFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)
+    ).rejects.toBeInstanceOf(ProviderConnectionActivationError)
+    await expect(
+      createProviderConnectionFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], null)
+    ).rejects.toMatchObject({
+      name: 'ProviderConnectionActivationError',
+      connectionId: created.id
     })
   })
 
   it('never patches baseUrl for a fixed provider on update', async () => {
     const current = connection()
     const p = port({ update: vi.fn(async () => connection({ rowVersion: 2 })) })
-    await updateProviderFlow(p, current, values({ label: '改名', apiKey: '' }), {})
+    await updateProviderConnectionFlow(p, current, values({ label: '改名', apiKey: '' }), {})
     expect(p.update).toHaveBeenCalledWith(current.id, { label: '改名' }, current.rowVersion)
   })
 
   it('keeps the existing secret when the update leaves the key blank', async () => {
     const current = connection()
     const p = port({ update: vi.fn(async () => connection({ label: '改名', rowVersion: 2 })) })
-    await updateProviderFlow(p, current, values({ label: '改名', apiKey: '' }), {})
+    await updateProviderConnectionFlow(p, current, values({ label: '改名', apiKey: '' }), {})
     expect(p.storeSecret).not.toHaveBeenCalled()
     expect(p.update).toHaveBeenCalledWith(current.id, { label: '改名' }, current.rowVersion)
   })
@@ -209,7 +214,7 @@ describe('provider create flow', () => {
   it('rotates a typed key under the stable label and deletes the draft secret', async () => {
     const current = connection({ rowVersion: 3 })
     const p = port({ update: vi.fn(async () => connection({ rowVersion: 4 })) })
-    await updateProviderFlow(p, current, values({ apiKey: 'sk-rotated' }), {
+    await updateProviderConnectionFlow(p, current, values({ apiKey: 'sk-rotated' }), {
       draftSecretRef: 'sec_draft'
     })
     expect(p.storeSecret).toHaveBeenCalledWith({
@@ -225,7 +230,7 @@ function customConnection(overrides: Record<string, unknown> = {}) {
   return connection({ label: '自定义', baseUrl: 'https://old.example.com/v1', ...overrides })
 }
 
-function customValues(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues {
+function customValues(overrides: Partial<ProviderConnectionFormValues> = {}): ProviderConnectionFormValues {
   return values({
     presetId: 'custom',
     label: '自定义',
@@ -239,7 +244,7 @@ describe('provider custom endpoint edit', () => {
   it('keeps the saved catalog when only the key is rotated', () => {
     const current = customConnection()
     expect(
-      editCatalogPatch(
+      editConnectionCatalogPatch(
         customValues({ baseUrl: 'https://old.example.com/v1', apiKey: 'sk-rotated' }),
         current,
         null
@@ -250,9 +255,9 @@ describe('provider custom endpoint edit', () => {
   it('requires fresh models or a manual profile after a custom URL change', async () => {
     const current = customConnection()
     const changed = customValues()
-    expect(editCatalogPatch(changed, current, null)).toBeUndefined()
+    expect(editConnectionCatalogPatch(changed, current, null)).toBeUndefined()
     const p = port()
-    await expect(updateProviderFlow(p, current, changed, {})).rejects.toMatchObject({
+    await expect(updateProviderConnectionFlow(p, current, changed, {})).rejects.toMatchObject({
       fields: { model: expect.any(String) }
     })
     expect(p.update).not.toHaveBeenCalled()
@@ -262,13 +267,13 @@ describe('provider custom endpoint edit', () => {
     const current = customConnection()
     const changed = customValues()
     const fresh: ProviderModelProfile = { ...CHAT_MODEL, id: 'new-model' }
-    const models = editCatalogPatch(changed, current, [fresh])
+    const models = editConnectionCatalogPatch(changed, current, [fresh])
     expect(models).toEqual([fresh])
     // 重新拉取到相同目录时也视为新目录，不再沿用旧端点的缓存。
-    expect(editCatalogPatch(changed, current, [...current.models])).toEqual(current.models)
+    expect(editConnectionCatalogPatch(changed, current, [...current.models])).toEqual(current.models)
 
     const p = port({ update: vi.fn(async () => connection({ rowVersion: 2 })) })
-    await updateProviderFlow(p, current, changed, { models: models! })
+    await updateProviderConnectionFlow(p, current, changed, { models: models! })
     expect(p.update).toHaveBeenCalledWith(
       current.id,
       expect.objectContaining({ baseUrl: 'https://new.example.com/v1', models: [fresh] }),
@@ -278,11 +283,11 @@ describe('provider custom endpoint edit', () => {
 
   it('sends the manual model profile instead of the old catalog after a URL change', async () => {
     const current = customConnection()
-    const changed = customValues({ manualModel: 'manual-model' })
-    const models = editCatalogPatch(changed, current, null)
+    const changed = customValues({ customModelId: 'manual-model' })
+    const models = editConnectionCatalogPatch(changed, current, null)
     expect(models).toEqual([expect.objectContaining({ id: 'manual-model', kind: 'chat' })])
     const p = port()
-    await updateProviderFlow(p, current, changed, { models: models! })
+    await updateProviderConnectionFlow(p, current, changed, { models: models! })
     expect(p.update).toHaveBeenCalledWith(
       current.id,
       expect.objectContaining({ baseUrl: 'https://new.example.com/v1', models }),

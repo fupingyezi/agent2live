@@ -9,7 +9,7 @@ import type {
 } from '@studio/api'
 import { ApiError, createGeneration, getPromptVersion, queryKeys } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
-import { modelOptionLabel, providerDisplayName, providerModels } from '@studio/providers'
+import { connectionDisplayName, connectionModels, modelOptionLabel } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -113,7 +113,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const imageProviders = useMemo(
-    () => providers.filter((provider) => provider.enabled && providerModels(provider, 'image').length > 0),
+    () => providers.filter((provider) => provider.enabled && connectionModels(provider, 'image').length > 0),
     [providers]
   )
   const promptVersionId = initialPromptVersionId ?? ''
@@ -128,7 +128,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   const selectedProvider =
     imageProviders.find((provider) => provider.id === providerId) ?? imageProviders[0] ?? null
   const imageModels = useMemo(
-    () => (selectedProvider ? providerModels(selectedProvider, 'image') : []),
+    () => (selectedProvider ? connectionModels(selectedProvider, 'image') : []),
     [selectedProvider]
   )
   const selectedModel = imageModels.find((model) => model.id === modelId) ?? imageModels[0] ?? null
@@ -149,7 +149,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       imageProviders.find((provider) => provider.id === initialParams?.providerId) ??
       imageProviders[0] ??
       null
-    const nextModels = nextProvider ? providerModels(nextProvider, 'image') : []
+    const nextModels = nextProvider ? connectionModels(nextProvider, 'image') : []
     const nextModel =
       nextModels.find((model) => model.id === initialParams?.modelId) ??
       nextModels.find((model) => model.id === nextProvider?.model) ??
@@ -339,7 +339,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
               {imageProviders.map((provider) => (
                 <option key={provider.id} value={provider.id}>
-                  {providerDisplayName(provider)}
+                  {connectionDisplayName(provider)}
                 </option>
               ))}
             </Select>

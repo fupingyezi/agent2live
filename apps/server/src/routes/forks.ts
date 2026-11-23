@@ -37,8 +37,8 @@ export function registerForkRoutes(
     const body = result.response.body as ForkResultDto
     reply
       .status(result.response.status)
-      .header('location', `/api/v1/art-projects/${body.childProject.id}`)
-      .header('etag', `"${body.childProject.rowVersion}"`)
+      .header('location', `/api/v1/art-projects/${body.childArtProject.id}`)
+      .header('etag', `"${body.childArtProject.rowVersion}"`)
     return body
   })
 
@@ -58,8 +58,8 @@ export function registerForkRoutes(
     const body = result.response.body as ForkResultDto
     reply
       .status(result.response.status)
-      .header('location', `/api/v1/art-projects/${body.childProject.id}`)
-      .header('etag', `"${body.childProject.rowVersion}"`)
+      .header('location', `/api/v1/art-projects/${body.childArtProject.id}`)
+      .header('etag', `"${body.childArtProject.rowVersion}"`)
     return body
   })
 
@@ -77,7 +77,7 @@ export function registerForkRoutes(
       }
     )
     const body = result.response.body as ForkLinkMutationDto
-    reply.status(result.response.status).header('etag', `"${body.childProject.rowVersion}"`)
+    reply.status(result.response.status).header('etag', `"${body.childArtProject.rowVersion}"`)
     return body
   })
 }

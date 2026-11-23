@@ -34,8 +34,8 @@ export interface ArtProjectDto {
   deletedAt: string | null
   forkedFrom: {
     forkId: string
-    parentProjectId: string
-    rootProjectId: string
+    parentArtProjectId: string
+    rootArtProjectId: string
     sourceKind: 'prompt_version' | 'art_version'
     sourceVersionId: string
     branchLabel: string
@@ -104,7 +104,7 @@ export interface PromptInputResult {
 
 export interface CommitPromptResult {
   version: PromptVersionDto
-  project: ArtProjectDto
+  artProject: ArtProjectDto
 }
 
 export interface ProviderConnectionDto {
@@ -126,7 +126,7 @@ export interface ProviderConnectionDto {
 
 export interface GenerationCandidateDto {
   id: string
-  generationJobId: string
+  generationId: string
   assetId: string
   asset: AssetDto | null
   status: 'ready' | 'accepted' | 'rejected' | 'expired'
@@ -181,7 +181,7 @@ export interface ArtVersionDto {
   versionNumber: number
   artworkAssetId: string
   promptVersionId: string
-  generationJobId: string | null
+  generationId: string | null
   parentVersionId: string | null
   originVersionId: string | null
   sourceKind: 'generated' | 'manual_upload' | 'fork_seed'
@@ -194,7 +194,7 @@ export interface ArtVersionDto {
 
 export interface ArtVersionMutationDto {
   artVersion: ArtVersionDto
-  project: ArtProjectDto
+  artProject: ArtProjectDto
 }
 
 export interface ArtVersionListDto {
@@ -205,16 +205,16 @@ export interface ArtVersionListDto {
 export interface ForkResultDto {
   fork: {
     id: string
-    childProjectId: string
-    parentProjectId: string
-    rootProjectId: string
+    childArtProjectId: string
+    parentArtProjectId: string
+    rootArtProjectId: string
     sourceKind: 'prompt_version' | 'art_version'
     sourceVersionId: string
     sourceHash: string
     branchLabel: string
     status: 'active' | 'detached'
   }
-  childProject: ArtProjectDto
+  childArtProject: ArtProjectDto
   seedPromptVersion: PromptVersionDto
   seedArtVersion: ArtVersionDto | null
 }

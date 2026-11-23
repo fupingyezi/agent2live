@@ -2,14 +2,14 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { existsSync, readFileSync, rmSync, watch, type FSWatcher } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { parseSidecarEndpoint, type SidecarInfo } from '@agent2live/contracts'
+import { parseLocalServiceEndpoint, type LocalServiceInfo } from '@agent2live/contracts'
 import { getSecretVault } from './secrets'
 
 const ENTRY_WATCH_DEBOUNCE_MS = 200
 const SIDECAR_EXIT_TIMEOUT_MS = 2_000
 
 let child: UtilityProcess | null = null
-let info: SidecarInfo | null = null
+let info: LocalServiceInfo | null = null
 let lastError: Error | null = null
 let entryWatcher: FSWatcher | null = null
 let restartTimer: NodeJS.Timeout | null = null
@@ -53,7 +53,7 @@ function respondToSecretRequest(proc: UtilityProcess, message: unknown): void {
   }
 }
 
-export async function startSidecar(): Promise<SidecarInfo> {
+export async function startSidecar(): Promise<LocalServiceInfo> {
   if (info) return info
   const entry = serverEntry()
   if (!existsSync(entry)) throw new Error(`server bundle not found: ${entry}`)
@@ -88,7 +88,7 @@ export async function startSidecar(): Promise<SidecarInfo> {
     if (existsSync(endpointFile)) {
       const raw = readFileSync(endpointFile, 'utf8')
       try {
-        info = parseSidecarEndpoint(JSON.parse(raw))
+        info = parseLocalServiceEndpoint(JSON.parse(raw))
         return info
       } catch (error) {
         // JSON.parse may run before the atomic rename completes; only fail fast on
@@ -102,7 +102,7 @@ export async function startSidecar(): Promise<SidecarInfo> {
   throw new Error('sidecar did not publish endpoint.json within 20s')
 }
 
-export function getSidecarInfo(): SidecarInfo | null {
+export function getSidecarInfo(): LocalServiceInfo | null {
   return info
 }
 

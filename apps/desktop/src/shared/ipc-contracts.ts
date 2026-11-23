@@ -1,9 +1,9 @@
-import type { SidecarInfo } from '@agent2live/contracts'
+import type { LocalServiceInfo } from '@agent2live/contracts'
 
 export const IPC_CHANNELS = {
   getWindowState: 'window:get-state',
   setClickThrough: 'window:set-click-through',
-  getServerInfo: 'server:get-info',
+  getLocalServiceInfo: 'local-service:get-info',
   secretStore: 'secrets:store',
   secretHas: 'secrets:has',
   secretDelete: 'secrets:delete'
@@ -22,7 +22,7 @@ export interface PetWindowState {
 export interface Agent2LiveBridge {
   getWindowState(): Promise<PetWindowState>
   setClickThrough(enabled: boolean): Promise<PetWindowState>
-  getServerInfo(): Promise<SidecarInfo>
+  getLocalServiceInfo(): Promise<LocalServiceInfo>
   secrets: {
     store(input: { label: string; value: string }): Promise<{ secretRef: string }>
     has(secretRef: string): Promise<boolean>

@@ -235,13 +235,13 @@ export const ERROR_REGISTRY = {
     '内部错误',
     '发生了未预期的错误，请复制支持码联系支持'
   ),
-  SYS_SIDECAR_UNAVAILABLE: def(
-    'SYS_SIDECAR_UNAVAILABLE',
+  SYS_LOCAL_SERVICE_UNAVAILABLE: def(
+    'SYS_LOCAL_SERVICE_UNAVAILABLE',
     503,
     'dependency',
     true,
     'error',
-    'errors.sysSidecarUnavailable',
+    'errors.sysLocalServiceUnavailable',
     'retry',
     '本地服务不可用',
     '本地服务正在启动或已退出，请稍后重试'
@@ -877,7 +877,7 @@ export const ERROR_REGISTRY = {
     '请更换分支名',
     z
       .object({
-        parentProjectId: z.string().max(64),
+        parentArtProjectId: z.string().max(64),
         branchLabel: z.string().max(80)
       })
       .strict()

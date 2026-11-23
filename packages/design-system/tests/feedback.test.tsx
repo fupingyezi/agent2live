@@ -39,7 +39,7 @@ describe('feedback and data display', () => {
       <ErrorState
         title="无法连接本地工作台"
         description="请重启应用后重试。"
-        code="SYS_SIDECAR_UNAVAILABLE"
+        code="SYS_LOCAL_SERVICE_UNAVAILABLE"
         supportId="sup_123"
         retryLabel="重试"
         onRetry={onRetry}
@@ -48,7 +48,7 @@ describe('feedback and data display', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('无法连接本地工作台')
     const details = screen.getByText('技术详情').closest('details')
     expect(details).not.toHaveAttribute('open')
-    expect(screen.getByText('SYS_SIDECAR_UNAVAILABLE')).toBeInTheDocument()
+    expect(screen.getByText('SYS_LOCAL_SERVICE_UNAVAILABLE')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '重试' }))
     expect(onRetry).toHaveBeenCalledOnce()
   })

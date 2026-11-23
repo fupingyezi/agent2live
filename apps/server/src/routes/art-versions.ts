@@ -52,7 +52,7 @@ export function registerArtVersionRoutes(
     const body = result.response.body as ArtVersionMutationDto
     reply
       .status(result.response.status)
-      .header('etag', `"${body.project.rowVersion}"`)
+      .header('etag', `"${body.artProject.rowVersion}"`)
       .header('location', `/api/v1/art-projects/${id}/art-versions/${body.artVersion.id}`)
     return body
   })
@@ -77,8 +77,8 @@ export function registerArtVersionRoutes(
     const body = result.response.body as ArtVersionMutationDto
     reply
       .status(result.response.status)
-      .header('etag', `"${body.project.rowVersion}"`)
-      .header('location', `/api/v1/art-projects/${body.project.id}/art-versions/${body.artVersion.id}`)
+      .header('etag', `"${body.artProject.rowVersion}"`)
+      .header('location', `/api/v1/art-projects/${body.artProject.id}/art-versions/${body.artVersion.id}`)
     return body
   })
 
@@ -103,7 +103,7 @@ export function registerArtVersionRoutes(
       }
     )
     const body = result.response.body as ArtVersionMutationDto
-    reply.status(result.response.status).header('etag', `"${body.project.rowVersion}"`)
+    reply.status(result.response.status).header('etag', `"${body.artProject.rowVersion}"`)
     return body
   })
 }

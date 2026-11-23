@@ -161,7 +161,7 @@ function goldenEvidence() {
     promptVersionId: 'pvr_01J00000000000000000000000',
     providerConnectionId: 'conn_01J00000000000000000000000',
     generationId: 'gen_01J00000000000000000000000',
-    generationJobId: 'job_01J00000000000000000000001',
+    executionJobId: 'job_01J00000000000000000000001',
     candidateId: 'gcn_01J00000000000000000000000',
     firstArtVersionId: 'arv_01J00000000000000000000000',
     secondArtVersionId: 'arv_01J00000000000000000000001',

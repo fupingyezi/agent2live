@@ -127,8 +127,8 @@ export type CreateGenerationResultDto = WithIsoTimestamps<ContractCreateGenerati
 export type ForkResultDto = WithIsoTimestamps<ContractForkResultDto>
 export type ForkLinkMutationDto = WithIsoTimestamps<ContractForkLinkMutationDto>
 
-export type LineageNodeDto = Omit<ContractLineageNodeDto, 'project' | 'fork' | 'children'> & {
-  project: ArtProjectDto
+export type LineageNodeDto = Omit<ContractLineageNodeDto, 'artProject' | 'fork' | 'children'> & {
+  artProject: ArtProjectDto
   fork: ForkLinkDto | null
   children: LineageNodeDto[]
 }

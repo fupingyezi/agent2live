@@ -24,34 +24,38 @@ import type { ProviderConnectionDto } from '@studio/api'
 import { StudioError } from '@studio/components'
 import { StudioLoading } from '@studio/components'
 import {
-  ProviderActivationError,
-  ProviderFormError,
-  createProviderFlow,
-  editCatalogPatch,
-  initialProviderValues,
+  ProviderConnectionActivationError,
+  ProviderConnectionFormError,
+  connectionDisplayName,
+  connectionModels,
+  createProviderConnectionFlow,
+  editConnectionCatalogPatch,
+  initialProviderConnectionValues,
   modelsForConnectionKind,
   presetIdForConnection,
   presetModelsFor,
-  providerDisplayName,
-  providerModels,
-  updateProviderFlow,
-  type ProviderFlowPort,
-  type ProviderFormValues,
+  updateProviderConnectionFlow,
+  type ProviderConnectionFlowPort,
+  type ProviderConnectionFormValues,
   type ProviderModelProfile,
   type ProviderPresetId
 } from '@studio/providers'
-import { ProviderCard, type ProviderProbeState } from './ProviderCard'
-import { PROVIDER_FORM_ID, ProviderEditor, type ProviderFormFailure } from './ProviderEditor'
+import { ProviderConnectionCard, type ProviderProbeState } from './ProviderConnectionCard'
+import {
+  PROVIDER_CONNECTION_FORM_ID,
+  ProviderConnectionEditor,
+  type ProviderConnectionFormFailure
+} from './ProviderConnectionEditor'
 import styles from './ProvidersPage.module.scss'
 
-interface EditorState {
+interface ConnectionEditorState {
   mode: 'create' | 'edit'
   connection: ProviderConnectionDto | null
-  values: ProviderFormValues
+  values: ProviderConnectionFormValues
   models: ProviderModelProfile[] | null
 }
 
-const port: ProviderFlowPort = {
+const connectionPort: ProviderConnectionFlowPort = {
   create: createProvider,
   update: updateProvider,
   get: getProvider,
@@ -67,11 +71,11 @@ const port: ProviderFlowPort = {
   }
 }
 
-function failureFrom(error: unknown): ProviderFormFailure {
-  if (error instanceof ProviderFormError) {
+function failureFrom(error: unknown): ProviderConnectionFormFailure {
+  if (error instanceof ProviderConnectionFormError) {
     return { message: '请修正表单中的问题。', fields: error.fields }
   }
-  if (error instanceof ProviderActivationError) {
+  if (error instanceof ProviderConnectionActivationError) {
     return {
       message: error.message,
       fields: {}
@@ -85,8 +89,8 @@ function failureFrom(error: unknown): ProviderFormFailure {
 
 export const ProvidersPage: React.FC<EmptyProps> = () => {
   const queryClient = useQueryClient()
-  const [editor, setEditor] = useState<EditorState | null>(null)
-  const [failure, setFailure] = useState<ProviderFormFailure | null>(null)
+  const [editor, setEditor] = useState<ConnectionEditorState | null>(null)
+  const [failure, setFailure] = useState<ProviderConnectionFormFailure | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -103,7 +107,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
   const invalidate = (): Promise<void> => queryClient.invalidateQueries({ queryKey: queryKeys.providers })
 
   const startCreate = (): void => {
-    const values = initialProviderValues('deepseek-chat')
+    const values = initialProviderConnectionValues('deepseek-chat')
     setEditor({
       mode: 'create',
       connection: null,
@@ -122,6 +126,8 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
       connection.kind
     )
     const selected = models.find((model) => model.id === connection.model) ?? models[0]
+    const customManual = presetId === 'custom' && models.length === 0
+    const persistedModelId = connection.model ?? ''
     setEditor({
       mode: 'edit',
       connection,
@@ -131,7 +137,8 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
         baseUrl: connection.baseUrl ?? '',
         kind: connection.kind,
         adapter: connection.adapter === 'seedream' ? 'seedream' : 'openai-compatible',
-        manualModel: selected?.id ?? connection.model ?? '',
+        defaultModelId: customManual ? '' : (selected?.id ?? persistedModelId),
+        customModelId: customManual ? persistedModelId : '',
         apiKey: '',
         enabled: connection.enabled
       },
@@ -147,7 +154,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
     setFailure(null)
   }
 
-  const updateValues = (patch: Partial<ProviderFormValues>): void => {
+  const updateValues = (patch: Partial<ProviderConnectionFormValues>): void => {
     if (!editor) return
     const custom = editor.values.presetId === 'custom'
     const endpointChanged =
@@ -157,7 +164,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
       values: {
         ...editor.values,
         ...patch,
-        ...(endpointChanged ? { manualModel: '' } : {})
+        ...(endpointChanged ? { defaultModelId: '', customModelId: '' } : {})
       },
       ...(endpointChanged ? { models: null } : {})
     })
@@ -166,7 +173,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
 
   const onPresetChange = (presetId: ProviderPresetId): void => {
     if (!editor || editor.mode === 'edit') return
-    const values = initialProviderValues(presetId)
+    const values = initialProviderConnectionValues(presetId)
     setEditor({
       ...editor,
       values,
@@ -183,7 +190,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
     setPageError(null)
     try {
       if (editor.mode === 'create') {
-        await createProviderFlow(port, editor.values, editor.models ?? [], null)
+        await createProviderConnectionFlow(connectionPort, editor.values, editor.models ?? [], null)
         setNotice('模型供应商已保存。')
       } else if (editor.connection) {
         if (editor.connection.adapter === 'mock') {
@@ -197,8 +204,8 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
           await invalidate()
           return
         }
-        const models = editCatalogPatch(editor.values, editor.connection, editor.models)
-        await updateProviderFlow(port, editor.connection, editor.values, {
+        const models = editConnectionCatalogPatch(editor.values, editor.connection, editor.models)
+        await updateProviderConnectionFlow(connectionPort, editor.connection, editor.values, {
           ...(models ? { models } : {})
         })
         setNotice('模型供应商已更新。')
@@ -207,7 +214,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
       await invalidate()
     } catch (error) {
       setFailure(failureFrom(error))
-      if (error instanceof ProviderActivationError) {
+      if (error instanceof ProviderConnectionActivationError) {
         await invalidate().catch(() => undefined)
       }
     } finally {
@@ -258,11 +265,11 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
   }
 
   const providers = query.data ?? []
-  const imageProvider = providers.find(
-    (connection) => connection.enabled && providerModels(connection, 'image').length > 0
+  const imageConnection = providers.find(
+    (connection) => connection.enabled && connectionModels(connection, 'image').length > 0
   )
-  const chatProvider = providers.find(
-    (connection) => connection.enabled && providerModels(connection, 'chat').length > 0
+  const chatConnection = providers.find(
+    (connection) => connection.enabled && connectionModels(connection, 'chat').length > 0
   )
 
   return (
@@ -330,7 +337,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
         {query.isSuccess && providers.length > 0 ? (
           <div className={styles['provider-list']!}>
             {providers.map((connection) => (
-              <ProviderCard
+              <ProviderConnectionCard
                 key={connection.id}
                 connection={connection}
                 toggling={togglingId === connection.id}
@@ -354,11 +361,11 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
             <SectionHeader title="默认分配" description="当前能力使用的首个已启用的模型供应商" />
             <div className={styles['provider-assignment-row']!}>
               <span>生成立绘候选</span>
-              <strong>{imageProvider ? providerDisplayName(imageProvider) : '尚未分配'}</strong>
+              <strong>{imageConnection ? connectionDisplayName(imageConnection) : '尚未分配'}</strong>
             </div>
             <div className={styles['provider-assignment-row']!}>
               <span>提示词与人格</span>
-              <strong>{chatProvider ? providerDisplayName(chatProvider) : '尚未分配'}</strong>
+              <strong>{chatConnection ? connectionDisplayName(chatConnection) : '尚未分配'}</strong>
             </div>
           </section>
         ) : null}
@@ -387,7 +394,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
                 </Button>
                 <AsyncButton
                   type="submit"
-                  form={PROVIDER_FORM_ID}
+                  form={PROVIDER_CONNECTION_FORM_ID}
                   data-testid="provider-submit"
                   busy={saving}
                   busyLabel="保存中…"
@@ -397,7 +404,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
               </>
             }
           >
-            <ProviderEditor
+            <ProviderConnectionEditor
               key={`${editor.mode}:${editor.connection?.id ?? 'new'}`}
               mode={editor.mode}
               values={editor.values}

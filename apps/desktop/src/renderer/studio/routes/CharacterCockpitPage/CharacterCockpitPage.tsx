@@ -51,10 +51,10 @@ function flattenRows(roots: LineageNodeDto[]): ProjectRow[] {
   const rows: ProjectRow[] = []
   const seen = new Set<string>()
   const visit = (node: LineageNodeDto): void => {
-    if (seen.has(node.project.id)) return
-    seen.add(node.project.id)
+    if (seen.has(node.artProject.id)) return
+    seen.add(node.artProject.id)
     rows.push({
-      project: node.project,
+      project: node.artProject,
       branchLabel: node.fork?.branchLabel ?? null,
       parentDeleted: node.parentDeleted
     })

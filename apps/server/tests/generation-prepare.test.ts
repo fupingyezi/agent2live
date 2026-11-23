@@ -148,13 +148,13 @@ describe('generation references', () => {
       size: '512x896',
       seed: null
     }
-    const generationJobId = `gen_${'A'.repeat(26)}`
-    const request = buildGenerationRequest(prepared, generationJobId)
+    const generationId = `gen_${'A'.repeat(26)}`
+    const request = buildGenerationRequest(prepared, generationId)
     expect(request.references).toEqual(plan)
     expect(request.requestHash).toBe(
       hashCanonical({
         schemaVersion: 'generation-request/1',
-        generationJobId,
+        generationJobId: generationId,
         ...prepared
       })
     )

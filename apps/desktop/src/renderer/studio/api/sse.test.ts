@@ -102,7 +102,7 @@ describe('ServerEventStream', () => {
     const received: number[] = []
     let stream: ServerEventStream
     stream = new ServerEventStream({
-      getServerInfo: async () => info,
+      getLocalServiceInfo: async () => info,
       fetchImpl,
       sleep: async () => undefined,
       idleTimeoutMs: 1000,
@@ -125,7 +125,7 @@ describe('ServerEventStream', () => {
     const statuses: SseStatus[] = []
     let fetches = 0
     const stream = new ServerEventStream({
-      getServerInfo: async () => info,
+      getLocalServiceInfo: async () => info,
       fetchImpl: async () => {
         fetches += 1
         return new Response('unauthorized', { status: 401 })

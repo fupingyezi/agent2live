@@ -424,10 +424,10 @@ export interface CharacterDto {
   rowVersion: number
 }
 
-export interface ProjectForkSlice {
+export interface ArtProjectForkSlice {
   forkId: string
-  parentProjectId: string
-  rootProjectId: string
+  parentArtProjectId: string
+  rootArtProjectId: string
   sourceKind: 'prompt_version' | 'art_version'
   sourceVersionId: string
   branchLabel: string
@@ -443,7 +443,7 @@ export interface ArtProjectDto {
   stage: ArtProjectStage
   activeVersionId: string | null
   activePromptVersionId: string | null
-  forkedFrom: ProjectForkSlice | null
+  forkedFrom: ArtProjectForkSlice | null
   createdAt: number
   updatedAt: number
   rowVersion: number
@@ -452,9 +452,9 @@ export interface ArtProjectDto {
 
 export interface ForkLinkDto {
   id: string
-  childProjectId: string
-  parentProjectId: string
-  rootProjectId: string
+  childArtProjectId: string
+  parentArtProjectId: string
+  rootArtProjectId: string
   sourceKind: 'prompt_version' | 'art_version'
   sourceVersionId: string
   sourceHash: string
@@ -465,7 +465,7 @@ export interface ForkLinkDto {
 }
 
 export interface LineageNodeDto {
-  project: ArtProjectDto
+  artProject: ArtProjectDto
   fork: ForkLinkDto | null
   parentDeleted: boolean
   children: LineageNodeDto[]
@@ -577,7 +577,7 @@ export interface PromptVersionDto extends PromptVersionSummary {
 }
 
 export interface PromptWorkspaceDto {
-  projectId: string
+  artProjectId: string
   activeDraft: PromptDraftDto | null
   activePromptVersion: PromptVersionDto | null
   latestSubmission: PromptInputSubmissionDto | null
@@ -635,7 +635,7 @@ export interface ArtVersionDto {
   versionNumber: number
   artworkAssetId: string
   promptVersionId: string
-  generationJobId: string | null
+  generationId: string | null
   parentVersionId: string | null
   originVersionId: string | null
   sourceKind: 'generated' | 'manual_upload' | 'fork_seed'
@@ -653,12 +653,12 @@ export interface ArtVersionListDto {
 
 export interface ArtVersionMutationDto {
   artVersion: ArtVersionDto
-  project: ArtProjectDto
+  artProject: ArtProjectDto
 }
 
 export interface GenerationCandidateDto {
   id: string
-  generationJobId: string
+  generationId: string
   assetId: string
   asset: AssetDto | null
   status: 'ready' | 'accepted' | 'rejected' | 'expired'
@@ -704,12 +704,12 @@ export interface CreateGenerationResultDto {
 
 export interface ForkResultDto {
   fork: ForkLinkDto
-  childProject: ArtProjectDto
+  childArtProject: ArtProjectDto
   seedPromptVersion: PromptVersionDto
   seedArtVersion: ArtVersionDto | null
 }
 
 export interface ForkLinkMutationDto {
   fork: ForkLinkDto
-  childProject: ArtProjectDto
+  childArtProject: ArtProjectDto
 }

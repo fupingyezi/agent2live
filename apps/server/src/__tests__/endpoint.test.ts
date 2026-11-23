@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseSidecarEndpoint } from '@agent2live/contracts'
+import { parseLocalServiceEndpoint } from '@agent2live/contracts'
 import { readEndpointFile, writeEndpointFile } from '../endpoint'
 
 it('writes a 0600 atomic endpoint file with schema/pid/token', () => {
@@ -22,7 +22,7 @@ it('writes a 0600 atomic endpoint file with schema/pid/token', () => {
     token: 'secret-token-0123456789abcdefghijkl',
     pid: process.pid
   })
-  const published = parseSidecarEndpoint(JSON.parse(readFileSync(file, 'utf8')))
+  const published = parseLocalServiceEndpoint(JSON.parse(readFileSync(file, 'utf8')))
   expect(published).toEqual({
     schemaVersion: 'endpoint/1',
     baseUrl: 'http://127.0.0.1:45678',

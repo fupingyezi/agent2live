@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ProviderModelProfile } from '@studio/api'
-import { ProviderFormError } from './create-flow'
+import { ProviderConnectionFormError } from './create-flow'
 import { previewModelsForForm, type ProviderModelsPort } from './models-flow'
-import type { ProviderFormValues } from './presets'
+import type { ProviderConnectionFormValues } from './presets'
 
 const MODEL: ProviderModelProfile = {
   id: 'model-a',
@@ -15,14 +15,15 @@ const MODEL: ProviderModelProfile = {
   }
 }
 
-function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues {
+function values(overrides: Partial<ProviderConnectionFormValues> = {}): ProviderConnectionFormValues {
   return {
     presetId: 'deepseek-chat',
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
     kind: 'chat',
     adapter: 'openai-compatible',
-    manualModel: '',
+    defaultModelId: '',
+    customModelId: '',
     apiKey: 'sk-test',
     enabled: true,
     ...overrides
@@ -60,14 +61,14 @@ describe('model preview flow', () => {
   it('requires a key and a valid custom URL', async () => {
     await expect(
       previewModelsForForm(port(), values({ apiKey: '' }), 'provider-draft:test')
-    ).rejects.toBeInstanceOf(ProviderFormError)
+    ).rejects.toBeInstanceOf(ProviderConnectionFormError)
     await expect(
       previewModelsForForm(
         port(),
         values({ presetId: 'custom', baseUrl: 'ftp://example.com' }),
         'provider-draft:test'
       )
-    ).rejects.toBeInstanceOf(ProviderFormError)
+    ).rejects.toBeInstanceOf(ProviderConnectionFormError)
   })
 
   it('deletes the draft secret when the preview fails', async () => {

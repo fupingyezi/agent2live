@@ -1,7 +1,7 @@
 import type { ProviderModelsPreviewInput } from '@agent2live/contracts/provider-catalog'
 import type { ProviderConnectionDto, ProviderModelProfile } from '@studio/api'
-import { ProviderFormError, validateProviderBaseUrl } from './create-flow'
-import type { ProviderFormValues } from './presets'
+import { ProviderConnectionFormError, validateProviderBaseUrl } from './create-flow'
+import type { ProviderConnectionFormValues } from './presets'
 
 export interface ProviderModelsPort {
   storeSecret(input: { label: string; value: string }): Promise<{ secretRef: string }>
@@ -12,18 +12,18 @@ export interface ProviderModelsPort {
 
 export async function previewModelsForForm(
   port: ProviderModelsPort,
-  values: ProviderFormValues,
+  values: ProviderConnectionFormValues,
   draftLabel: string
 ): Promise<{ secretRef: string; models: ProviderModelProfile[] }> {
   const apiKey = values.apiKey.trim()
-  if (!apiKey) throw new ProviderFormError({ apiKey: '请输入 API Key。' })
+  if (!apiKey) throw new ProviderConnectionFormError({ apiKey: '请输入 API Key。' })
 
   const input: ProviderModelsPreviewInput =
     values.presetId === 'custom'
       ? (() => {
           const baseUrl = values.baseUrl.trim()
           const baseError = validateProviderBaseUrl(baseUrl)
-          if (baseError) throw new ProviderFormError({ baseUrl: baseError })
+          if (baseError) throw new ProviderConnectionFormError({ baseUrl: baseError })
           return {
             target: 'custom' as const,
             kind: values.kind,

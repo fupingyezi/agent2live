@@ -285,9 +285,9 @@ test('restores the character overview from projects and active art versions', as
       projectId: featuredProject.id,
       assetId: artAsset.id,
       promptVersionId: committed.version.id,
-      expectedProjectRowVersion: committed.project.rowVersion
+      expectedProjectRowVersion: committed.artProject.rowVersion
     })
-    expect(artwork.project.activeVersionId).toBe(artwork.artVersion.id)
+    expect(artwork.artProject.activeVersionId).toBe(artwork.artVersion.id)
 
     await studio.page.reload()
     await expect(studio.page.locator('[data-testid="studio-ready"]')).toBeVisible()

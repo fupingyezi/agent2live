@@ -381,7 +381,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
           projectId,
           submitted.draft.id,
           {
-            providerConnectionId: textSelection.provider.id,
+            providerConnectionId: textSelection.connection.id,
             modelId: textSelection.model.id,
             source: 'full',
             mode: 'optimize',
@@ -429,7 +429,7 @@ export const NewCharacterPage: React.FC<EmptyProps> = () => {
         } else {
           try {
             const reverse = await requestPromptReverse(projectId, {
-              providerConnectionId: visionSelection.provider.id,
+              providerConnectionId: visionSelection.connection.id,
               modelId: visionSelection.model.id
             })
             initialReverseJobId = reverse.jobId

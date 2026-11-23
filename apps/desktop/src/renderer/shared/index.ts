@@ -2,7 +2,7 @@
 export { modelUrlFromSearch, mountModel } from './live2d-stage'
 export type { EmptyProps, StageResult } from './model-types'
 
-/** Studio 与 Pet 共用的 sidecar HTTP 请求和错误归一化能力。 */
+/** Studio 与 Pet 共用的本地服务 HTTP 请求和错误归一化能力。 */
 export { ApiClient, ApiError, formatIfMatch, newIdempotencyKey } from './http/client'
 export type { ApiRequestOptions, FetchLike } from './http/client'
 

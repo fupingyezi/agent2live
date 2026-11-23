@@ -1,4 +1,4 @@
-import type { SidecarInfo } from '@agent2live/contracts'
+import type { LocalServiceInfo } from '@agent2live/contracts'
 import type { FetchLike } from './client'
 
 export const SSE_BACKOFF_MS = [500, 1000, 2000, 4000, 8000, 15000] as const
@@ -113,7 +113,7 @@ export function parseServerEvent(frame: SseFrame): ServerEvent | null {
 }
 
 export function buildSseRequest(
-  info: SidecarInfo,
+  info: LocalServiceInfo,
   lastSeq: number,
   signal: AbortSignal
 ): { url: string; init: RequestInit } {
@@ -142,7 +142,7 @@ export function buildSseRequest(
 export type SseStatus = 'connecting' | 'open' | 'reconnecting' | 'closed'
 
 export interface ServerEventStreamOptions {
-  getServerInfo: () => Promise<SidecarInfo>
+  getLocalServiceInfo: () => Promise<LocalServiceInfo>
   onEvent: (event: ServerEvent) => void
   onStatus?: (status: SseStatus) => void
   fetchImpl?: FetchLike
@@ -266,7 +266,7 @@ export class ServerEventStream {
     while (!signal.aborted) {
       this.emit(firstAttempt ? 'connecting' : 'reconnecting')
       try {
-        const info = await this.options.getServerInfo()
+        const info = await this.options.getLocalServiceInfo()
         if (signal.aborted) return
         const request = buildSseRequest(info, this.lastSeq, signal)
         const response = await this.fetchImpl(request.url, request.init)

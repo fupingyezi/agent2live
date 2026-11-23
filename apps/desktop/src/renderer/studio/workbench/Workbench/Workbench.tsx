@@ -23,7 +23,7 @@ import {
 } from '@studio/api'
 import { AsyncButton, Button, Dialog, InlineNotice } from '@agent2live/design-system'
 import { StudioError, StudioLoading } from '@studio/components'
-import { findDefaultTextSelection, providerDisplayName } from '@studio/providers'
+import { connectionDisplayName, findDefaultTextSelection } from '@studio/providers'
 import { useWorkbenchStore } from '../store'
 import { WorkbenchMoreMenu } from '../components/WorkbenchMoreMenu'
 import { GenerationDialog, type GenerationDefaults } from '../components/GenerationDialog'
@@ -268,15 +268,15 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
   }, [generationDetail?.id, generationDetail?.status, project.id, queryClient])
 
-  const candidateProvider = providers.find(
-    (provider) => provider.id === candidateGeneration?.providerConnectionId
+  const candidateConnection = providers.find(
+    (connection) => connection.id === candidateGeneration?.providerConnectionId
   )
   const providerLabel = candidateGeneration
-    ? `${candidateProvider ? providerDisplayName(candidateProvider) : '未指定'} · ${candidateGeneration.modelId ?? '默认模型'}`
+    ? `${candidateConnection ? connectionDisplayName(candidateConnection) : '未指定'} · ${candidateGeneration.modelId ?? '默认模型'}`
     : '未指定'
   const defaultTextSelection = findDefaultTextSelection(providers)
   const defaultTextLabel = defaultTextSelection
-    ? `${providerDisplayName(defaultTextSelection.provider)} · ${defaultTextSelection.model.name ?? defaultTextSelection.model.id}`
+    ? `${connectionDisplayName(defaultTextSelection.connection)} · ${defaultTextSelection.model.name ?? defaultTextSelection.model.id}`
     : '未配置文字模型'
 
   const promptVersionNumberForGeneration = useMemo(() => {
@@ -466,7 +466,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           project.id,
           activeDraft.id,
           {
-            providerConnectionId: selection.provider.id,
+            providerConnectionId: selection.connection.id,
             modelId: selection.model.id,
             source: liveLastEdited === 'blocks' ? 'blocks' : 'full',
             mode: 'sync',
@@ -546,7 +546,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       }
     }
     const committed = await commitPromptDraft(project.id, saved.id, saved.rowVersion, true)
-    queryClient.setQueryData(queryKeys.project(project.id), committed.project)
+    queryClient.setQueryData(queryKeys.project(project.id), committed.artProject)
     setView({ view: 'prompt', promptVersionId: committed.version.id })
     try {
       const nextBuffer = await createPromptDraft(project.id, {
@@ -625,7 +625,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         rowVersion = saved.rowVersion
       }
       const committed = await commitPromptDraft(project.id, draftId, rowVersion, true)
-      queryClient.setQueryData(queryKeys.project(project.id), committed.project)
+      queryClient.setQueryData(queryKeys.project(project.id), committed.artProject)
       try {
         const nextBuffer = await createPromptDraft(project.id, {
           from: 'version',
@@ -712,7 +712,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     setVersionError(null)
     acceptGenerationCandidate(candidateId, project.activeVersionId)
       .then((mutation) => {
-        queryClient.setQueryData(queryKeys.project(project.id), mutation.project)
+        queryClient.setQueryData(queryKeys.project(project.id), mutation.artProject)
         setView({ view: 'versions', artVersionId: mutation.artVersion.id })
         if (candidateGeneration) {
           void queryClient.invalidateQueries({

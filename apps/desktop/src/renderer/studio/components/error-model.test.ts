@@ -55,10 +55,12 @@ describe('describeStudioError', () => {
     expect(copy.tone).toBe('retryable')
   })
 
-  it('marks sidecar and auth failures as non-retryable recovery states', () => {
-    const sidecar = describeStudioError(new ApiError(apiProblem({ code: 'SYS_SIDECAR_UNAVAILABLE' })))
-    expect(sidecar.title).toBe('无法连接本地工作台')
-    expect(sidecar.tone).toBe('blocked')
+  it('marks local service and auth failures as non-retryable recovery states', () => {
+    const localService = describeStudioError(
+      new ApiError(apiProblem({ code: 'SYS_LOCAL_SERVICE_UNAVAILABLE' }))
+    )
+    expect(localService.title).toBe('无法连接本地工作台')
+    expect(localService.tone).toBe('blocked')
 
     const auth = describeStudioError(
       new ApiError(apiProblem({ code: 'AUTH_LOCAL_TOKEN_INVALID', status: 401 }))

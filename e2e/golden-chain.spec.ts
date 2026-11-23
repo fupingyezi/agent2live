@@ -132,8 +132,8 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     const committed = await api.commitPromptDraft(projectId!, savedDraft.id, savedDraft.rowVersion)
     expect(committed.version.versionNumber).toBe(2)
     expect(committed.version.artProjectId).toBe(projectId)
-    expect(committed.project.activePromptVersionId).toBe(committed.version.id)
-    expect(committed.project.activeVersionId).toBeNull()
+    expect(committed.artProject.activePromptVersionId).toBe(committed.version.id)
+    expect(committed.artProject.activeVersionId).toBeNull()
     expect(committed.version.references.map((reference) => reference.assetId)).toEqual([assetId, auxAsset.id])
     expect((await api.getArtVersions(projectId!)).items).toHaveLength(0)
     checks.draftSavedAndCommitted = true
@@ -172,14 +172,14 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     expect(firstArtVersion.parentVersionId).toBeNull()
     expect(firstArtVersion.originVersionId).toBe(firstArtVersion.id)
     expect(firstArtVersion.artworkAssetId).toBe(candidate!.assetId)
-    expect(firstArtVersion.generationJobId).toBe(created.generationId)
+    expect(firstArtVersion.generationId).toBe(created.generationId)
     expect(firstArtVersion.sourceKind).toBe('generated')
     expect('references' in firstArtVersion).toBe(false)
     expect(firstArtVersion.source).toMatchObject({
       kind: 'generation_candidate',
       candidateId: candidate!.id
     })
-    expect(accepted.project.activeVersionId).toBe(firstArtVersion.id)
+    expect(accepted.artProject.activeVersionId).toBe(firstArtVersion.id)
     checks.candidateAccepted = true
 
     const manualAssetBytes = await makePng(320, 480, '#d9a6b8')
@@ -189,7 +189,7 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
       projectId: projectId!,
       assetId: manualAsset.id,
       promptVersionId: committed.version.id,
-      expectedProjectRowVersion: accepted.project.rowVersion
+      expectedProjectRowVersion: accepted.artProject.rowVersion
     })
     const secondArtVersion = manual.artVersion
     expect(secondArtVersion.versionNumber).toBe(2)
@@ -197,10 +197,10 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     expect(secondArtVersion.originVersionId).toBe(firstArtVersion.id)
     expect(secondArtVersion.source).toMatchObject({ kind: 'manual_upload' })
     expect(secondArtVersion.artworkAssetId).toBe(manualAsset.id)
-    expect(secondArtVersion.generationJobId).toBeNull()
+    expect(secondArtVersion.generationId).toBeNull()
     expect(secondArtVersion.sourceKind).toBe('manual_upload')
     expect('references' in secondArtVersion).toBe(false)
-    expect(manual.project.activeVersionId).toBe(secondArtVersion.id)
+    expect(manual.artProject.activeVersionId).toBe(secondArtVersion.id)
     checks.manualVersionCreated = true
 
     const fork = await api.forkFromArtVersion({
@@ -212,17 +212,17 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     expect(fork.fork.sourceKind).toBe('art_version')
     expect(fork.fork.sourceVersionId).toBe(secondArtVersion.id)
     expect(fork.fork.sourceHash).toBe(secondArtVersion.contentHash)
-    expect(fork.fork.parentProjectId).toBe(projectId)
-    expect(fork.childProject.characterId).toBe(characterId)
+    expect(fork.fork.parentArtProjectId).toBe(projectId)
+    expect(fork.childArtProject.characterId).toBe(characterId)
     expect(fork.seedArtVersion).not.toBeNull()
-    expect(fork.seedArtVersion!.id).toBe(fork.childProject.activeVersionId!)
+    expect(fork.seedArtVersion!.id).toBe(fork.childArtProject.activeVersionId!)
     expect(fork.seedArtVersion!.versionNumber).toBe(1)
     expect(fork.seedArtVersion!.parentVersionId).toBeNull()
     expect(fork.seedArtVersion!.artworkAssetId).toBe(secondArtVersion.artworkAssetId)
-    expect(fork.seedArtVersion!.generationJobId).toBeNull()
+    expect(fork.seedArtVersion!.generationId).toBeNull()
     expect(fork.seedArtVersion!.sourceKind).toBe('fork_seed')
     expect(fork.seedPromptVersion.references).toEqual(committed.version.references)
-    expect(fork.childProject.id).not.toBe(projectId)
+    expect(fork.childArtProject.id).not.toBe(projectId)
     checks.artVersionForked = true
     checks.forkCopiedOrderedReferences = true
 
@@ -230,9 +230,9 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
       projectId: projectId!,
       versionId: firstArtVersion.id,
       reason: 'rollback',
-      expectedProjectRowVersion: manual.project.rowVersion
+      expectedProjectRowVersion: manual.artProject.rowVersion
     })
-    expect(rolledBack.project.activeVersionId).toBe(firstArtVersion.id)
+    expect(rolledBack.artProject.activeVersionId).toBe(firstArtVersion.id)
     expect(rolledBack.artVersion.id).toBe(firstArtVersion.id)
     const versionsAfterRollback = await api.getArtVersions(projectId!)
     expect(versionsAfterRollback.activeVersionId).toBe(firstArtVersion.id)
@@ -288,7 +288,9 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     const projectCards = page.locator('[data-testid="project-card"]')
     await expect(projectCards).toHaveCount(2)
     const parentCard = page.locator(`[data-testid="project-card"][data-project-id="${projectId}"]`)
-    const childCard = page.locator(`[data-testid="project-card"][data-project-id="${fork.childProject.id}"]`)
+    const childCard = page.locator(
+      `[data-testid="project-card"][data-project-id="${fork.childArtProject.id}"]`
+    )
     await expect(parentCard).toBeVisible()
     await expect(childCard).toBeVisible()
     await expect(parentCard.locator('[data-testid="art-progress"]')).toHaveAttribute('data-percent', '100')
@@ -312,7 +314,7 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
     }, characterId)
     await expect(page.getByRole('heading', { name: '凛', level: 1 })).toBeVisible()
     await page
-      .locator(`[data-testid="project-card"][data-project-id="${fork.childProject.id}"]`)
+      .locator(`[data-testid="project-card"][data-project-id="${fork.childArtProject.id}"]`)
       .getByRole('link', { name: '打开工作台', exact: true })
       .click()
     await expect(page.locator('[data-testid="workbench"]')).toBeVisible({ timeout: 20_000 })
@@ -334,13 +336,13 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
       characterId,
       characterBriefVersionId,
       projectId,
-      childProjectId: fork.childProject.id,
+      childProjectId: fork.childArtProject.id,
       assetId,
       manualAssetId: manualAsset.id,
       promptVersionId: committed.version.id,
       providerConnectionId: provider.id,
       generationId: generation.id,
-      generationJobId: generation.jobId,
+      executionJobId: generation.jobId,
       candidateId: candidate!.id,
       firstArtVersionId: firstArtVersion.id,
       secondArtVersionId: secondArtVersion.id,

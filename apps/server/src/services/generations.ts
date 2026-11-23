@@ -344,7 +344,7 @@ export class GenerationService {
       requestHash: row.request_hash,
       candidates: candidateRows.map((candidate) => ({
         id: candidate.id,
-        generationJobId: candidate.generation_job_id,
+        generationId: candidate.generation_job_id,
         assetId: candidate.asset_id,
         asset: byId.get(candidate.asset_id) ?? null,
         status: candidate.status,

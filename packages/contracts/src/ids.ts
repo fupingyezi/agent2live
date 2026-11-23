@@ -13,7 +13,7 @@ export const ID_PREFIXES = {
   promptSuggestion: 'psg',
   characterBrief: 'cbv',
   promptReverse: 'prv',
-  generationJob: 'gen',
+  generation: 'gen',
   generationCandidate: 'cand',
   artVersion: 'av',
   live2dProject: 'l2d',

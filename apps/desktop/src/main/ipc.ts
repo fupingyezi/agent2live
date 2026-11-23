@@ -29,9 +29,9 @@ export function registerWindowIpc(): void {
     if (typeof value !== 'boolean') throw new Error('click-through value must be boolean')
     return setPetClickThrough(value)
   })
-  ipcMain.handle(IPC_CHANNELS.getServerInfo, () => {
+  ipcMain.handle(IPC_CHANNELS.getLocalServiceInfo, () => {
     const info = getSidecarInfo()
-    if (!info) throw new Error('sidecar is not ready')
+    if (!info) throw new Error('local service is not ready')
     return info
   })
 }

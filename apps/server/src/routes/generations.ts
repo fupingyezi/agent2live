@@ -27,18 +27,18 @@ export function registerGenerationRoutes(
     const requestHash = hashCanonical({ projectId, input })
     const result = deps.idempotency.run(`generation.create:${projectId}`, key, requestHash, () => {
       const prepared = deps.generations.prepare(projectId, input)
-      const generationJobId = newId('generationJob')
-      const generationRequest = buildGenerationRequest(prepared, generationJobId)
+      const generationId = newId('generation')
+      const generationRequest = buildGenerationRequest(prepared, generationId)
       const job = deps.jobs.enqueue({
         type: IMAGE_GENERATION_JOB_TYPE,
         payload: generationRequest,
-        idempotencyKey: `image.generate:${generationJobId}`
+        idempotencyKey: `image.generate:${generationId}`
       })
       deps.generations.createRecord(generationRequest, job.id, idsOf(request))
       return {
         status: 202,
         body: {
-          generationId: generationJobId,
+          generationId,
           jobId: job.id,
           requestHash: generationRequest.requestHash,
           baseArtVersionId: generationRequest.baseArtVersionId,

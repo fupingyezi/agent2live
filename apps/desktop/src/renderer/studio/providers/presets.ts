@@ -11,15 +11,22 @@ import type { ProviderConnectionDto } from '@studio/api'
 export { FIXED_PROVIDER_PRESETS, fixedPresetForBaseUrl, getFixedProviderPreset }
 export type { ProviderModelProfile, ProviderPresetId }
 
-export interface ProviderFormValues {
+export interface ProviderConnectionFormValues {
   presetId: ProviderPresetId
   label: string
   baseUrl: string
   kind: 'chat' | 'image'
   adapter: 'openai-compatible' | 'seedream'
-  manualModel: string
+  /** 固定预设或已拉取目录中选中的默认模型。 */
+  defaultModelId: string
+  /** 自定义供应商且没有模型目录时手填的模型名。 */
+  customModelId: string
   apiKey: string
   enabled: boolean
+}
+
+export function selectedModelId(values: ProviderConnectionFormValues): string {
+  return values.defaultModelId.trim() || values.customModelId.trim()
 }
 
 function textChatCapabilities(): ProviderCapabilities {
@@ -34,7 +41,7 @@ export function presetModelsFor(presetId: ProviderPresetId): ProviderModelProfil
   return preset ? preset.presetModels : []
 }
 
-export function initialProviderValues(presetId: ProviderPresetId): ProviderFormValues {
+export function initialProviderConnectionValues(presetId: ProviderPresetId): ProviderConnectionFormValues {
   const preset = presetId === 'custom' ? null : getFixedProviderPreset(presetId)
   return {
     presetId,
@@ -42,7 +49,8 @@ export function initialProviderValues(presetId: ProviderPresetId): ProviderFormV
     baseUrl: preset?.baseUrl ?? '',
     kind: 'chat',
     adapter: 'openai-compatible',
-    manualModel: preset?.presetModels[0]?.id ?? '',
+    defaultModelId: preset?.presetModels[0]?.id ?? '',
+    customModelId: '',
     apiKey: '',
     enabled: true
   }
@@ -53,7 +61,7 @@ export function presetIdForConnection(connection: ProviderConnectionDto): Provid
   return fixedPresetForBaseUrl(connection.baseUrl)?.id ?? 'custom'
 }
 
-export function providerModels(
+export function connectionModels(
   connection: ProviderConnectionDto,
   kind?: 'chat' | 'image'
 ): ProviderModelProfile[] {
@@ -67,7 +75,7 @@ export function modelsForConnectionKind(
   return models.filter((model) => model.kind === kind)
 }
 
-export function providerCounts(connection: ProviderConnectionDto): {
+export function connectionModelCounts(connection: ProviderConnectionDto): {
   chat: number
   vision: number
   image: number
@@ -95,7 +103,7 @@ export function modelOptionLabel(model: ProviderModelProfile): string {
   return `${model.name ?? model.id}（${modelKindLabel(model)}）`
 }
 
-export function providerDisplayName(connection: ProviderConnectionDto): string {
+export function connectionDisplayName(connection: ProviderConnectionDto): string {
   if (connection.adapter === 'mock') return 'Mock（旧连接）'
   const preset = fixedPresetForBaseUrl(connection.baseUrl)
   if (preset) return preset.name
@@ -112,14 +120,14 @@ export function preferredModel(
   kind: 'chat' | 'image',
   requireVision = false
 ): ProviderModelProfile | null {
-  const models = providerModels(connection, kind).filter(
+  const models = connectionModels(connection, kind).filter(
     (model) => !requireVision || model.capabilities.chat?.supportsVision === true
   )
   return models.find((model) => model.id === connection.model) ?? models[0] ?? null
 }
 
-export function manualModelProfile(values: ProviderFormValues): ProviderModelProfile {
-  const id = values.manualModel.trim()
+export function customModelProfile(values: ProviderConnectionFormValues): ProviderModelProfile {
+  const id = values.customModelId.trim()
   if (!id) throw new Error('MODEL_REQUIRED')
   return {
     id,
@@ -131,34 +139,36 @@ export function manualModelProfile(values: ProviderFormValues): ProviderModelPro
 }
 
 export function findDefaultTextSelection(
-  providers: ProviderConnectionDto[]
-): { provider: ProviderConnectionDto; model: ProviderModelProfile } | null {
-  const candidates = providers
-    .filter((provider) => provider.enabled)
-    .flatMap((provider) =>
-      provider.models.filter((model) => model.kind === 'chat').map((model) => ({ provider, model }))
+  connections: ProviderConnectionDto[]
+): { connection: ProviderConnectionDto; model: ProviderModelProfile } | null {
+  const candidates = connections
+    .filter((connection) => connection.enabled)
+    .flatMap((connection) =>
+      connection.models.filter((model) => model.kind === 'chat').map((model) => ({ connection, model }))
     )
   // 设置页选中的默认模型优先；否则优先纯文本模型，再次是任意 chat（VLM 也能处理文本）。
-  const selected = candidates.find(({ provider, model }) => provider.model === model.id)
+  const selected = candidates.find(({ connection, model }) => connection.model === model.id)
   if (selected) return selected
   const textOnly = candidates.filter(({ model }) => model.capabilities.chat?.supportsVision !== true)
   const pool = textOnly.length > 0 ? textOnly : candidates
-  return pool.find(({ provider }) => provider.baseUrl?.includes('api.deepseek.com')) ?? pool[0] ?? null
+  return pool.find(({ connection }) => connection.baseUrl?.includes('api.deepseek.com')) ?? pool[0] ?? null
 }
 
 export function findDefaultVisionSelection(
-  providers: ProviderConnectionDto[]
-): { provider: ProviderConnectionDto; model: ProviderModelProfile } | null {
-  const candidates = providers
-    .filter((provider) => provider.enabled)
-    .flatMap((provider) =>
-      provider.models
+  connections: ProviderConnectionDto[]
+): { connection: ProviderConnectionDto; model: ProviderModelProfile } | null {
+  const candidates = connections
+    .filter((connection) => connection.enabled)
+    .flatMap((connection) =>
+      connection.models
         .filter((model) => model.kind === 'chat' && model.capabilities.chat?.supportsVision === true)
-        .map((model) => ({ provider, model }))
+        .map((model) => ({ connection, model }))
     )
-  const selected = candidates.find(({ provider, model }) => provider.model === model.id)
+  const selected = candidates.find(({ connection, model }) => connection.model === model.id)
   if (selected) return selected
   return (
-    candidates.find(({ provider }) => provider.baseUrl?.includes('open.bigmodel.cn')) ?? candidates[0] ?? null
+    candidates.find(({ connection }) => connection.baseUrl?.includes('open.bigmodel.cn')) ??
+    candidates[0] ??
+    null
   )
 }

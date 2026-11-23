@@ -5,17 +5,17 @@ import {
   type ArtProjectDto,
   type ArtProjectStage,
   type CreateArtProjectInput,
-  type ProjectForkSlice
+  type ArtProjectForkSlice
 } from '@agent2live/contracts'
 import { AppError } from '../errors'
 import type { EventStore } from '../events/store'
 import type { AuditService } from './audit'
 import type { Clock } from './clock'
 import { withEvents } from './events-buffer'
-import { projectForkSlice } from './fork-query'
+import { artProjectForkSlice } from './fork-query'
 import type { RequestIds } from './request-ids'
 
-export type { ArtProjectDto, ProjectForkSlice }
+export type { ArtProjectDto, ArtProjectForkSlice }
 
 interface ProjectRow {
   id: string
@@ -193,7 +193,7 @@ export class ProjectService {
       stage: row.stage as ArtProjectStage,
       activeVersionId: row.active_version_id,
       activePromptVersionId: row.active_prompt_version_id,
-      forkedFrom: projectForkSlice(this.deps.db, row.id),
+      forkedFrom: artProjectForkSlice(this.deps.db, row.id),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       rowVersion: row.row_version,

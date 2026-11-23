@@ -4,13 +4,13 @@ import {
   FIXED_PROVIDER_PRESETS,
   findDefaultTextSelection,
   findDefaultVisionSelection,
-  initialProviderValues,
+  initialProviderConnectionValues,
   modelOptionLabel,
   modelsForConnectionKind,
   presetIdForConnection,
-  providerCounts,
-  providerDisplayName,
-  providerModels
+  connectionModelCounts,
+  connectionDisplayName,
+  connectionModels
 } from './presets'
 
 const CHAT = {
@@ -68,18 +68,18 @@ describe('provider catalog helpers', () => {
       'qwen-chat',
       'minimax-chat'
     ])
-    expect(initialProviderValues('deepseek-chat')).toMatchObject({
+    expect(initialProviderConnectionValues('deepseek-chat')).toMatchObject({
       presetId: 'deepseek-chat',
       label: 'DeepSeek',
       baseUrl: 'https://api.deepseek.com/v1',
       kind: 'chat',
       adapter: 'openai-compatible',
-      manualModel: 'deepseek-flash'
+      defaultModelId: 'deepseek-flash'
     })
-    expect(initialProviderValues('custom')).toMatchObject({
+    expect(initialProviderConnectionValues('custom')).toMatchObject({
       presetId: 'custom',
       label: '自定义',
-      manualModel: ''
+      defaultModelId: ''
     })
   })
 
@@ -89,8 +89,8 @@ describe('provider catalog helpers', () => {
     expect(presetIdForConnection(connection({ baseUrl: 'https://example.com/v1' }))).toBe('custom')
     expect(presetIdForConnection(connection({ adapter: 'mock', baseUrl: null }))).toBeNull()
     // 视觉模型同时也是对话模型，对话计数包含视觉。
-    expect(providerCounts(ark)).toEqual({ chat: 2, vision: 1, image: 1 })
-    expect(providerModels(ark, 'chat').map((model) => model.id)).toEqual(['chat-a', 'vision-a'])
+    expect(connectionModelCounts(ark)).toEqual({ chat: 2, vision: 1, image: 1 })
+    expect(connectionModels(ark, 'chat').map((model) => model.id)).toEqual(['chat-a', 'vision-a'])
     expect(modelsForConnectionKind(ark.models, 'image').map((model) => model.id)).toEqual(['image-a'])
     expect(modelsForConnectionKind(ark.models, 'chat').map((model) => model.id)).toEqual([
       'chat-a',
@@ -101,8 +101,8 @@ describe('provider catalog helpers', () => {
     expect(modelOptionLabel(ark.models[0]!)).toContain('（对话）')
     expect(modelOptionLabel(ark.models[1]!)).toContain('（对话 · 视觉）')
     expect(modelOptionLabel(ark.models[2]!)).toContain('（生图）')
-    expect(providerDisplayName(ark)).toBe('火山方舟')
-    expect(providerDisplayName(connection({ baseUrl: 'https://example.com/v1' }))).toBe(
+    expect(connectionDisplayName(ark)).toBe('火山方舟')
+    expect(connectionDisplayName(connection({ baseUrl: 'https://example.com/v1' }))).toBe(
       '自定义 · example.com'
     )
   })

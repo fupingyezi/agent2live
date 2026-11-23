@@ -2931,7 +2931,7 @@ interface ErrorDefinition {
 | `429` | 本地或上游限流                                | `RATE_LIMITED`, `PROVIDER_RATE_LIMITED`                         |
 | `500` | 未预期内部错误                                | `SYS_INTERNAL`                                                  |
 | `502` | Agent、Binder 或 Provider 返回非法/不兼容响应 | `AGENT_PROTOCOL_MISMATCH`, `PROVIDER_BAD_RESPONSE`              |
-| `503` | 依赖暂不可用、sidecar 正在重启                | `SYS_SIDECAR_UNAVAILABLE`, `BINDER_UNAVAILABLE`                 |
+| `503` | 依赖暂不可用、sidecar 正在重启                | `SYS_LOCAL_SERVICE_UNAVAILABLE`, `BINDER_UNAVAILABLE`           |
 | `504` | 上游或子进程超时                              | `PROVIDER_TIMEOUT`, `BINDER_TIMEOUT`                            |
 | `507` | SQLite/日志/Blob 存储空间不足                 | `SYS_STORAGE_FULL`                                              |
 
@@ -2949,7 +2949,7 @@ interface ErrorDefinition {
 | 通用        | `RATE_LIMITED`                  | 429      | 是     | 等待后重试        |
 | 通用        | `REQUEST_CANCELLED`             | 本地事件 | 否     | 无                |
 | 通用        | `SYS_INTERNAL`                  | 500      | 否     | 复制 supportId    |
-| 通用        | `SYS_SIDECAR_UNAVAILABLE`       | 503      | 是     | 自动重启          |
+| 通用        | `SYS_LOCAL_SERVICE_UNAVAILABLE` | 503      | 是     | 自动重启          |
 | 通用        | `SYS_STORAGE_FULL`              | 507      | 否     | 清理空间          |
 | Prompt      | `PROMPT_BASE_STALE`             | 409      | 否     | 刷新建议          |
 | Prompt      | `PROMPT_BLOCK_LOCKED`           | 423      | 否     | 解锁后重试        |
@@ -3631,7 +3631,7 @@ apps/
 packages/
   contracts/               Zod + TS + JSON Schema
     errors.ts              ErrorDefinition、ProblemDetails、SSE/Job 错误 Schema
-    sidecar.ts             sidecar endpoint 与传输信息 Schema
+    local-service.ts       本地服务 endpoint 与传输信息 Schema
   logging/                 Pino 封装、trace context、redaction、audit
   domain/                  纯领域规则
   agent-runtime/           Agent loop、tools、adapters

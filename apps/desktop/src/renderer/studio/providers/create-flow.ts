@@ -1,37 +1,38 @@
 import type { CreateProviderConnectionInput, UpdateProviderConnectionInput } from '@agent2live/contracts/api'
 import { providerModelProfileSchema, type ProviderModelProfile } from '@agent2live/contracts/provider-catalog'
 import type { ProviderConnectionDto } from '@studio/api'
-import { getFixedProviderPreset, manualModelProfile, type ProviderFormValues } from './presets'
+import {
+  customModelProfile,
+  getFixedProviderPreset,
+  selectedModelId,
+  type ProviderConnectionFormValues
+} from './presets'
 
-export type ProviderConnectionRecord = ProviderConnectionDto
-export type CreateProviderInput = CreateProviderConnectionInput
-export type UpdateProviderInput = UpdateProviderConnectionInput
-
-export interface ProviderFlowPort {
-  create(input: CreateProviderInput): Promise<ProviderConnectionRecord>
-  update(id: string, patch: UpdateProviderInput, rowVersion: number): Promise<ProviderConnectionRecord>
-  get(id: string): Promise<ProviderConnectionRecord>
+export interface ProviderConnectionFlowPort {
+  create(input: CreateProviderConnectionInput): Promise<ProviderConnectionDto>
+  update(id: string, patch: UpdateProviderConnectionInput, rowVersion: number): Promise<ProviderConnectionDto>
+  get(id: string): Promise<ProviderConnectionDto>
   storeSecret(input: { label: string; value: string }): Promise<{ secretRef: string }>
   deleteSecret(secretRef: string): Promise<void>
 }
 
-export type ProviderFormField = 'label' | 'baseUrl' | 'model' | 'apiKey'
+export type ProviderConnectionFormField = 'label' | 'baseUrl' | 'model' | 'apiKey'
 
-export class ProviderFormError extends Error {
-  readonly fields: Partial<Record<ProviderFormField, string>>
-  constructor(fields: Partial<Record<ProviderFormField, string>>) {
+export class ProviderConnectionFormError extends Error {
+  readonly fields: Partial<Record<ProviderConnectionFormField, string>>
+  constructor(fields: Partial<Record<ProviderConnectionFormField, string>>) {
     super('连接表单校验失败')
-    this.name = 'ProviderFormError'
+    this.name = 'ProviderConnectionFormError'
     this.fields = fields
   }
 }
 
-export class ProviderActivationError extends Error {
-  readonly providerId: string
-  constructor(providerId: string, cause: unknown) {
+export class ProviderConnectionActivationError extends Error {
+  readonly connectionId: string
+  constructor(connectionId: string, cause: unknown) {
     super('模型供应商已创建，但启用失败。请检查密钥后重试。')
-    this.name = 'ProviderActivationError'
-    this.providerId = providerId
+    this.name = 'ProviderConnectionActivationError'
+    this.connectionId = connectionId
     this.cause = cause
   }
 }
@@ -47,26 +48,29 @@ export function validateProviderBaseUrl(value: string): string | null {
   }
 }
 
-function resolveProfiles(values: ProviderFormValues, models: ProviderModelProfile[]): ProviderModelProfile[] {
+function resolveProfiles(
+  values: ProviderConnectionFormValues,
+  models: ProviderModelProfile[]
+): ProviderModelProfile[] {
   if (models.length > 0) return models.map((model) => providerModelProfileSchema.parse(model))
   if (values.presetId !== 'custom') {
     const preset = getFixedProviderPreset(values.presetId)
     if (preset && preset.presetModels.length > 0) {
       return preset.presetModels.map((model) => providerModelProfileSchema.parse(model))
     }
-    throw new ProviderFormError({ model: '请选择模型。' })
+    throw new ProviderConnectionFormError({ model: '请选择模型。' })
   }
-  if (!values.manualModel.trim()) {
-    throw new ProviderFormError({ model: '请输入模型名。' })
+  if (!values.customModelId.trim()) {
+    throw new ProviderConnectionFormError({ model: '请输入模型名。' })
   }
-  return [providerModelProfileSchema.parse(manualModelProfile(values))]
+  return [providerModelProfileSchema.parse(customModelProfile(values))]
 }
 
 function representativeProfile(
-  values: ProviderFormValues,
+  values: ProviderConnectionFormValues,
   profiles: ProviderModelProfile[]
 ): ProviderModelProfile {
-  const requested = profiles.find((model) => model.id === values.manualModel.trim())
+  const requested = profiles.find((model) => model.id === selectedModelId(values))
   if (requested) return requested
   return (
     profiles.find((model) => model.kind === values.kind) ??
@@ -75,12 +79,12 @@ function representativeProfile(
   )
 }
 
-export function buildCreateInput(
-  values: ProviderFormValues,
+export function buildCreateConnectionInput(
+  values: ProviderConnectionFormValues,
   models: ProviderModelProfile[]
-): CreateProviderInput {
+): CreateProviderConnectionInput {
   const label = values.label.trim()
-  const fields: Partial<Record<ProviderFormField, string>> = {}
+  const fields: Partial<Record<ProviderConnectionFormField, string>> = {}
   if (!label) fields.label = '请输入连接名称。'
   if (label.length > 80) fields.label = '连接名称不能超过 80 个字符。'
   if (!values.apiKey.trim()) fields.apiKey = '请输入 API Key。'
@@ -88,7 +92,7 @@ export function buildCreateInput(
     const baseError = validateProviderBaseUrl(values.baseUrl.trim())
     if (baseError) fields.baseUrl = baseError
   }
-  if (Object.keys(fields).length > 0) throw new ProviderFormError(fields)
+  if (Object.keys(fields).length > 0) throw new ProviderConnectionFormError(fields)
 
   const profiles = resolveProfiles(values, models)
   const primary = representativeProfile(values, profiles)
@@ -108,13 +112,13 @@ export function buildCreateInput(
   }
 }
 
-export async function createProviderFlow(
-  port: ProviderFlowPort,
-  values: ProviderFormValues,
+export async function createProviderConnectionFlow(
+  port: ProviderConnectionFlowPort,
+  values: ProviderConnectionFormValues,
   models: ProviderModelProfile[],
   draftSecretRef: string | null
-): Promise<ProviderConnectionRecord> {
-  const created = await port.create(buildCreateInput(values, models))
+): Promise<ProviderConnectionDto> {
+  const created = await port.create(buildCreateConnectionInput(values, models))
   try {
     const { secretRef } = await port.storeSecret({
       label: `provider-secret:${created.id}`,
@@ -129,11 +133,11 @@ export async function createProviderFlow(
       if (draftSecretRef) await port.deleteSecret(draftSecretRef).catch(() => undefined)
       return latest
     }
-    throw new ProviderActivationError(created.id, error)
+    throw new ProviderConnectionActivationError(created.id, error)
   }
 }
 
-export interface UpdateProviderOptions {
+export interface UpdateProviderConnectionOptions {
   models?: ProviderModelProfile[]
   draftSecretRef?: string | null
 }
@@ -143,34 +147,38 @@ export interface UpdateProviderOptions {
  * 仅轮换密钥时保留已保存目录；自定义 Base URL 变更后旧目录属于旧端点，
  * 必须携带刚拉取的模型或手工模型，不能让旧目录静默通过。
  */
-export function editCatalogPatch(
-  values: ProviderFormValues,
-  current: ProviderConnectionRecord,
+export function editConnectionCatalogPatch(
+  values: ProviderConnectionFormValues,
+  current: ProviderConnectionDto,
   models: ProviderModelProfile[] | null
 ): ProviderModelProfile[] | undefined {
   if (values.presetId !== 'custom') return undefined
   const urlChanged = values.baseUrl.trim() !== (current.baseUrl ?? '')
   if (urlChanged) {
     if (models !== null && models.length > 0) return models
-    return values.manualModel.trim() ? [manualModelProfile(values)] : undefined
+    return values.customModelId.trim() ? [customModelProfile(values)] : undefined
   }
   if (models !== null && models.length > 0 && JSON.stringify(models) !== JSON.stringify(current.models)) {
     return models
   }
-  if ((models === null || models.length === 0) && current.models.length === 0 && values.manualModel.trim()) {
-    return [manualModelProfile(values)]
+  if (
+    (models === null || models.length === 0) &&
+    current.models.length === 0 &&
+    values.customModelId.trim()
+  ) {
+    return [customModelProfile(values)]
   }
   return undefined
 }
 
-export async function updateProviderFlow(
-  port: ProviderFlowPort,
-  current: ProviderConnectionRecord,
-  values: ProviderFormValues,
-  options: UpdateProviderOptions = {}
-): Promise<ProviderConnectionRecord> {
+export async function updateProviderConnectionFlow(
+  port: ProviderConnectionFlowPort,
+  current: ProviderConnectionDto,
+  values: ProviderConnectionFormValues,
+  options: UpdateProviderConnectionOptions = {}
+): Promise<ProviderConnectionDto> {
   const label = values.label.trim()
-  const fields: Partial<Record<ProviderFormField, string>> = {}
+  const fields: Partial<Record<ProviderConnectionFormField, string>> = {}
   if (!label) fields.label = '请输入连接名称。'
   if (label.length > 80) fields.label = '连接名称不能超过 80 个字符。'
   if (values.presetId === 'custom') {
@@ -181,12 +189,12 @@ export async function updateProviderFlow(
     fields.apiKey = '启用真实供应商需要现有密钥或新密钥。'
   }
   const customUrlChanged = values.presetId === 'custom' && values.baseUrl.trim() !== (current.baseUrl ?? '')
-  if (customUrlChanged && (!options.models || options.models.length === 0) && !values.manualModel.trim()) {
+  if (customUrlChanged && (!options.models || options.models.length === 0) && !values.customModelId.trim()) {
     fields.model = '修改 Base URL 后请重新获取模型，或手工填写模型名。'
   }
-  if (Object.keys(fields).length > 0) throw new ProviderFormError(fields)
+  if (Object.keys(fields).length > 0) throw new ProviderConnectionFormError(fields)
 
-  const patch: UpdateProviderInput = {}
+  const patch: UpdateProviderConnectionInput = {}
   if (label !== current.label) patch.label = label
   if (customUrlChanged) {
     patch.baseUrl = values.baseUrl.trim()
@@ -194,13 +202,13 @@ export async function updateProviderFlow(
   if (values.enabled !== current.enabled) patch.enabled = values.enabled
   if (options.models) patch.models = options.models
   const selectedDefault = (options.models ?? current.models).find(
-    (model) => model.id === values.manualModel.trim()
+    (model) => model.id === selectedModelId(values)
   )
   if (selectedDefault && selectedDefault.kind !== current.kind) {
-    throw new ProviderFormError({ model: '所选模型类型与连接类型不一致。' })
+    throw new ProviderConnectionFormError({ model: '所选模型类型与连接类型不一致。' })
   }
   if (selectedDefault && selectedDefault.adapter !== current.adapter) {
-    throw new ProviderFormError({ model: '所选模型协议与连接协议不一致。' })
+    throw new ProviderConnectionFormError({ model: '所选模型协议与连接协议不一致。' })
   }
   if (selectedDefault && selectedDefault.id !== current.model) {
     // 设置页选中的默认模型落到 legacy model/capabilities，后续任务默认使用它。

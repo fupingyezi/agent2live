@@ -167,7 +167,7 @@ const GOLDEN_REQUIRED_STRINGS = Object.freeze([
   'promptVersionId',
   'providerConnectionId',
   'generationId',
-  'generationJobId',
+  'executionJobId',
   'candidateId',
   'firstArtVersionId',
   'secondArtVersionId',

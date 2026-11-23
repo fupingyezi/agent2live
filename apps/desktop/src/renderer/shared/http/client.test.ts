@@ -2,7 +2,7 @@ import { buildProblem } from '@agent2live/contracts'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiClient, ApiError, formatIfMatch, newIdempotencyKey } from './client'
 
-const serverInfo = {
+const localServiceInfo = {
   baseUrl: 'http://127.0.0.1:43123',
   token: 'local-token',
   pid: 321
@@ -25,7 +25,7 @@ describe('ApiClient', () => {
         })
     )
     const client = new ApiClient({
-      getServerInfo: async () => ({
+      getLocalServiceInfo: async () => ({
         baseUrl: 'http://127.0.0.1:43123',
         token: 'local-token',
         pid: 321
@@ -52,7 +52,7 @@ describe('ApiClient', () => {
         new Response(JSON.stringify({ id: 'ast_1' }), { status: 201 })
     )
     const client = new ApiClient({
-      getServerInfo: async () => ({
+      getLocalServiceInfo: async () => ({
         baseUrl: 'http://127.0.0.1:43123',
         token: 'local-token',
         pid: 321
@@ -70,7 +70,7 @@ describe('ApiClient', () => {
 
   it('maps problem responses without exposing an HTML body', async () => {
     const client = new ApiClient({
-      getServerInfo: async () => ({
+      getLocalServiceInfo: async () => ({
         baseUrl: 'http://127.0.0.1:43123',
         token: 'local-token',
         pid: 321
@@ -90,7 +90,7 @@ describe('ApiClient', () => {
     const controller = new AbortController()
     controller.abort()
     const client = new ApiClient({
-      getServerInfo: async () => ({
+      getLocalServiceInfo: async () => ({
         baseUrl: 'http://127.0.0.1:43123',
         token: 'local-token',
         pid: 321
@@ -109,7 +109,7 @@ describe('ApiClient', () => {
   it('joins base URLs and paths without duplicate slashes', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ ok: true }))
     const client = new ApiClient({
-      getServerInfo: async () => ({ ...serverInfo, baseUrl: 'http://127.0.0.1:43123///' }),
+      getLocalServiceInfo: async () => ({ ...localServiceInfo, baseUrl: 'http://127.0.0.1:43123///' }),
       fetchImpl
     })
 
@@ -120,7 +120,7 @@ describe('ApiClient', () => {
   it('returns undefined for 204 and empty-body success responses', async () => {
     const responses = [new Response(null, { status: 204 }), new Response('', { status: 200 })]
     const client = new ApiClient({
-      getServerInfo: async () => serverInfo,
+      getLocalServiceInfo: async () => localServiceInfo,
       fetchImpl: async () => responses.shift()!
     })
 
@@ -130,7 +130,7 @@ describe('ApiClient', () => {
 
   it('maps invalid JSON success bodies to a safe SYS_INTERNAL error', async () => {
     const client = new ApiClient({
-      getServerInfo: async () => serverInfo,
+      getLocalServiceInfo: async () => localServiceInfo,
       fetchImpl: async () => new Response('<html>secret path</html>', { status: 200 })
     })
 
@@ -153,7 +153,7 @@ describe('ApiClient', () => {
       details: { expected: 'v1', actual: 'v2' }
     })
     const client = new ApiClient({
-      getServerInfo: async () => serverInfo,
+      getLocalServiceInfo: async () => localServiceInfo,
       fetchImpl: async () =>
         new Response(JSON.stringify(problem), {
           status: 409,
@@ -177,7 +177,7 @@ describe('ApiClient', () => {
 
   it('maps an invalid problem body to a synthetic error that reflects the HTTP status', async () => {
     const client = new ApiClient({
-      getServerInfo: async () => serverInfo,
+      getLocalServiceInfo: async () => localServiceInfo,
       fetchImpl: async () => jsonResponse({ hello: 'world' }, 400)
     })
 
@@ -189,10 +189,10 @@ describe('ApiClient', () => {
     expect((error as ApiError).message).toBe('本地服务返回了 HTTP 400。')
   })
 
-  it('maps a bridge failure to SYS_SIDECAR_UNAVAILABLE without leaking the bridge error', async () => {
+  it('maps a bridge failure to SYS_LOCAL_SERVICE_UNAVAILABLE without leaking the bridge error', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({}))
     const client = new ApiClient({
-      getServerInfo: async () => {
+      getLocalServiceInfo: async () => {
         throw new Error('bridge exploded: secret path')
       },
       fetchImpl
@@ -200,7 +200,7 @@ describe('ApiClient', () => {
 
     const error = await client.request('/api/v1/health').catch((reason: unknown) => reason)
     expect(error).toBeInstanceOf(ApiError)
-    expect((error as ApiError).code).toBe('SYS_SIDECAR_UNAVAILABLE')
+    expect((error as ApiError).code).toBe('SYS_LOCAL_SERVICE_UNAVAILABLE')
     expect((error as ApiError).status).toBe(503)
     expect((error as ApiError).retryable).toBe(true)
     expect((error as ApiError).userAction).toBe('retry')
@@ -209,11 +209,11 @@ describe('ApiClient', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('maps a supplied timeout to SYS_SIDECAR_UNAVAILABLE instead of a raw AbortError', async () => {
+  it('maps a supplied timeout to SYS_LOCAL_SERVICE_UNAVAILABLE instead of a raw AbortError', async () => {
     vi.useFakeTimers()
     try {
       const client = new ApiClient({
-        getServerInfo: async () => serverInfo,
+        getLocalServiceInfo: async () => localServiceInfo,
         fetchImpl: (_url, init) =>
           new Promise<Response>((_resolve, reject) => {
             init.signal?.addEventListener('abort', () => {
@@ -226,7 +226,7 @@ describe('ApiClient', () => {
       await vi.advanceTimersByTimeAsync(50)
       const error = await pending
       expect(error).toBeInstanceOf(ApiError)
-      expect((error as ApiError).code).toBe('SYS_SIDECAR_UNAVAILABLE')
+      expect((error as ApiError).code).toBe('SYS_LOCAL_SERVICE_UNAVAILABLE')
       expect((error as ApiError).status).toBe(503)
       expect((error as ApiError).retryable).toBe(true)
       expect((error as Error).name).toBe('ApiError')
@@ -240,7 +240,7 @@ describe('ApiClient', () => {
     const controller = new AbortController()
     try {
       const client = new ApiClient({
-        getServerInfo: async () => serverInfo,
+        getLocalServiceInfo: async () => localServiceInfo,
         fetchImpl: (_url, init) =>
           new Promise<Response>((_resolve, reject) => {
             init.signal?.addEventListener('abort', () => {
@@ -264,7 +264,7 @@ describe('ApiClient', () => {
 
   it('serializes JSON bodies and sets caller headers and conditional headers', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ ok: true }))
-    const client = new ApiClient({ getServerInfo: async () => serverInfo, fetchImpl })
+    const client = new ApiClient({ getLocalServiceInfo: async () => localServiceInfo, fetchImpl })
 
     await client.request('/api/v1/assets', {
       method: 'PATCH',
@@ -286,7 +286,7 @@ describe('ApiClient', () => {
 
   it('omits conditional headers when they have no value', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ ok: true }))
-    const client = new ApiClient({ getServerInfo: async () => serverInfo, fetchImpl })
+    const client = new ApiClient({ getLocalServiceInfo: async () => localServiceInfo, fetchImpl })
 
     await client.request('/api/v1/assets', { ifMatch: null })
     const headers = new Headers(fetchImpl.mock.calls[0]![1].headers)
@@ -301,7 +301,7 @@ describe('ApiClient', () => {
       headers: { 'content-type': 'text/event-stream' }
     })
     const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => response)
-    const client = new ApiClient({ getServerInfo: async () => serverInfo, fetchImpl })
+    const client = new ApiClient({ getLocalServiceInfo: async () => localServiceInfo, fetchImpl })
 
     const stream = await client.openStream('/api/v1/events')
     expect(stream).toBe(response)
@@ -314,7 +314,7 @@ describe('ApiClient', () => {
       async (_url: string, _init: RequestInit) =>
         new Response(new Blob(['image-bytes'], { type: 'image/png' }), { status: 200 })
     )
-    const client = new ApiClient({ getServerInfo: async () => serverInfo, fetchImpl })
+    const client = new ApiClient({ getLocalServiceInfo: async () => localServiceInfo, fetchImpl })
 
     const blob = await client.requestBlob('/api/v1/assets/ast_1/content')
     expect(blob).toBeInstanceOf(Blob)
@@ -326,7 +326,7 @@ describe('ApiClient', () => {
   it('honors an explicit accept type for zip downloads', async () => {
     const calls: Array<{ url: string; init: RequestInit }> = []
     const client = new ApiClient({
-      getServerInfo: async () => serverInfo,
+      getLocalServiceInfo: async () => localServiceInfo,
       fetchImpl: async (url, init) => {
         calls.push({ url, init })
         return new Response(new Uint8Array([80, 75, 3, 4]), {

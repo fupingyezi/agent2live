@@ -17,7 +17,7 @@ export function useServerEvents(): ServerEventsState {
     streamRef.current?.stop()
     setStatus('connecting')
     const stream = new ServerEventStream({
-      getServerInfo: () => window.agent2live.getServerInfo(),
+      getLocalServiceInfo: () => window.agent2live.getLocalServiceInfo(),
       onEvent: (event) => invalidateForEvent(queryClient, event),
       onStatus: setStatus
     })

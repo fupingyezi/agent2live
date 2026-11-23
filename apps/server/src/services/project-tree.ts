@@ -7,9 +7,9 @@ export interface ProjectTreeDto {
   children: ArtProjectDto[]
   forks: Array<{
     id: string
-    childProjectId: string
-    parentProjectId: string
-    rootProjectId: string
+    childArtProjectId: string
+    parentArtProjectId: string
+    rootArtProjectId: string
     sourceKind: 'prompt_version' | 'art_version'
     sourceVersionId: string
     branchLabel: string
@@ -54,9 +54,9 @@ export class ProjectTreeService {
       children,
       forks: forkRows.map((fork) => ({
         id: fork.id,
-        childProjectId: fork.child_project_id,
-        parentProjectId: fork.parent_project_id,
-        rootProjectId: fork.root_project_id,
+        childArtProjectId: fork.child_project_id,
+        parentArtProjectId: fork.parent_project_id,
+        rootArtProjectId: fork.root_project_id,
         sourceKind: fork.source_kind,
         sourceVersionId: fork.source_version_id,
         branchLabel: fork.branch_label,

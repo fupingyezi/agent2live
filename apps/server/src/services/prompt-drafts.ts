@@ -260,7 +260,7 @@ export class PromptDraftService {
     expectedRowVersion: number,
     acknowledge: boolean,
     ids: RequestIds
-  ): { version: PromptVersionDto; project: ArtProjectDto } {
+  ): { version: PromptVersionDto; artProject: ArtProjectDto } {
     this.deps.projects.getWritable(projectId)
     return withEvents(this.deps.db, this.deps.events, (events) => {
       const draft = this.requireActiveDraft(projectId, draftId, expectedRowVersion)
@@ -366,7 +366,7 @@ export class PromptDraftService {
       })
       return {
         version: this.deps.versions.get(projectId, versionId),
-        project: this.deps.projects.get(projectId)
+        artProject: this.deps.projects.get(projectId)
       }
     })
   }
@@ -378,7 +378,7 @@ export class PromptDraftService {
       ? this.deps.versions.get(projectId, project.activePromptVersionId)
       : null
     return {
-      projectId,
+      artProjectId: projectId,
       activeDraft: activeDraft ? toDraftDto(activeDraft) : null,
       activePromptVersion,
       latestSubmission: this.deps.submissions.latest(projectId),

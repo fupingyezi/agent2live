@@ -63,7 +63,7 @@ async function committedPrompt(ctx: Ctx, key = 'fork-commit-0001') {
     project,
     asset,
     promptVersion: commit.json<{ version: { id: string } }>().version,
-    projectAfter: commit.json<{ project: { rowVersion: number } }>().project
+    projectAfter: commit.json<{ artProject: { rowVersion: number } }>().artProject
   }
 }
 
@@ -83,8 +83,8 @@ async function currentProject(ctx: Ctx, projectId: string) {
     activePromptVersionId: string | null
     forkedFrom: {
       forkId: string
-      parentProjectId: string
-      rootProjectId: string
+      parentArtProjectId: string
+      rootArtProjectId: string
       sourceKind: string
       sourceVersionId: string
       branchLabel: string
@@ -109,16 +109,16 @@ describe('project forks', () => {
       const body = response.json<{
         fork: {
           id: string
-          childProjectId: string
-          parentProjectId: string
-          rootProjectId: string
+          childArtProjectId: string
+          parentArtProjectId: string
+          rootArtProjectId: string
           sourceKind: string
           sourceVersionId: string
           sourceHash: string
           branchLabel: string
           status: string
         }
-        childProject: {
+        childArtProject: {
           id: string
           characterId: string
           stage: string
@@ -136,23 +136,23 @@ describe('project forks', () => {
         seedArtVersion: null
       }>()
       expect(body.fork).toMatchObject({
-        childProjectId: body.childProject.id,
-        parentProjectId: project.id,
-        rootProjectId: project.id,
+        childArtProjectId: body.childArtProject.id,
+        parentArtProjectId: project.id,
+        rootArtProjectId: project.id,
         sourceKind: 'prompt_version',
         sourceVersionId: promptVersion.id,
         branchLabel: '蓝发冬季服',
         status: 'active'
       })
       expect(body.fork.sourceHash).toHaveLength(64)
-      expect(body.childProject).toMatchObject({
+      expect(body.childArtProject).toMatchObject({
         characterId: expect.any(String),
         stage: 'prompt_ready',
         activeVersionId: null,
         activePromptVersionId: body.seedPromptVersion.id
       })
       expect(body.seedPromptVersion).toMatchObject({
-        artProjectId: body.childProject.id,
+        artProjectId: body.childArtProject.id,
         versionNumber: 1,
         parentVersionId: null
       })
@@ -161,9 +161,9 @@ describe('project forks', () => {
 
       const parentAfter = await currentProject(ctx, project.id)
       expect(parentAfter.activePromptVersionId).toBe(promptVersion.id)
-      const child = await currentProject(ctx, body.childProject.id)
+      const child = await currentProject(ctx, body.childArtProject.id)
       expect(child.forkedFrom).toMatchObject({
-        parentProjectId: project.id,
+        parentArtProjectId: project.id,
         sourceKind: 'prompt_version',
         sourceVersionId: promptVersion.id,
         status: 'active',
@@ -189,7 +189,7 @@ describe('project forks', () => {
       expect(conflicting.json()).toMatchObject({
         error: {
           code: 'FORK_BRANCH_CONFLICT',
-          details: { parentProjectId: project.id, branchLabel: '蓝发冬季服' }
+          details: { parentArtProjectId: project.id, branchLabel: '蓝发冬季服' }
         }
       })
     } finally {
@@ -233,7 +233,7 @@ describe('project forks', () => {
       expect(art.statusCode).toBe(201)
       const manual = art.json<{
         artVersion: { id: string; artworkAssetId: string; sourceKind: string; contentHash: string }
-        project: { rowVersion: number }
+        artProject: { rowVersion: number }
       }>()
       const sourceArt = manual.artVersion
       const sourcePromptResponse = await ctx.app.inject({
@@ -256,12 +256,12 @@ describe('project forks', () => {
       const forkedBody = forked.json<{
         fork: {
           id: string
-          childProjectId: string
-          parentProjectId: string
-          rootProjectId: string
+          childArtProjectId: string
+          parentArtProjectId: string
+          rootArtProjectId: string
           sourceHash: string
         }
-        childProject: { id: string; stage: string; activeVersionId: string; activePromptVersionId: string }
+        childArtProject: { id: string; stage: string; activeVersionId: string; activePromptVersionId: string }
         seedPromptVersion: {
           id: string
           contentHash: string
@@ -273,16 +273,16 @@ describe('project forks', () => {
           versionNumber: number
           parentVersionId: string | null
           artworkAssetId: string
-          generationJobId: string | null
+          generationId: string | null
           sourceKind: string
           contentHash: string
         }
       }>()
       expect(forkedBody.fork).toMatchObject({
-        parentProjectId: project.id,
-        rootProjectId: project.id
+        parentArtProjectId: project.id,
+        rootArtProjectId: project.id
       })
-      expect(forkedBody.childProject).toMatchObject({
+      expect(forkedBody.childArtProject).toMatchObject({
         stage: 'art_version_active',
         activeVersionId: forkedBody.seedArtVersion.id,
         activePromptVersionId: forkedBody.seedPromptVersion.id
@@ -291,11 +291,11 @@ describe('project forks', () => {
         versionNumber: 1,
         parentVersionId: null,
         artworkAssetId: sourceArt.artworkAssetId,
-        generationJobId: null,
+        generationId: null,
         sourceKind: 'fork_seed'
       })
       expect(forkedBody.seedArtVersion.contentHash).toHaveLength(64)
-      expect(forkedBody.seedArtVersion.artProjectId).toBe(forkedBody.childProject.id)
+      expect(forkedBody.seedArtVersion.artProjectId).toBe(forkedBody.childArtProject.id)
       expect(forkedBody.seedPromptVersion.references).toEqual(sourcePrompt.references)
       expect(forkedBody.fork.sourceHash).toBe(sourceArt.contentHash)
 
@@ -307,9 +307,9 @@ describe('project forks', () => {
       })
       expect(nested.statusCode).toBe(201)
       const nestedBody = nested.json<{
-        fork: { childProjectId: string; rootProjectId: string }
+        fork: { childArtProjectId: string; rootArtProjectId: string }
       }>()
-      expect(nestedBody.fork.rootProjectId).toBe(project.id)
+      expect(nestedBody.fork.rootArtProjectId).toBe(project.id)
 
       const characterId = (await currentProject(ctx, project.id)).characterId
       const tree = await ctx.app.inject({
@@ -320,27 +320,29 @@ describe('project forks', () => {
       expect(tree.statusCode).toBe(200)
       const treeBody = tree.json<{
         roots: Array<{
-          project: { id: string }
+          artProject: { id: string }
           fork: { branchLabel: string } | null
           parentDeleted: boolean
           children: Array<{
-            project: { id: string }
+            artProject: { id: string }
             fork: { branchLabel: string; sourceKind: string } | null
             children: Array<{
-              project: { id: string }
+              artProject: { id: string }
               fork: { branchLabel: string } | null
             }>
           }>
         }>
       }>()
-      const root = treeBody.roots.find((node) => node.project.id === project.id)
+      const root = treeBody.roots.find((node) => node.artProject.id === project.id)
       expect(root).toBeDefined()
       expect(root!.fork).toBeNull()
-      const childNode = root!.children.find((node) => node.project.id === forkedBody.childProject.id)
+      const childNode = root!.children.find((node) => node.artProject.id === forkedBody.childArtProject.id)
       expect(childNode).toMatchObject({
         fork: { branchLabel: '短发实验', sourceKind: 'art_version' }
       })
-      expect(childNode!.children.map((node) => node.project.id)).toContain(nestedBody.fork.childProjectId)
+      expect(childNode!.children.map((node) => node.artProject.id)).toContain(
+        nestedBody.fork.childArtProjectId
+      )
     } finally {
       await ctx.close()
     }
@@ -357,7 +359,7 @@ describe('project forks', () => {
         payload: { title: '可脱离分支', branchLabel: 'v1-1' }
       })
       expect(forkResponse.statusCode).toBe(201)
-      const childId = forkResponse.json<{ childProject: { id: string } }>().childProject.id
+      const childId = forkResponse.json<{ childArtProject: { id: string } }>().childArtProject.id
       const parentBefore = await currentProject(ctx, project.id)
 
       const deleted = await ctx.app.inject({
@@ -384,14 +386,14 @@ describe('project forks', () => {
       const beforeRoot = beforeDetach
         .json<{
           roots: Array<{
-            project: { id: string; deletedAt: string | null }
-            children: Array<{ project: { id: string }; parentDeleted: boolean }>
+            artProject: { id: string; deletedAt: string | null }
+            children: Array<{ artProject: { id: string }; parentDeleted: boolean }>
           }>
         }>()
-        .roots.find((node) => node.project.id === project.id)
+        .roots.find((node) => node.artProject.id === project.id)
       expect(beforeRoot).toBeDefined()
-      expect(beforeRoot!.project.deletedAt).not.toBeNull()
-      expect(beforeRoot!.children[0]).toMatchObject({ project: { id: childId }, parentDeleted: true })
+      expect(beforeRoot!.artProject.deletedAt).not.toBeNull()
+      expect(beforeRoot!.children[0]).toMatchObject({ artProject: { id: childId }, parentDeleted: true })
 
       const renamed = await ctx.app.inject({
         method: 'PATCH',
@@ -404,21 +406,21 @@ describe('project forks', () => {
         fork: {
           status: string
           branchLabel: string
-          parentProjectId: string
+          parentArtProjectId: string
           sourceVersionId: string
           detachedAt: string | null
         }
-        childProject: { id: string; activePromptVersionId: string }
+        childArtProject: { id: string; activePromptVersionId: string }
       }>()
       expect(renamedBody.fork).toMatchObject({
         status: 'detached',
         branchLabel: '独立线',
-        parentProjectId: project.id,
+        parentArtProjectId: project.id,
         sourceVersionId: promptVersion.id
       })
       expect(renamedBody.fork.detachedAt).toEqual(expect.any(String))
       expect(Number.isNaN(Date.parse(renamedBody.fork.detachedAt!))).toBe(false)
-      expect(renamedBody.childProject.activePromptVersionId).toBeTruthy()
+      expect(renamedBody.childArtProject.activePromptVersionId).toBeTruthy()
 
       const afterDetach = await ctx.app.inject({
         method: 'GET',
@@ -426,10 +428,12 @@ describe('project forks', () => {
         headers: ctx.auth
       })
       const roots = afterDetach.json<{
-        roots: Array<{ project: { id: string }; fork: { status: string } | null }>
+        roots: Array<{ artProject: { id: string }; fork: { status: string } | null }>
       }>().roots
-      expect(roots.some((node) => node.project.id === childId && node.fork?.status === 'detached')).toBe(true)
-      expect(roots.some((node) => node.project.id === project.id)).toBe(false)
+      expect(roots.some((node) => node.artProject.id === childId && node.fork?.status === 'detached')).toBe(
+        true
+      )
+      expect(roots.some((node) => node.artProject.id === project.id)).toBe(false)
 
       const childAfterDetach = await currentProject(ctx, childId)
       expect(childAfterDetach.forkedFrom).toMatchObject({
@@ -533,7 +537,7 @@ describe('project forks', () => {
       })
       expect(forked.statusCode).toBe(201)
       const forkedBody = forked.json<{
-        childProject: { id: string }
+        childArtProject: { id: string }
         seedPromptVersion: {
           id: string
           inputSubmissionId: string
@@ -548,7 +552,7 @@ describe('project forks', () => {
 
       const draft = await ctx.app.inject({
         method: 'POST',
-        url: `/api/v1/art-projects/${forkedBody.childProject.id}/prompt-drafts`,
+        url: `/api/v1/art-projects/${forkedBody.childArtProject.id}/prompt-drafts`,
         headers: { ...ctx.auth, 'idempotency-key': 'fork-brief-draft-0001' },
         payload: { from: 'active_version' }
       })
@@ -599,7 +603,7 @@ describe('project forks', () => {
         payload: { title: '重命名', branchLabel: '原始' }
       })
       expect(forked.statusCode).toBe(201)
-      const childId = forked.json<{ childProject: { id: string } }>().childProject.id
+      const childId = forked.json<{ childArtProject: { id: string } }>().childArtProject.id
       const renamed = await ctx.app.inject({
         method: 'PATCH',
         url: `/api/v1/art-projects/${childId}/fork-link`,
@@ -676,7 +680,7 @@ describe('project forks', () => {
       expect(conflict.json()).toMatchObject({
         error: {
           code: 'FORK_BRANCH_CONFLICT',
-          details: { parentProjectId: project.id, branchLabel: 'v1' }
+          details: { parentArtProjectId: project.id, branchLabel: 'v1' }
         }
       })
     } finally {
@@ -695,7 +699,7 @@ describe('project forks', () => {
         payload: { title: '实验分支', branchLabel: '实验分支' }
       })
       expect(first.statusCode).toBe(201)
-      const childId = first.json<{ childProject: { id: string } }>().childProject.id
+      const childId = first.json<{ childArtProject: { id: string } }>().childArtProject.id
       const detached = await ctx.app.inject({
         method: 'PATCH',
         url: `/api/v1/art-projects/${childId}/fork-link`,

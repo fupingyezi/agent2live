@@ -12,7 +12,7 @@ import {
 } from '@studio/api'
 import type { PromptSpecV2 } from '@studio/api'
 import { useJob } from '@studio/hooks'
-import { modelOptionLabel, providerDisplayName, providerModels } from '@studio/providers'
+import { connectionDisplayName, connectionModels, modelOptionLabel } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -154,7 +154,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const chatProviders = useMemo(
-    () => providers.filter((provider) => provider.enabled && providerModels(provider, 'chat').length > 0),
+    () => providers.filter((provider) => provider.enabled && connectionModels(provider, 'chat').length > 0),
     [providers]
   )
   const [intent, setIntent] = useState(initialIntent)
@@ -166,7 +166,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
   const startedRef = useRef(false)
   const selectedProvider = chatProviders.find((provider) => provider.id === providerId)
   const chatModels = useMemo(
-    () => (selectedProvider ? providerModels(selectedProvider, 'chat') : []),
+    () => (selectedProvider ? connectionModels(selectedProvider, 'chat') : []),
     [selectedProvider]
   )
 
@@ -422,7 +422,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 >
                   {chatProviders.map((provider) => (
                     <option key={provider.id} value={provider.id}>
-                      {providerDisplayName(provider)}
+                      {connectionDisplayName(provider)}
                     </option>
                   ))}
                 </Select>

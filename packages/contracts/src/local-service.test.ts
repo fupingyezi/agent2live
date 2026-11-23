@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { sidecarEndpointFileSchema, sidecarInfoSchema } from './sidecar'
+import { localServiceEndpointFileSchema, localServiceInfoSchema } from './local-service'
 
-describe('sidecar endpoint contracts', () => {
+describe('local service endpoint contracts', () => {
   it('accepts the endpoint/1 published by the server', () => {
     const value = {
       schemaVersion: 'endpoint/1',
@@ -10,8 +10,8 @@ describe('sidecar endpoint contracts', () => {
       pid: 321,
       startedAt: '2026-11-13T00:00:00.000Z'
     }
-    expect(sidecarEndpointFileSchema.parse(value)).toEqual(value)
-    expect(sidecarInfoSchema.parse(value)).toEqual({
+    expect(localServiceEndpointFileSchema.parse(value)).toEqual(value)
+    expect(localServiceInfoSchema.parse(value)).toEqual({
       baseUrl: value.baseUrl,
       token: value.token,
       pid: value.pid
@@ -27,7 +27,7 @@ describe('sidecar endpoint contracts', () => {
     { ...validEndpoint(), startedAt: '' },
     endpointWithoutStartedAt()
   ])('rejects malformed or extended endpoint values', (value) => {
-    expect(sidecarEndpointFileSchema.safeParse(value).success).toBe(false)
+    expect(localServiceEndpointFileSchema.safeParse(value).success).toBe(false)
   })
 })
 

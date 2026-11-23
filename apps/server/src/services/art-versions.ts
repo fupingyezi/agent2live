@@ -49,7 +49,7 @@ export function toArtVersionDto(row: ArtVersionRow): ArtVersionDto {
     versionNumber: row.version_number,
     artworkAssetId: row.artwork_asset_id,
     promptVersionId: row.prompt_version_id,
-    generationJobId: row.generation_job_id,
+    generationId: row.generation_job_id,
     parentVersionId: row.parent_version_id,
     originVersionId: row.origin_version_id,
     sourceKind: row.source_kind,
@@ -77,6 +77,7 @@ export type ArtVersionSource =
       schemaVersion: 'art-source/1'
       kind: 'generation_candidate'
       candidateId: string
+      // source_json 与 contentHash 沿用该字段名，兼容历史 art_versions。
       generationJobId: string
       generationRequestHash: string
     }
@@ -357,7 +358,7 @@ export class ArtVersionService {
       })
       return {
         artVersion: this.get(input.projectId, id),
-        project: this.deps.projects.get(input.projectId)
+        artProject: this.deps.projects.get(input.projectId)
       }
     })
   }
@@ -475,7 +476,7 @@ export class ArtVersionService {
       })
       return {
         artVersion: this.get(project.id, id),
-        project: this.deps.projects.get(project.id)
+        artProject: this.deps.projects.get(project.id)
       }
     })
   }
@@ -491,7 +492,7 @@ export class ArtVersionService {
       const project = this.requireProjectRow(input.projectId, input.expectedProjectRowVersion)
       const target = this.get(input.projectId, input.versionId)
       if (project.active_version_id === target.id) {
-        return { artVersion: target, project: this.deps.projects.get(input.projectId) }
+        return { artVersion: target, artProject: this.deps.projects.get(input.projectId) }
       }
       const previousVersionId = project.active_version_id
       const now = this.deps.clock.now()
@@ -526,7 +527,7 @@ export class ArtVersionService {
       })
       return {
         artVersion: target,
-        project: this.deps.projects.get(input.projectId)
+        artProject: this.deps.projects.get(input.projectId)
       }
     })
   }

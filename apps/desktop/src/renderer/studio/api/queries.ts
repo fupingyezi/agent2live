@@ -41,13 +41,13 @@ import type {
   SubmitPromptInputResult
 } from './types'
 
-function getServerInfo(): ReturnType<NonNullable<Window['agent2live']>['getServerInfo']> {
+function getLocalServiceInfo(): ReturnType<NonNullable<Window['agent2live']>['getLocalServiceInfo']> {
   const bridge = window.agent2live
   if (!bridge) return Promise.reject(new Error('agent2live preload bridge is unavailable'))
-  return bridge.getServerInfo()
+  return bridge.getLocalServiceInfo()
 }
 
-export const api = new ApiClient({ getServerInfo })
+export const api = new ApiClient({ getLocalServiceInfo })
 
 function withSignal(signal?: AbortSignal): { signal?: AbortSignal } {
   return signal === undefined ? {} : { signal }
@@ -191,8 +191,8 @@ export function commitPromptDraft(
   ifMatch: number,
   acknowledgeUncoveredRequirements: boolean,
   idempotencyKey = newIdempotencyKey()
-): Promise<{ version: PromptVersionDto; project: ArtProjectDto }> {
-  return api.request<{ version: PromptVersionDto; project: ArtProjectDto }>(
+): Promise<{ version: PromptVersionDto; artProject: ArtProjectDto }> {
+  return api.request<{ version: PromptVersionDto; artProject: ArtProjectDto }>(
     `/api/v1/art-projects/${encodeURIComponent(projectId)}/prompt-drafts/${encodeURIComponent(draftId)}/commit`,
     {
       method: 'POST',
@@ -515,9 +515,9 @@ export function flattenLineage(roots: CharacterLineageDto['roots']): ArtProjectD
   const projects: ArtProjectDto[] = []
   const seen = new Set<string>()
   const visit = (node: CharacterLineageDto['roots'][number]): void => {
-    if (seen.has(node.project.id)) return
-    seen.add(node.project.id)
-    projects.push(node.project)
+    if (seen.has(node.artProject.id)) return
+    seen.add(node.artProject.id)
+    projects.push(node.artProject)
     for (const child of node.children) visit(child)
   }
   for (const root of roots) visit(root)

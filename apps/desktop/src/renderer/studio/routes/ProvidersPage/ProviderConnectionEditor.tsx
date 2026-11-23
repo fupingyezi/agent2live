@@ -5,35 +5,35 @@ import {
   getFixedProviderPreset,
   modelOptionLabel,
   modelsForConnectionKind,
-  type ProviderFormValues,
+  type ProviderConnectionFormValues,
   type ProviderModelProfile,
   type ProviderPresetId
 } from '@studio/providers'
 import styles from './ProvidersPage.module.scss'
 
-export const PROVIDER_FORM_ID = 'provider-editor-form'
+export const PROVIDER_CONNECTION_FORM_ID = 'provider-editor-form'
 
 const SECRET_MASK = '••••••••'
 
-export interface ProviderFormFailure {
+export interface ProviderConnectionFormFailure {
   message: string
   fields: Partial<Record<'label' | 'baseUrl' | 'model' | 'apiKey', string>>
 }
 
-export interface ProviderEditorProps {
+export interface ProviderConnectionEditorProps {
   mode: 'create' | 'edit'
-  values: ProviderFormValues
-  failure: ProviderFormFailure | null
+  values: ProviderConnectionFormValues
+  failure: ProviderConnectionFormFailure | null
   saving: boolean
   models: ProviderModelProfile[] | null
   legacyMock: boolean
   hasSecret: boolean
-  onChange(patch: Partial<ProviderFormValues>): void
+  onChange(patch: Partial<ProviderConnectionFormValues>): void
   onPresetChange(presetId: ProviderPresetId): void
   onSubmit(event: React.FormEvent<HTMLFormElement>): void
 }
 
-export const ProviderEditor: React.FC<ProviderEditorProps> = ({
+export const ProviderConnectionEditor: React.FC<ProviderConnectionEditorProps> = ({
   mode,
   values,
   failure,
@@ -52,7 +52,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       : (getFixedProviderPreset(values.presetId)?.description ?? '')
 
   const custom = values.presetId === 'custom'
-  const manualModelVisible = custom && (!models || models.length === 0)
+  const customModelVisible = custom && (!models || models.length === 0)
   const selectableModels =
     mode === 'edit' && models ? modelsForConnectionKind(models, values.kind) : (models ?? [])
   const modelSelectVisible = !legacyMock && selectableModels.length > 0
@@ -60,7 +60,12 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   const showSecretMask = mode === 'edit' && hasSecret && !keyDirty
 
   return (
-    <form id={PROVIDER_FORM_ID} className={styles['provider-form']!} noValidate onSubmit={onSubmit}>
+    <form
+      id={PROVIDER_CONNECTION_FORM_ID}
+      className={styles['provider-form']!}
+      noValidate
+      onSubmit={onSubmit}
+    >
       {legacyMock ? null : mode === 'create' ? (
         <Field label="供应商类型" description={presetDescription}>
           <Select
@@ -170,9 +175,9 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         <Field label="默认模型" {...(modelError ? { error: modelError } : {})}>
           <Select
             data-testid="provider-model-select"
-            value={values.manualModel}
+            value={values.defaultModelId}
             disabled={saving}
-            onValueChange={(value) => onChange({ manualModel: value })}
+            onValueChange={(value) => onChange({ defaultModelId: value })}
           >
             {selectableModels.map((model) => (
               <option key={model.id} value={model.id}>
@@ -183,7 +188,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         </Field>
       ) : null}
 
-      {manualModelVisible ? (
+      {customModelVisible ? (
         <Field
           label="模型名"
           description="自定义供应商手工填写模型名。"
@@ -191,8 +196,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         >
           <TextField
             data-testid="provider-model-manual"
-            value={values.manualModel}
-            onValueChange={(value) => onChange({ manualModel: value })}
+            value={values.customModelId}
+            onValueChange={(value) => onChange({ customModelId: value })}
             spellCheck={false}
           />
         </Field>

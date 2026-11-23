@@ -183,23 +183,23 @@ describe('art versions', () => {
           id: string
           versionNumber: number
           artworkAssetId: string
-          generationJobId: string
+          generationId: string
           sourceKind: string
           parentVersionId: string | null
           originVersionId: string | null
           references?: unknown
         }
-        project: { activeVersionId: string }
+        artProject: { activeVersionId: string }
       }>()
       expect(firstBody.artVersion).toMatchObject({
         artworkAssetId: candidates[0]!.assetId,
-        generationJobId: generationId,
+        generationId: generationId,
         sourceKind: 'generated',
         parentVersionId: null,
         originVersionId: firstBody.artVersion.id
       })
       expect(firstBody.artVersion).not.toHaveProperty('references')
-      expect(firstBody.project.activeVersionId).toBe(firstBody.artVersion.id)
+      expect(firstBody.artProject.activeVersionId).toBe(firstBody.artVersion.id)
       expect(
         ctx.db.prepare("select count(*) as n from asset_links where owner_type = 'art_version'").get()
       ).toEqual({ n: 0 })
@@ -243,7 +243,7 @@ describe('art versions', () => {
       expect(activated.statusCode).toBe(200)
       expect(activated.json()).toMatchObject({
         artVersion: { id: firstBody.artVersion.id },
-        project: {
+        artProject: {
           activeVersionId: firstBody.artVersion.id,
           activePromptVersionId: version.id
         }
@@ -289,21 +289,21 @@ describe('art versions', () => {
         artVersion: {
           id: string
           artworkAssetId: string
-          generationJobId: string | null
+          generationId: string | null
           sourceKind: string
           promptVersionId: string
           references?: unknown
         }
-        project: { activeVersionId: string; edge?: string }
+        artProject: { activeVersionId: string; edge?: string }
       }>()
       expect(body.artVersion).toMatchObject({
         artworkAssetId: uploaded.id,
-        generationJobId: null,
+        generationId: null,
         sourceKind: 'manual_upload',
         promptVersionId: version.id
       })
       expect(body.artVersion).not.toHaveProperty('references')
-      expect(body.project.activeVersionId).toBe(body.artVersion.id)
+      expect(body.artProject.activeVersionId).toBe(body.artVersion.id)
 
       const stale = await ctx.app.inject({
         method: 'POST',
