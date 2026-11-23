@@ -13,18 +13,12 @@ import {
   providerModelProfileSchema
 } from '@agent2live/contracts'
 import { generationRequestDisplaySchema, referencePlanSchema } from '../src/generation/request'
+import { API_TIMESTAMP_KEYS } from '../src/http/api-json'
 import { responseTypeNames, type ResponseTypeName } from './response-types'
 
 export type JsonSchemaObject = Record<string, unknown>
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
-const generator = createGenerator({
-  path: resolve(HERE, 'response-types.ts'),
-  tsconfig: resolve(HERE, '../tsconfig.json'),
-  type: '*',
-  skipTypeCheck: true,
-  additionalProperties: false
-})
 
 const zodOverrides: Record<string, z.ZodTypeAny> = {
   CharacterBriefVersion: characterBriefVersionSchema,
@@ -149,7 +143,122 @@ function setPath(target: JsonSchemaObject, path: string[], value: JsonSchemaObje
   cursor[last] = value
 }
 
+const SSE_TIMESTAMP_EXEMPT = new Set(['SseEvent'])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function convertTimestampNode(node: JsonSchemaObject): void {
+  const type = node.type
+  if (Array.isArray(type)) {
+    const nullable = type.includes('null')
+    if (type.some((item) => item === 'integer' || item === 'number')) {
+      node.type = 'string'
+      node.format = 'date-time'
+      if (nullable) node.nullable = true
+    }
+    return
+  }
+  if (type === 'integer' || type === 'number') {
+    node.type = 'string'
+    node.format = 'date-time'
+    delete node.minimum
+    delete node.maximum
+    delete node.exclusiveMinimum
+    delete node.exclusiveMaximum
+    return
+  }
+  if (Array.isArray(node.anyOf)) {
+    for (const branch of node.anyOf) {
+      if (isRecord(branch) && (branch.type === 'integer' || branch.type === 'number')) {
+        branch.type = 'string'
+        branch.format = 'date-time'
+      }
+    }
+  }
+}
+
+function walk(node: unknown, key?: string): void {
+  if (Array.isArray(node)) {
+    for (const child of node) walk(child)
+    return
+  }
+  if (!isRecord(node)) return
+  if (key && API_TIMESTAMP_KEYS.has(key)) convertTimestampNode(node)
+  for (const [childKey, child] of Object.entries(node)) walk(child, childKey)
+}
+
+function normalizeNode(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const child of node) normalizeNode(child)
+    return
+  }
+  if (!isRecord(node)) return
+  delete node.$schema
+  delete node.$id
+  if (Array.isArray(node.type)) {
+    const types = node.type.filter((item) => item !== 'null')
+    const hadNull = types.length !== node.type.length
+    node.type = types.length === 1 ? types[0] : types
+    if (hadNull) node.nullable = true
+  }
+  if ('const' in node) {
+    node.enum = [node.const]
+    delete node.const
+  }
+  for (const key of ['anyOf', 'oneOf'] as const) {
+    const branches = node[key]
+    if (!Array.isArray(branches)) continue
+    const nonNull = branches.filter((branch) => !(isRecord(branch) && branch.type === 'null'))
+    if (nonNull.length !== branches.length) {
+      node.nullable = true
+      if (nonNull.length === 1) {
+        Object.assign(node, nonNull[0])
+        delete node[key]
+      } else {
+        node[key] = nonNull
+      }
+    }
+  }
+  for (const key of [
+    'if',
+    'then',
+    'else',
+    'dependentSchemas',
+    'dependentRequired',
+    'patternProperties',
+    'propertyNames',
+    'unevaluatedProperties',
+    'contentMediaType',
+    'contentEncoding'
+  ]) {
+    delete node[key]
+  }
+  if (typeof node.$ref === 'string') {
+    node.$ref = node.$ref.replace('#/definitions/', '#/components/schemas/')
+  }
+  for (const child of Object.values(node)) normalizeNode(child)
+}
+
+function finalizeResponseSchemas(
+  definitions: Record<string, JsonSchemaObject>
+): Record<string, JsonSchemaObject> {
+  for (const [name, schema] of Object.entries(definitions)) {
+    if (!SSE_TIMESTAMP_EXEMPT.has(name)) walk(schema)
+    normalizeNode(schema)
+  }
+  return definitions
+}
+
 export function buildResponseSchemas(): Record<string, JsonSchemaObject> {
+  const generator = createGenerator({
+    path: resolve(HERE, 'response-types.ts'),
+    tsconfig: resolve(HERE, '../tsconfig.json'),
+    type: '*',
+    skipTypeCheck: true,
+    additionalProperties: false
+  })
   const generated = generator.createSchema('*') as {
     definitions?: Record<string, JsonSchemaObject>
   }
@@ -166,7 +275,7 @@ export function buildResponseSchemas(): Record<string, JsonSchemaObject> {
   for (const name of responseTypeNames) {
     if (!definitions[name]) throw new Error(`missing response schema: ${name}`)
   }
-  return definitions
+  return finalizeResponseSchemas(definitions)
 }
 
 export { responseTypeNames } from './response-types'

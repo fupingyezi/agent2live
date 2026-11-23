@@ -36,3 +36,22 @@ describe('openapi schema registry', () => {
     expect(schemas.ProblemDetails).toBeDefined()
   })
 })
+
+describe('openapi wire timestamps', () => {
+  it('converts JSON timestamp fields to date-time but leaves SSE and numbers alone', () => {
+    const schemas = buildResponseSchemas() as Record<string, any>
+    expect(schemas.ArtProjectDto.properties.createdAt).toMatchObject({
+      type: 'string',
+      format: 'date-time'
+    })
+    expect(schemas.ArtProjectDto.properties.deletedAt).toMatchObject({
+      type: 'string',
+      format: 'date-time',
+      nullable: true
+    })
+    expect(schemas.ArtProjectDto.properties.rowVersion).toMatchObject({ type: 'number' })
+    expect(schemas.ProviderProbeDto.properties.checkedAt).toMatchObject({ type: 'number' })
+    expect(schemas.SseEvent.properties.createdAt).toMatchObject({ type: 'number' })
+    expect(JSON.stringify(schemas)).not.toContain('#/definitions/')
+  })
+})
