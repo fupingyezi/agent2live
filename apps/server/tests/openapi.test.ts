@@ -90,4 +90,18 @@ describe('openapi manifest groups', () => {
       ])
     )
   })
+
+  it('covers generations, art versions, and jobs', () => {
+    const group = manifest.filter((operation) => operation.group === 'generations')
+    expect(group).toHaveLength(12)
+    expect(group.map((operation) => `${operation.method} ${operation.path}`)).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/art-projects/:id/generations',
+        'GET /api/v1/generations/:generationId',
+        'POST /api/v1/generation-candidates/:candidateId/accept',
+        'GET /api/v1/jobs/:id/events',
+        'POST /api/v1/jobs/:id/cancel'
+      ])
+    )
+  })
 })
