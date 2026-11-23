@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { createGenerationInputSchema } from '@agent2live/contracts'
 import { collectRegisteredRoutes } from '../openapi/coverage'
+import { buildResponseSchemas, responseTypeNames, zodSchemaToJsonSchema } from '../openapi/schema-registry'
 
 describe('openapi route coverage', () => {
   it('collects every registered route exactly once without HEAD twins', async () => {
@@ -10,5 +12,27 @@ describe('openapi route coverage', () => {
     expect(keys).toContain('GET /health')
     expect(keys).toContain('GET /api/v1/events')
     expect(routes.some((route) => route.method === 'HEAD')).toBe(false)
+  })
+})
+
+describe('openapi schema registry', () => {
+  it('converts request Zod schemas to OpenAPI-compatible JSON Schema', () => {
+    const schema = zodSchemaToJsonSchema(createGenerationInputSchema)
+    expect(schema).toMatchObject({ type: 'object' })
+    expect(schema).not.toHaveProperty('$schema')
+    expect(schema.properties).toHaveProperty('promptVersionId')
+  })
+
+  it('generates every declared response type and patches Zod-inferred fields', () => {
+    const schemas = buildResponseSchemas() as Record<string, any>
+    for (const name of responseTypeNames) expect(schemas[name]).toBeDefined()
+    expect(schemas.PromptDraftDto.properties.state).toMatchObject({
+      $ref: expect.stringMatching(/PromptSpecV2$/)
+    })
+    expect(schemas.PromptSpecV2.properties.blocks).toBeDefined()
+    expect(schemas.ProviderConnectionDto.properties.models.items).toMatchObject({
+      $ref: expect.stringMatching(/ProviderModelProfile$/)
+    })
+    expect(schemas.ProblemDetails).toBeDefined()
   })
 })
