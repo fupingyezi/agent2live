@@ -36,6 +36,8 @@ weights/
 .env
 .env.*
 !.env.example
+# Apifox CLI local config (may contain an access token)
+.apifox/
 *.pem
 *.key
 
