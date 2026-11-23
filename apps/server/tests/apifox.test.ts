@@ -61,6 +61,25 @@ describe('apifox import wrapper', () => {
     expect(logs.join('\n')).toContain('***')
   })
 
+  it('surfaces CLI stdout when import fails', async () => {
+    const runner: CommandRunner = async (_bin, args) => {
+      if (args[0] === 'auth') return { code: 0, stdout: '', stderr: '' }
+      if (args[0] === 'import') {
+        return { code: 1, stdout: 'permission denied: no write access', stderr: '' }
+      }
+      return { code: 0, stdout: '2.2.12', stderr: '' }
+    }
+    await expect(
+      importOpenApiToApifox({
+        env: { token: 'secret-token', projectId: 'project-1' },
+        dryRun: false,
+        runner,
+        validate: async () => undefined,
+        log: () => undefined
+      })
+    ).rejects.toThrow(/permission denied/)
+  })
+
   it('stops before import when auth fails', async () => {
     const calls: Array<{ bin: string; args: string[] }> = []
     const runner: CommandRunner = async (bin, args) => {

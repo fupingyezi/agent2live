@@ -63,6 +63,11 @@ export function buildApifoxCommandPlan(
   }
 }
 
+function commandFailure(label: string, result: CommandResult, hint = ''): Error {
+  const output = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n')
+  return new Error(`${label} failed (exit ${result.code}): ${output || '(no output)'}${hint}`)
+}
+
 export async function importOpenApiToApifox(options: {
   env: ApifoxEnv
   dryRun: boolean
@@ -81,16 +86,17 @@ export async function importOpenApiToApifox(options: {
   }
 
   const version = await options.runner('apifox', plan.versionArgs)
-  if (version.code !== 0) throw new Error(`apifox --version failed: ${version.stderr}`)
+  if (version.code !== 0) throw commandFailure('apifox --version', version)
 
   const auth = await options.runner('apifox', plan.authArgs)
-  if (auth.code !== 0) throw new Error(`apifox auth login failed: ${auth.stderr}`)
+  if (auth.code !== 0) throw commandFailure('apifox auth login', auth)
 
   const imported = await options.runner('apifox', plan.importArgs)
   if (imported.code !== 0) {
-    throw new Error(
-      `apifox import failed: ${imported.stderr}\n` +
-        'If writes are restricted, configure APIFOX_BRANCH or confirm permissions in Apifox.'
+    throw commandFailure(
+      'apifox import',
+      imported,
+      '\nIf writes are restricted, configure APIFOX_BRANCH or confirm permissions in Apifox.'
     )
   }
   options.log(imported.stdout)
