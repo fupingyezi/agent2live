@@ -68,6 +68,7 @@
     "@types/node": "^22.20.5",
     "ag-psd": "^34.1.0",
     "apifox-cli": "2.2.12",
+    "dotenv": "^18.0.10",
     "electron": "44.7.2",
     "electron-builder": "^26.18.0",
     "openapi-types": "12.1.3",

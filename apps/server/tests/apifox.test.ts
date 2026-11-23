@@ -1,8 +1,12 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   buildApifoxCommandPlan,
   importOpenApiToApifox,
   readApifoxEnv,
+  readApifoxEnvFile,
   type CommandRunner
 } from '../scripts/apifox-lib'
 
@@ -10,6 +14,24 @@ describe('apifox import wrapper', () => {
   it('requires token and project id', () => {
     expect(() => readApifoxEnv({})).toThrow(/APIFOX_ACCESS_TOKEN/)
     expect(() => readApifoxEnv({ APIFOX_ACCESS_TOKEN: 'token' })).toThrow(/APIFOX_PROJECT_ID/)
+  })
+
+  it('reads Apifox credentials from an env file, letting process env win', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agent2live-apifox-'))
+    const file = join(dir, '.env')
+    try {
+      writeFileSync(file, 'APIFOX_ACCESS_TOKEN=file-token\nAPIFOX_PROJECT_ID=file-project\n')
+      expect(readApifoxEnvFile(file, {})).toEqual({
+        token: 'file-token',
+        projectId: 'file-project'
+      })
+      expect(readApifoxEnvFile(file, { APIFOX_ACCESS_TOKEN: 'shell-token' })).toMatchObject({
+        token: 'shell-token',
+        projectId: 'file-project'
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('plans an explicit merge import with branch and module map', () => {

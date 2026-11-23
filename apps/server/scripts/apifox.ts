@@ -1,6 +1,11 @@
 import { spawn } from 'node:child_process'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { assertOpenApiCurrent } from '../openapi/pipeline'
-import { importOpenApiToApifox, readApifoxEnv, type CommandRunner } from './apifox-lib'
+import { importOpenApiToApifox, readApifoxEnvFile, type CommandRunner } from './apifox-lib'
+
+const HERE = fileURLToPath(new URL('.', import.meta.url))
+const envFile = process.env.APIFOX_ENV_FILE ?? resolve(HERE, '../../../.env')
 
 const runCommand: CommandRunner = (bin, args) =>
   new Promise((resolve, reject) => {
@@ -18,7 +23,7 @@ const runCommand: CommandRunner = (bin, args) =>
   })
 
 async function main(): Promise<void> {
-  const env = readApifoxEnv(process.env)
+  const env = readApifoxEnvFile(envFile)
   await importOpenApiToApifox({
     env,
     dryRun: process.argv.includes('--dry-run'),

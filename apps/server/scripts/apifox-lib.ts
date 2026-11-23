@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { parse } from 'dotenv'
 import { OPENAPI_OUTPUT } from '../openapi/pipeline'
 
 export interface ApifoxEnv {
@@ -26,6 +28,15 @@ export function readApifoxEnv(env: NodeJS.ProcessEnv): ApifoxEnv {
     ...(env.APIFOX_BRANCH ? { branch: env.APIFOX_BRANCH } : {}),
     ...(env.APIFOX_MODULE_MAP ? { moduleMap: env.APIFOX_MODULE_MAP } : {})
   }
+}
+
+export function readApifoxEnvFile(file: string, env: NodeJS.ProcessEnv = process.env): ApifoxEnv {
+  const parsed = existsSync(file) ? parse(readFileSync(file, 'utf8')) : {}
+  const merged: NodeJS.ProcessEnv = { ...parsed }
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) merged[key] = value
+  }
+  return readApifoxEnv(merged)
 }
 
 export function buildApifoxCommandPlan(
