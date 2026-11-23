@@ -76,4 +76,18 @@ describe('openapi manifest groups', () => {
       ])
     )
   })
+
+  it('covers all prompt routes', () => {
+    const group = manifest.filter((operation) => operation.group === 'prompt')
+    expect(group).toHaveLength(18)
+    expect(group.map((operation) => `${operation.method} ${operation.path}`)).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/art-projects/:id/prompt-inputs',
+        'POST /api/v1/art-projects/:id/prompt-drafts/:draftId/commit',
+        'POST /api/v1/art-projects/:id/prompt-reverse',
+        'POST /api/v1/prompt-versions/:versionId/suggestions',
+        'POST /api/v1/prompt-suggestions/:suggestionId/reject'
+      ])
+    )
+  })
 })
