@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   hashCanonical,
   hashSchema,
+  imageSizeSchema,
   promptReferenceRoleSchema,
   promptReferenceSetSchema,
   providerModelSelectionSchema,
@@ -122,7 +123,7 @@ const generationRequestFields = {
   referenceAssetIds: z.array(assetId).max(14),
   references: referencePlanSchema,
   count: z.number().int().min(1).max(15),
-  size: z.string().regex(/^\d{3,4}x\d{3,4}$/),
+  size: imageSizeSchema,
   seed: z.number().int().min(0).max(2_147_483_647).nullable(),
   requestHash: hashSchema
 }

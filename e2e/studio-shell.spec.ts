@@ -425,6 +425,18 @@ test('optimizes creation prompts before starting reference reverse', async () =>
         schemaVersion: 'provider-capabilities/1',
         chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
       },
+      models: [
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek Chat',
+          kind: 'chat',
+          adapter: 'openai-compatible',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 0, maxPromptChars: 20_000, supportsVision: false }
+          }
+        }
+      ],
       hasSecret: true,
       createdAt: '2026-11-16T00:00:00.000Z',
       updatedAt: '2026-11-16T00:00:00.000Z',
@@ -439,7 +451,19 @@ test('optimizes creation prompts before starting reference reverse', async () =>
       capabilities: {
         schemaVersion: 'provider-capabilities/1',
         chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
-      }
+      },
+      models: [
+        {
+          id: 'glm-5.3-flash',
+          name: 'GLM-5.3 Flash',
+          kind: 'chat',
+          adapter: 'openai-compatible',
+          capabilities: {
+            schemaVersion: 'provider-capabilities/1',
+            chat: { maxImages: 6, maxPromptChars: 20_000, supportsVision: true }
+          }
+        }
+      ]
     }
     let submittedState: (Record<string, unknown> & { blocks: Array<Record<string, unknown>> }) | null = null
 

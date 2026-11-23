@@ -85,6 +85,44 @@ export function buildReverseState(
   }
 }
 
+export function mergeReverseBlocks(
+  base: PromptSpecV2,
+  proposal: PromptSpecV2,
+  blockIds: readonly string[]
+): PromptSpecV2 {
+  const selected = new Set(blockIds)
+  const proposalBlocks = new Map(
+    [...proposal.blocks, ...proposal.negativeBlocks].map((block) => [block.id, block])
+  )
+  for (const blockId of selected) {
+    if (!proposalBlocks.has(blockId)) {
+      throw new AppError('REQUEST_INVALID', { reason: `unknown reverse block ${blockId}` })
+    }
+  }
+  const selectedPositive = proposal.blocks.filter((block) => selected.has(block.id))
+  const selectedNegative = proposal.negativeBlocks.filter((block) => selected.has(block.id))
+  const positiveById = new Map(selectedPositive.map((block) => [block.id, block]))
+  const negativeById = new Map(selectedNegative.map((block) => [block.id, block]))
+  const existingPositive = new Set(base.blocks.map((block) => block.id))
+  const existingNegative = new Set(base.negativeBlocks.map((block) => block.id))
+  const blocks = base.blocks.map((block) => positiveById.get(block.id) ?? block)
+  const negativeBlocks = base.negativeBlocks.map((block) => negativeById.get(block.id) ?? block)
+  for (const block of selectedPositive) {
+    if (!existingPositive.has(block.id)) blocks.push(block)
+  }
+  for (const block of selectedNegative) {
+    if (!existingNegative.has(block.id)) negativeBlocks.push(block)
+  }
+  return normalizeLegacyFullPrompt(
+    promptSpecSchema.parse({
+      ...base,
+      fullPrompt: '',
+      blocks,
+      negativeBlocks
+    })
+  )
+}
+
 export function reverseContentHash(state: PromptSpecV2): string {
   return specContentHash(state)
 }

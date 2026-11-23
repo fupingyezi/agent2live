@@ -5,6 +5,7 @@
   margin-block: var(--a2l-space-4);
 }
 .fieldLabel {
+  align-self: flex-start;
   font-size: var(--a2l-text-label-size);
   line-height: var(--a2l-text-label-line);
   font-weight: var(--a2l-text-label-weight);

@@ -311,6 +311,78 @@ describe('prompt reverse', () => {
     }
   })
 
+  it('merges only the accepted blocks from a reverse result', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { draft, reverseResultId } = await readyResult(ctx, 'reverse-partial-0001')
+
+      const unknown = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-reverse-results/${reverseResultId}/apply`,
+        headers: { ...ctx.auth, 'if-match': `"${draft.rowVersion}"` },
+        payload: { blockIds: ['missing.block'] }
+      })
+      expect(unknown.statusCode).toBe(400)
+      expect(unknown.json()).toMatchObject({ error: { code: 'REQUEST_INVALID' } })
+
+      const applied = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-reverse-results/${reverseResultId}/apply`,
+        headers: { ...ctx.auth, 'if-match': `"${draft.rowVersion}"` },
+        payload: { blockIds: ['style.requested'] }
+      })
+      expect(applied.statusCode).toBe(200)
+      const body = applied.json<{
+        result: { status: string }
+        draft: {
+          state: {
+            fullPrompt: string
+            blocks: Array<{ id: string; text: string }>
+            negativeBlocks: Array<{ id: string }>
+          }
+        }
+      }>()
+      expect(body.result.status).toBe('applied')
+      const blockIds = body.draft.state.blocks.map((block) => block.id)
+      expect(blockIds).toContain('style.requested')
+      expect(blockIds).toContain('style.rendering')
+      expect(blockIds).toContain('subject.identity')
+      expect(body.draft.state.negativeBlocks.map((block) => block.id)).toEqual(['negative.realism'])
+      expect(body.draft.state.fullPrompt).toContain('清爽赛璐璐')
+      expect(body.draft.state.fullPrompt).toContain('清爽的日系赛璐璐插画')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('can accept a negative reverse block without applying the positive candidates', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { draft, reverseResultId } = await readyResult(ctx, 'reverse-partial-0002')
+      const applied = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-reverse-results/${reverseResultId}/apply`,
+        headers: { ...ctx.auth, 'if-match': `"${draft.rowVersion}"` },
+        payload: { blockIds: ['negative.avoid'] }
+      })
+      expect(applied.statusCode).toBe(200)
+      const state = applied.json<{
+        draft: {
+          state: {
+            blocks: Array<{ id: string }>
+            negativeBlocks: Array<{ id: string; text: string }>
+          }
+        }
+      }>().draft.state
+      expect(state.blocks.map((block) => block.id)).not.toContain('style.requested')
+      expect(state.negativeBlocks.map((block) => block.id)).toContain('negative.avoid')
+      expect(state.negativeBlocks.map((block) => block.id)).toContain('negative.realism')
+      expect(state.negativeBlocks.find((block) => block.id === 'negative.avoid')?.text).toBe('避免写实皮肤')
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('feeds the pinned brief to reverse and preserves its locked projection', async () => {
     const ctx = await createTestApp()
     try {

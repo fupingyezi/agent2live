@@ -13,7 +13,7 @@
   border: var(--a2l-border-width) solid var(--a2l-color-border);
   border-radius: var(--a2l-radius-sm);
   background: var(--a2l-color-surface-subtle);
-  object-fit: cover;
+  object-fit: contain;
   color: var(--a2l-color-text-muted);
   font-size: var(--a2l-text-caption-size);
 }

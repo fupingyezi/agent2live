@@ -1,8 +1,7 @@
 import React, { useEffect, useId, useRef } from 'react'
 import { X } from 'lucide-react'
-import { focusFirst, trapTab } from '../../../internal/focus'
+import { focusFirst } from '../../../internal/focus'
 import { cx } from '../../../internal/polymorphic'
-import { renderPortal } from '../../../internal/portal'
 import styles from './Dialog.module.scss'
 import { IconButton } from '../../actions/IconButton'
 
@@ -33,75 +32,84 @@ export const Dialog: React.FC<DialogProps> = ({
 }) => {
   const titleId = useId()
   const descriptionId = useId()
-  const panelRef = useRef<HTMLDivElement>(null)
-  const restoreRef = useRef<HTMLElement | null>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const onOpenChangeRef = useRef(onOpenChange)
+  const busyRef = useRef(busy)
+  onOpenChangeRef.current = onOpenChange
+  busyRef.current = busy
 
   useEffect(() => {
     if (!open) return
-    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    focusFirst(panelRef.current)
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal()
+    } else {
+      dialog.setAttribute('open', '')
+    }
+    focusFirst(dialog)
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      // 原生 select 的 picker 也在 top layer；Esc 应先关闭 picker，而不是整个弹窗。
+      try {
+        if (document.querySelector('select:open')) return
+      } catch {
+        // jsdom 等环境可能不支持 :open 选择器。
+      }
+      event.preventDefault()
+      if (!busyRef.current) onOpenChangeRef.current(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
     return () => {
-      restoreRef.current?.focus()
+      document.removeEventListener('keydown', onKeyDown)
+      if (typeof dialog.close === 'function' && dialog.open) {
+        dialog.close()
+      } else {
+        dialog.removeAttribute('open')
+      }
+      previous?.focus()
     }
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !busy) {
-        event.preventDefault()
-        onOpenChange(false)
-        return
-      }
-      trapTab(event, panelRef.current)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, busy, onOpenChange])
-
   if (!open) return null
 
-  return renderPortal(
-    <div
-      className={styles.dialogBackdrop}
+  return (
+    <dialog
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      className={cx(styles.dialog, className)}
+      data-state={busy ? 'busy' : 'open'}
+      onCancel={(event) => {
+        event.preventDefault()
+        if (!busy) onOpenChange(false)
+      }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onOpenChange(false)
       }}
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
-        className={cx(styles.dialog, className)}
-        data-state={busy ? 'busy' : 'open'}
-      >
-        <header className={styles.dialogHeader}>
-          <div>
-            <h2 id={titleId} className={styles.dialogTitle}>
-              {title}
-            </h2>
-            {description ? (
-              <p id={descriptionId} className={styles.dialogDescription}>
-                {description}
-              </p>
-            ) : null}
-          </div>
-          {showClose ? (
-            <IconButton
-              label={closeLabel}
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={busy}
-            >
-              <X size={16} aria-hidden="true" />
-            </IconButton>
+      <header className={styles.dialogHeader}>
+        <div>
+          <h2 id={titleId} className={styles.dialogTitle}>
+            {title}
+          </h2>
+          {description ? (
+            <p id={descriptionId} className={styles.dialogDescription}>
+              {description}
+            </p>
           ) : null}
-        </header>
-        {children ? <div className={styles.dialogBody}>{children}</div> : null}
-        {footer ? <footer className={styles.dialogFooter}>{footer}</footer> : null}
-      </div>
-    </div>
+        </div>
+        {showClose ? (
+          <IconButton label={closeLabel} variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            <X size={16} aria-hidden="true" />
+          </IconButton>
+        ) : null}
+      </header>
+      {children ? <div className={styles.dialogBody}>{children}</div> : null}
+      {footer ? <footer className={styles.dialogFooter}>{footer}</footer> : null}
+    </dialog>
   )
 }

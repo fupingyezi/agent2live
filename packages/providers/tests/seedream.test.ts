@@ -50,7 +50,7 @@ describe('SeedreamImageProvider', () => {
         referenceImages: [{ mimeType: 'image/png', data: image }],
         count: 2,
         seed: 42,
-        size: '1024x1024'
+        size: '1.5K'
       },
       { requestId: 'req-image-1' }
     )
@@ -71,7 +71,7 @@ describe('SeedreamImageProvider', () => {
       expect(body).toMatchObject({
         model: 'test-seedream-model',
         prompt: 'a flat illustration',
-        size: '1024x1024',
+        size: '1.5K',
         response_format: 'url',
         watermark: false
       })

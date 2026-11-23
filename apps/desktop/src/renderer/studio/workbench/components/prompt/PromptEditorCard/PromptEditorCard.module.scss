@@ -156,7 +156,7 @@
 .wb3-reference-image img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .wb3-reference-thumb figcaption {
   overflow: hidden;

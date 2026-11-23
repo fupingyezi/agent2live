@@ -8,6 +8,7 @@ export {
   manualModelProfile,
   modelKindLabel,
   modelOptionLabel,
+  modelsForConnectionKind,
   preferredModel,
   presetIdForConnection,
   presetModelsFor,

@@ -1075,6 +1075,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
           generationPromptVersion?.versionNumber ?? selectedPromptVersion?.versionNumber ?? null
         }
         initialParams={generationDefaults}
+        currentArtworkAssetId={currentArtVersion?.artworkAssetId ?? null}
         providers={providers}
         providersLoading={providersQuery.isPending}
         providersError={

@@ -16,6 +16,7 @@ import type { PromptReversePayload } from '../jobs/prompt-reverse'
 import {
   buildReverseMessages,
   buildReverseState,
+  mergeReverseBlocks,
   parseReverseOutput,
   reverseContentHash
 } from '../prompt/reverse'
@@ -257,7 +258,8 @@ export class PromptReverseService {
   apply(
     resultId: string,
     expectedRowVersion: number,
-    ids: RequestIds
+    ids: RequestIds,
+    blockIds?: string[]
   ): { result: PromptReverseResultDto; draft: PromptDraftDto } {
     return withEvents(this.deps.db, this.deps.events, (events) => {
       const resultRow = this.requireRow(resultId)
@@ -283,7 +285,12 @@ export class PromptReverseService {
           actual: draft.row_version
         })
       }
-      const state = storedState(resultRow.state_json)
+      const proposal = storedState(resultRow.state_json)
+      if (reverseContentHash(proposal) !== resultRow.content_hash) throw new AppError('SYS_INTERNAL', {})
+      const state =
+        blockIds === undefined
+          ? proposal
+          : mergeReverseBlocks(storedState(draft.state_json), proposal, blockIds)
       const submission = this.deps.submissions.get(resultRow.art_project_id, resultRow.input_submission_id)
       const brief = submission.characterBriefVersionId
         ? this.deps.briefs.get(submission.characterBriefVersionId)
@@ -294,7 +301,6 @@ export class PromptReverseService {
         throw new AppError('PROMPT_BRIEF_PROJECTION_STALE', {})
       }
       const contentHash = reverseContentHash(state)
-      if (contentHash !== resultRow.content_hash) throw new AppError('SYS_INTERNAL', {})
       const now = this.deps.clock.now()
       const updated = this.deps.db
         .prepare(

@@ -1,14 +1,14 @@
 import React, { useState } from 'react'
-import { Field, InlineNotice, Switch, TextField } from '@agent2live/design-system'
+import { Field, InlineNotice, Select, Switch, TextField } from '@agent2live/design-system'
 import {
   FIXED_PROVIDER_PRESETS,
   getFixedProviderPreset,
   modelOptionLabel,
+  modelsForConnectionKind,
   type ProviderFormValues,
   type ProviderModelProfile,
   type ProviderPresetId
 } from '@studio/providers'
-import { ProviderSelect } from './ProviderSelect'
 import styles from './ProvidersPage.module.scss'
 
 export const PROVIDER_FORM_ID = 'provider-editor-form'
@@ -53,7 +53,9 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
   const custom = values.presetId === 'custom'
   const manualModelVisible = custom && (!models || models.length === 0)
-  const modelSelectVisible = !legacyMock && models !== null && models.length > 0
+  const selectableModels =
+    mode === 'edit' && models ? modelsForConnectionKind(models, values.kind) : (models ?? [])
+  const modelSelectVisible = !legacyMock && selectableModels.length > 0
   const modelError = failure?.fields.model
   const showSecretMask = mode === 'edit' && hasSecret && !keyDirty
 
@@ -61,16 +63,19 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     <form id={PROVIDER_FORM_ID} className={styles['provider-form']!} noValidate onSubmit={onSubmit}>
       {legacyMock ? null : mode === 'create' ? (
         <Field label="供应商类型" description={presetDescription}>
-          <ProviderSelect
-            testId="provider-preset"
+          <Select
+            data-testid="provider-preset"
             value={values.presetId}
             disabled={saving}
-            options={[
-              ...FIXED_PROVIDER_PRESETS.map((preset) => ({ value: preset.id, label: preset.name })),
-              { value: 'custom', label: '自定义' }
-            ]}
             onValueChange={(value) => onPresetChange(value as ProviderPresetId)}
-          />
+          >
+            {FIXED_PROVIDER_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+            <option value="custom">自定义</option>
+          </Select>
         </Field>
       ) : (
         <Field label="供应商类型" description={presetDescription}>
@@ -94,33 +99,31 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       {legacyMock || !custom ? null : mode === 'create' ? (
         <>
           <Field label="类型">
-            <ProviderSelect
-              testId="provider-kind"
+            <Select
+              data-testid="provider-kind"
               value={values.kind}
               disabled={saving}
-              options={[
-                { value: 'chat', label: '对话' },
-                { value: 'image', label: '生图' }
-              ]}
               onValueChange={(value) =>
                 onChange({
                   kind: value as 'chat' | 'image',
                   adapter: value === 'chat' ? 'openai-compatible' : 'seedream'
                 })
               }
-            />
+            >
+              <option value="chat">对话</option>
+              <option value="image">生图</option>
+            </Select>
           </Field>
           <Field label="协议">
-            <ProviderSelect
-              testId="provider-protocol"
+            <Select
+              data-testid="provider-protocol"
               value={values.adapter}
               disabled={values.kind === 'chat' || saving}
-              options={[
-                { value: 'openai-compatible', label: 'OpenAI 兼容对话' },
-                { value: 'seedream', label: 'Seedream 兼容生图' }
-              ]}
               onValueChange={(value) => onChange({ adapter: value as 'openai-compatible' | 'seedream' })}
-            />
+            >
+              <option value="openai-compatible">OpenAI 兼容对话</option>
+              <option value="seedream">Seedream 兼容生图</option>
+            </Select>
           </Field>
         </>
       ) : (
@@ -165,13 +168,18 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
       {modelSelectVisible ? (
         <Field label="默认模型" {...(modelError ? { error: modelError } : {})}>
-          <ProviderSelect
-            testId="provider-model-select"
+          <Select
+            data-testid="provider-model-select"
             value={values.manualModel}
             disabled={saving}
-            options={models.map((model) => ({ value: model.id, label: modelOptionLabel(model) }))}
             onValueChange={(value) => onChange({ manualModel: value })}
-          />
+          >
+            {selectableModels.map((model) => (
+              <option key={model.id} value={model.id}>
+                {modelOptionLabel(model)}
+              </option>
+            ))}
+          </Select>
         </Field>
       ) : null}
 

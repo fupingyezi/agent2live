@@ -367,6 +367,8 @@ export const savePromptDraftInputSchema = z
   })
   .strict()
 
+export const imageSizeSchema = z.string().regex(/^(1K|1\.5K|2K|3K|4K|\d{3,4}x\d{3,4})$/)
+
 export const providerCapabilitiesSchema = z
   .object({
     schemaVersion: z.literal('provider-capabilities/1'),
@@ -386,10 +388,7 @@ export const providerCapabilitiesSchema = z
         supportsWeightSyntax: z.boolean(),
         supportsSeed: z.boolean(),
         maxCount: z.number().int().min(1).max(15),
-        sizes: z
-          .array(z.string().regex(/^\d{3,4}x\d{3,4}$/))
-          .min(1)
-          .max(20)
+        sizes: z.array(imageSizeSchema).min(1).max(64)
       })
       .strict()
       .optional()

@@ -60,6 +60,13 @@ export function providerModels(
   return kind ? connection.models.filter((model) => model.kind === kind) : connection.models
 }
 
+export function modelsForConnectionKind(
+  models: ProviderModelProfile[],
+  kind: 'chat' | 'image'
+): ProviderModelProfile[] {
+  return models.filter((model) => model.kind === kind)
+}
+
 export function providerCounts(connection: ProviderConnectionDto): {
   chat: number
   vision: number

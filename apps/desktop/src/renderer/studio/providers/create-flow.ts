@@ -196,6 +196,12 @@ export async function updateProviderFlow(
   const selectedDefault = (options.models ?? current.models).find(
     (model) => model.id === values.manualModel.trim()
   )
+  if (selectedDefault && selectedDefault.kind !== current.kind) {
+    throw new ProviderFormError({ model: '所选模型类型与连接类型不一致。' })
+  }
+  if (selectedDefault && selectedDefault.adapter !== current.adapter) {
+    throw new ProviderFormError({ model: '所选模型协议与连接协议不一致。' })
+  }
   if (selectedDefault && selectedDefault.id !== current.model) {
     // 设置页选中的默认模型落到 legacy model/capabilities，后续任务默认使用它。
     patch.model = selectedDefault.id

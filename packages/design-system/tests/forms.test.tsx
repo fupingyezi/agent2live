@@ -26,6 +26,31 @@ describe('forms', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('请输入角色名称')
   })
 
+  it('marks required controls and leaves readonly values unassociated', () => {
+    render(
+      <>
+        <Field label="角色名称" required>
+          <TextField />
+        </Field>
+        <Field label="原生必填" required>
+          <input />
+        </Field>
+        <Field id="multi" label="正文">
+          <Textarea />
+          <p>0 / 4000</p>
+        </Field>
+        <Field label="连接类型">
+          <span>固定供应商</span>
+        </Field>
+      </>
+    )
+    expect(screen.getByLabelText(/角色名称/)).toHaveAttribute('aria-required', 'true')
+    expect(screen.getByLabelText(/原生必填/)).toHaveAttribute('required')
+    expect(screen.getByLabelText('正文')).toHaveAttribute('id', 'multi')
+    expect(screen.getByText('连接类型').tagName).toBe('SPAN')
+    expect(screen.getByText('连接类型').closest('label')).toBeNull()
+  })
+
   it('supports controlled and uncontrolled text fields', async () => {
     const Controlled: React.FC<EmptyProps> = () => {
       const [value, setValue] = useState('')

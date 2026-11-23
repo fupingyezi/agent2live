@@ -1,4 +1,4 @@
-import { test, expect, _electron as electron, type Page } from '@playwright/test'
+import { test, expect, _electron as electron } from '@playwright/test'
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -58,11 +58,6 @@ async function readProviders(page: Awaited<ReturnType<typeof studioPage>>): Prom
   return (JSON.parse(await readRawProviders(page)) as { items: ProviderJson[] }).items
 }
 
-async function chooseProviderOption(page: Page, testId: string, value: string): Promise<void> {
-  await page.getByTestId(testId).click()
-  await page.locator(`[data-testid="${testId}-option"][data-value="${value}"]`).click()
-}
-
 test('stores provider secrets in the vault and never exposes them through the API', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'agent2live-providers-'))
   const app = await electron.launch({
@@ -120,10 +115,9 @@ test('stores provider secrets in the vault and never exposes them through the AP
 
     // 固定服务商：不展示 Base URL、无连接名称/手填模型、内置模型下拉。
     await studio.locator('[data-testid="add-provider"]').click()
-    await studio.getByTestId('provider-preset').click()
     const presetOptions = await studio
-      .locator('[data-testid="provider-preset-option"]')
-      .evaluateAll((options) => options.map((option) => option.getAttribute('data-value')))
+      .locator('[data-testid="provider-preset"] option')
+      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
     expect(presetOptions).toEqual([
       'deepseek-chat',
       'zhipu-vision',
@@ -133,24 +127,21 @@ test('stores provider secrets in the vault and never exposes them through the AP
       'minimax-chat',
       'custom'
     ])
-    await studio.locator('[data-testid="provider-preset-option"][data-value="volcengine-ark"]').click()
+    await studio.locator('[data-testid="provider-preset"]').selectOption('volcengine-ark')
     await expect(studio.getByTestId('provider-fixed-base-url')).toHaveCount(0)
     await expect(studio.getByTestId('provider-base-url')).toHaveCount(0)
     await expect(studio.getByTestId('provider-label')).toHaveCount(0)
     await expect(studio.getByTestId('provider-fetch-models')).toHaveCount(0)
     await expect(studio.getByTestId('provider-model-select')).toBeVisible()
-    await studio.getByTestId('provider-model-select').click()
-    await studio
-      .locator('[data-testid="provider-model-select-option"][data-value="doubao-seedream-5-0-pro-260628"]')
-      .click()
+    await studio.getByTestId('provider-model-select').selectOption('doubao-seedream-5-0-pro-260628')
     await studio.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
     await expect(studio.getByRole('dialog')).toBeHidden()
 
     // 自定义连接：手填模型，密钥只进 Authorization 头（无模型拉取）。
     await studio.locator('[data-testid="add-provider"]').click()
-    await chooseProviderOption(studio, 'provider-preset', 'custom')
+    await studio.locator('[data-testid="provider-preset"]').selectOption('custom')
     await studio.locator('[data-testid="provider-base-url"]').fill('https://example.com/v1')
-    await chooseProviderOption(studio, 'provider-kind', 'chat')
+    await studio.locator('[data-testid="provider-kind"]').selectOption('chat')
     await studio.locator('[data-testid="provider-api-key"]').fill(FIRST_KEY)
     await studio.locator('[data-testid="provider-model-manual"]').fill('stub-chat')
     await studio.getByTestId('provider-submit').click()
@@ -233,6 +224,41 @@ test('stores provider secrets in the vault and never exposes them through the AP
     expect(storage).not.toContain(SECOND_KEY)
     await expect(studio.locator('body')).not.toContainText(FIRST_KEY)
     await expect(studio.locator('body')).not.toContainText(SECOND_KEY)
+
+    // 编辑固定供应商时只展示与连接类型一致的模型，避免保存跨类型默认模型。
+    const arkResponse = await api.json<{ id: string }>('POST', '/api/v1/providers', {
+      headers: { 'idempotency-key': 'provider-ark-edit-filter-0001' },
+      body: {
+        label: 'Ark 编辑过滤',
+        kind: 'chat',
+        adapter: 'openai-compatible',
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+        model: 'doubao-seed-2-1-pro-260915',
+        enabled: false,
+        capabilities: {
+          schemaVersion: 'provider-capabilities/1',
+          chat: { maxImages: 8, maxPromptChars: 20_000, supportsVision: true }
+        },
+        presetId: 'volcengine-ark'
+      }
+    })
+    const ark = arkResponse.body
+    await studio.reload()
+    await expect(studio.locator('[data-testid="providers-page"]')).toBeVisible({ timeout: 20_000 })
+    const arkCard = studio.locator(`[data-testid="provider-card"][data-provider-id="${ark.id}"]`)
+    await arkCard.getByRole('button', { name: '编辑', exact: true }).click()
+    const arkEditOptions = await studio
+      .locator('[data-testid="provider-model-select"] option')
+      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
+    expect(arkEditOptions).toEqual([
+      'doubao-seed-2-1-pro-260915',
+      'doubao-seed-2-1-lite-260915',
+      'deepseek-v4-1-flash-261017'
+    ])
+    await expect(
+      studio.locator('[data-testid="provider-model-select"] option[value="doubao-seedream-5-5-261028"]')
+    ).toHaveCount(0)
+    await studio.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
   } finally {
     await app.close()
   }

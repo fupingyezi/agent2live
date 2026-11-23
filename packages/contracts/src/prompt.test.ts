@@ -240,6 +240,12 @@ describe('provider capabilities', () => {
       providerCapabilitiesSchema.parse({ schemaVersion: 'provider-capabilities/1', image: profile }).image
         ?.supportsWeightSyntax
     ).toBe(true)
+    expect(
+      providerCapabilitiesSchema.parse({
+        schemaVersion: 'provider-capabilities/1',
+        image: { ...profile, sizes: ['2K', '1.5K', '4096x4096'] }
+      }).image?.sizes
+    ).toEqual(['2K', '1.5K', '4096x4096'])
     const { supportsWeightSyntax: _ignored, ...without } = profile
     expect(() =>
       providerCapabilitiesSchema.parse({ schemaVersion: 'provider-capabilities/1', image: without })

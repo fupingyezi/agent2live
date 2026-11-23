@@ -320,7 +320,7 @@ test('素材到有序参考 PromptVersion、回退、Fork 与备份的完整黄�
       page.locator(`[data-testid="wb3-art-version-row"][data-version-id="${fork.seedArtVersion!.id}"]`)
     ).toHaveAttribute('data-active', 'true')
     await page.getByRole('button', { name: '更多', exact: true }).click()
-    await page.getByRole('menuitem', { name: '项目信息', exact: true }).click()
+    await page.getByRole('button', { name: '项目信息', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '项目信息' })).toContainText('当前内容')
     checks.workbenchVerified = true
 

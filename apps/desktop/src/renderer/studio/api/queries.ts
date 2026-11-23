@@ -294,11 +294,12 @@ export function getPromptReverseResult(
 
 export function applyPromptReverseResult(
   resultId: string,
-  expectedDraftRowVersion: number
+  expectedDraftRowVersion: number,
+  blockIds?: string[]
 ): Promise<{ result: PromptReverseResultDto; draft: PromptDraftDto }> {
   return api.request(`/api/v1/prompt-reverse-results/${encodeURIComponent(resultId)}/apply`, {
     method: 'POST',
-    body: {},
+    body: blockIds === undefined ? {} : { blockIds },
     ifMatch: expectedDraftRowVersion
   })
 }
@@ -403,6 +404,7 @@ export function createGeneration(
     count: number
     size?: string
     seed?: number | null
+    includeBaseArtworkReference?: boolean
   },
   idempotencyKey = newIdempotencyKey()
 ): Promise<CreateGenerationResultDto> {

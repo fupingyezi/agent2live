@@ -193,11 +193,30 @@ export class GenerationService {
         actual: input.baseArtVersionId
       })
     }
-    if (baseArtVersionId !== null) {
-      this.deps.artVersions.get(projectId, baseArtVersionId)
+    const baseArtVersion =
+      baseArtVersionId === null ? null : this.deps.artVersions.get(projectId, baseArtVersionId)
+    const references = [...version.references]
+    if (input.includeBaseArtworkReference) {
+      if (!baseArtVersion) {
+        throw new AppError('REQUEST_INVALID', { reason: 'base artwork is not available' })
+      }
+      if (!references.some((reference) => reference.assetId === baseArtVersion.artworkAssetId)) {
+        // reference plan 的契约上限也是 14；不要用超过它的模型能力值绕过 schema。
+        const capacity = Math.min(image.maxReferenceImages, 14)
+        if (references.length >= capacity) {
+          throw new AppError('REQUEST_INVALID', { reason: 'reference budget is full' })
+        }
+        references.push({
+          assetId: baseArtVersion.artworkAssetId,
+          role: 'identity_reference',
+          note: '当前立绘',
+          weight: 1,
+          locked: false
+        })
+      }
     }
     const referencePlan = planReferences({
-      references: version.references,
+      references,
       limit: image.maxReferenceImages
     })
     for (const reference of referencePlan.requested) {

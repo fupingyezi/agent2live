@@ -25,5 +25,5 @@ export function useAssetUrl(assetId: string | null) {
     return () => URL.revokeObjectURL(objectUrl)
   }, [query.data])
 
-  return { url, isLoading: query.isLoading, error: query.error }
+  return { url, mediaType: query.data?.type ?? null, isLoading: query.isLoading, error: query.error }
 }

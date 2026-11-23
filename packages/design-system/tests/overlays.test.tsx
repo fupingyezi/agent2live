@@ -114,6 +114,7 @@ describe('overlays', () => {
     expect(screen.getByRole('dialog', { name: '更多操作' })).toBeVisible()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: '更多操作' })).not.toBeInTheDocument()
+    expect(moreButton).toHaveFocus()
 
     await userEvent.click(moreButton)
     expect(screen.getByRole('dialog', { name: '更多操作' })).toBeVisible()

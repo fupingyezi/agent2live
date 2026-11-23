@@ -552,6 +552,76 @@ describe('generation jobs', () => {
     }
   })
 
+  it('adds the current artwork as an extra reference when requested', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 1 })
+      const baseImage = await png(320, 480, { r: 12, g: 34, b: 56 })
+      const baseAsset = await ctx.services.assets.ingestUpload({
+        bytes: baseImage,
+        declaredMime: 'image/png',
+        originalName: 'base-artwork.png',
+        requestId: 'test-base-artwork',
+        traceId: 'test-base-artwork'
+      })
+      const baseArtVersionId = seedArtVersion(ctx, project.id, version.id, baseAsset.asset.id)
+      const connection = await mockImageConnection(ctx, { maxReferenceImages: 4 })
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-current-artwork-reference-0001' },
+        payload: {
+          promptVersionId: version.id,
+          baseArtVersionId,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896',
+          includeBaseArtworkReference: true
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      const body = created.json<{
+        referenceAssetIds: string[]
+        references: { mode: string; requested: Array<{ assetId: string; note: string }> }
+      }>()
+      expect(body.referenceAssetIds).toEqual([materialAssetIds[0], baseAsset.asset.id])
+      expect(body.references.mode).toBe('full')
+      expect(body.references.requested).toHaveLength(2)
+      expect(body.references.requested[1]).toMatchObject({
+        assetId: baseAsset.asset.id,
+        note: '当前立绘'
+      })
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  it('does not duplicate the current artwork when it is already a prompt reference', async () => {
+    const ctx = await createTestApp()
+    try {
+      const { project, version, materialAssetIds } = await committedPrompt(ctx, { materials: 1 })
+      const baseArtVersionId = seedArtVersion(ctx, project.id, version.id, materialAssetIds[0]!)
+      const connection = await mockImageConnection(ctx, { maxReferenceImages: 4 })
+      const created = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/art-projects/${project.id}/generations`,
+        headers: { ...ctx.auth, 'idempotency-key': 'generation-current-artwork-duplicate-0001' },
+        payload: {
+          promptVersionId: version.id,
+          baseArtVersionId,
+          providerConnectionId: connection.id,
+          count: 1,
+          size: '512x896',
+          includeBaseArtworkReference: true
+        }
+      })
+      expect(created.statusCode).toBe(202)
+      expect(created.json<{ referenceAssetIds: string[] }>().referenceAssetIds).toEqual([materialAssetIds[0]])
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('sends only the first reference for a single-image provider', async () => {
     const ctx = await createTestApp()
     try {

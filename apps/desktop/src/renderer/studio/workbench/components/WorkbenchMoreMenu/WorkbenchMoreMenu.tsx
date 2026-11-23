@@ -32,10 +32,9 @@ export const WorkbenchMoreMenu: React.FC<WorkbenchMoreMenuProps> = ({
         </button>
       }
     >
-      <div className={styles['wb3-more-menu']!} role="menu" aria-label="更多">
+      <div className={styles['wb3-more-menu']!}>
         <button
           type="button"
-          role="menuitem"
           aria-label="项目信息"
           className={styles['wb3-more-item']!}
           onClick={() => choose(onOpenProjectInfo)}
@@ -45,7 +44,6 @@ export const WorkbenchMoreMenu: React.FC<WorkbenchMoreMenuProps> = ({
         </button>
         <button
           type="button"
-          role="menuitem"
           aria-label="版本历史"
           className={styles['wb3-more-item']!}
           onClick={() => choose(onOpenVersionHistory)}

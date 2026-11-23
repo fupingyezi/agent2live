@@ -26,6 +26,7 @@ export const Popover: React.FC<PopoverProps> = ({
   const panelId = useId()
   const [innerOpen, setInnerOpen] = useState(defaultOpen)
   const anchorRef = useRef<HTMLSpanElement>(null)
+  const restoreRef = useRef<HTMLElement | null>(null)
   const current = open === undefined ? innerOpen : open
   const close = (): void => {
     if (open === undefined) setInnerOpen(false)
@@ -34,18 +35,25 @@ export const Popover: React.FC<PopoverProps> = ({
 
   useEffect(() => {
     if (!current) return
+    if (!restoreRef.current && document.activeElement instanceof HTMLElement) {
+      restoreRef.current = document.activeElement
+    }
     const onPointerDown = (event: PointerEvent): void => {
       if (anchorRef.current?.contains(event.target as Node)) return
       close()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') close()
+      if (event.key !== 'Escape') return
+      close()
+      const target = restoreRef.current
+      if (target?.isConnected) target.focus()
     }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
+      restoreRef.current = null
     }
   }, [current, open, onOpenChange])
 

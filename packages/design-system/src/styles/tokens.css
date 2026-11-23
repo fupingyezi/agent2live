@@ -15,9 +15,11 @@
   --a2l-color-warning: #8f6423;
   --a2l-color-danger: #a85468;
   --a2l-color-danger-border: #efd8d3;
-  --a2l-color-focus: #3fb0a0;
+  --a2l-color-focus: #1f826f;
   --a2l-color-on-accent: #ffffff;
   --a2l-color-overlay: rgba(37, 42, 50, 0.45);
+  --a2l-color-scrollbar-thumb: #7a8580;
+  --a2l-color-scrollbar-thumb-hover: #626c78;
   --a2l-color-pet-gradient: linear-gradient(135deg, #ebf6f2 0%, #f0f5fa 27.5%, #fcf0f5 50%);
 
   --a2l-font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;

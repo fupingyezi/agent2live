@@ -130,6 +130,18 @@ describe('provider create flow', () => {
     })
   })
 
+  it('rejects a default model whose kind differs from the edit connection', async () => {
+    const current = connection({
+      kind: 'chat',
+      adapter: 'openai-compatible',
+      model: 'chat-a',
+      models: [CHAT_MODEL, IMAGE_MODEL]
+    })
+    await expect(
+      updateProviderFlow(port(), current, values({ manualModel: 'image-a', apiKey: '' }))
+    ).rejects.toMatchObject({ fields: { model: '所选模型类型与连接类型不一致。' } })
+  })
+
   it('stores the key, activates, and deletes the draft secret', async () => {
     const p = port()
     const result = await createProviderFlow(p, values(), [CHAT_MODEL, IMAGE_MODEL], 'sec_draft')

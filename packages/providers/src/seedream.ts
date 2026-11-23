@@ -27,7 +27,7 @@ function dataUrl(image: ImageReference): string {
 
 function validateRequest(request: ImageRequest): void {
   const size = request.size
-  if (!/^(1K|2K|3K|4K|\d{2,5}x\d{2,5})$/.test(size)) {
+  if (!/^(1K|1\.5K|2K|3K|4K|\d{2,5}x\d{2,5})$/.test(size)) {
     throw new ProviderError('PROVIDER_INVALID_REQUEST', 'unsupported image size')
   }
   const count = request.count ?? 1

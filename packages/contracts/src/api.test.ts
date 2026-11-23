@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   acceptSuggestionInputSchema,
+  applyPromptReverseInputSchema,
   commitPromptDraftInputSchema,
   createForkInputSchema,
   createGenerationInputSchema,
@@ -77,6 +78,39 @@ describe('API schemas', () => {
       count: 8
     })
     expect(parsed.count).toBe(8)
+  })
+
+  it('defaults the current-artwork reference option to off', () => {
+    expect(
+      createGenerationInputSchema.parse({
+        promptVersionId: 'pv_1',
+        providerConnectionId: 'conn_1'
+      }).includeBaseArtworkReference
+    ).toBe(false)
+    expect(
+      createGenerationInputSchema.parse({
+        promptVersionId: 'pv_1',
+        providerConnectionId: 'conn_1',
+        includeBaseArtworkReference: true
+      }).includeBaseArtworkReference
+    ).toBe(true)
+  })
+
+  it('accepts named image resolution presets', () => {
+    expect(
+      createGenerationInputSchema.parse({
+        promptVersionId: 'pv_1',
+        providerConnectionId: 'conn_1',
+        size: '1.5K'
+      }).size
+    ).toBe('1.5K')
+    expect(
+      createGenerationInputSchema.parse({
+        promptVersionId: 'pv_1',
+        providerConnectionId: 'conn_1',
+        size: '4096x4096'
+      }).size
+    ).toBe('4096x4096')
   })
 
   it('accepts only an artwork asset when creating a manual art version', () => {
@@ -355,6 +389,14 @@ it('accepts a fixed preset with a model catalog', () => {
   expect(updateProviderConnectionInputSchema.parse({ models: [CHAT_MODEL] })).toMatchObject({
     models: [CHAT_MODEL]
   })
+})
+
+it('accepts an optional block subset when applying reverse results', () => {
+  expect(applyPromptReverseInputSchema.parse({})).toEqual({})
+  expect(applyPromptReverseInputSchema.parse({ blockIds: ['style.requested'] })).toEqual({
+    blockIds: ['style.requested']
+  })
+  expect(applyPromptReverseInputSchema.safeParse({ blockIds: [] }).success).toBe(false)
 })
 
 it('adds modelId to generation and prompt task inputs', () => {

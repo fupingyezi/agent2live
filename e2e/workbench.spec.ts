@@ -112,7 +112,7 @@ async function openWorkbench(page: Page, characterId: string, projectId: string,
 
 async function openVersionDrawer(page: Page): Promise<void> {
   await page.getByRole('button', { name: '更多', exact: true }).click()
-  await page.getByRole('menuitem', { name: '版本历史', exact: true }).click()
+  await page.getByRole('button', { name: '版本历史', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '版本历史' })).toBeVisible()
 }
 
@@ -490,11 +490,32 @@ test('views the current artwork and restores the three views from the URL', asyn
     await expect(studio.page.locator('[data-testid="wb3-art-version-view"]')).toContainText('当前立绘')
     await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText('依据提示词')
     await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).toContainText(
-      '唯一当前结果'
+      '修改从这里开始'
     )
     await expect(studio.page.locator('[data-testid="wb3-art-version-inspector"]')).not.toContainText(
       'prompt_draft'
     )
+    const download = studio.page.getByTestId('wb3-download-artwork')
+    await expect(download).toHaveAttribute('download', /^artwork-v\d+\.(png|jpg|webp)$/)
+    await expect(download).toHaveAttribute('href', /^blob:/)
+
+    await studio.page.getByTestId('wb3-current-image').click()
+    const lightbox = studio.page.getByRole('dialog', { name: '当前立绘原图' })
+    await expect(lightbox).toBeVisible()
+    await expect(lightbox.getByTestId('wb3-lightbox-zoom-label')).toHaveText('100%')
+    await lightbox.getByTestId('wb3-lightbox-zoom-in').click()
+    await expect(lightbox.getByTestId('wb3-lightbox-zoom-label')).toHaveText('125%')
+    await lightbox.getByTestId('wb3-lightbox-zoom-reset').click()
+    await expect(lightbox.getByTestId('wb3-lightbox-zoom-label')).toHaveText('100%')
+    await studio.page.keyboard.press('Escape')
+    await expect(lightbox).toBeHidden()
+
+    await studio.page.getByRole('button', { name: '重新生成', exact: true }).click()
+    const generationDialog = studio.page.getByRole('dialog', { name: '生成图片' })
+    await expect(generationDialog).toBeVisible()
+    await expect(generationDialog.getByTestId('wb3-generation-include-artwork')).toBeVisible()
+    await generationDialog.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(generationDialog).toBeHidden()
     await studio.page.getByRole('button', { name: '打开分层', exact: true }).click()
     await expect(studio.page.locator('[data-testid="live2d-placeholder"]')).toBeVisible({
       timeout: 20_000
@@ -571,7 +592,14 @@ test('applies a reverse suggestion from the reference gallery', async () => {
     await reverse.getByRole('button', { name: '开始反推', exact: true }).click()
     const review = reverse.locator('[data-testid="reverse-review"]')
     await expect(review).toBeVisible({ timeout: 60_000 })
-    await review.getByRole('button', { name: '应用修改', exact: true }).click()
+    await expect(review).toContainText('已接收 2 / 2 块')
+    const blockToggle = review.getByTestId('reverse-block-toggle').first()
+    await blockToggle.click()
+    await expect(review).toContainText('已接收 1 / 2 块')
+    await expect(review.getByTestId('reverse-apply')).toContainText('应用已选 1 块')
+    await blockToggle.click()
+    await expect(review).toContainText('已接收 2 / 2 块')
+    await review.getByTestId('reverse-apply').click()
     const confirm = studio.page.getByRole('dialog', { name: '应用反推结果？' })
     await expect(confirm).toBeVisible()
     await confirm.getByRole('button', { name: '应用', exact: true }).click()

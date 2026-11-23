@@ -18,8 +18,40 @@
 }
 .select {
   min-height: 40px;
-  appearance: none;
+  appearance: base-select;
   padding-right: 34px;
+}
+.select::picker-icon {
+  display: none;
+}
+.select::picker(select) {
+  appearance: base-select;
+  position-area: block-end;
+  position-try-fallbacks: none;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: var(--a2l-space-1);
+  padding: var(--a2l-space-1);
+  background: var(--a2l-color-surface);
+  border: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: var(--a2l-radius-md);
+  box-shadow: var(--a2l-shadow-popover);
+}
+.select option {
+  padding: var(--a2l-space-2) var(--a2l-space-3);
+  color: var(--a2l-color-text);
+  background: transparent;
+  border-radius: var(--a2l-radius-xs);
+}
+.select option:hover,
+.select option:focus {
+  background: var(--a2l-color-surface-subtle);
+}
+.select option:checked {
+  background: var(--a2l-color-surface-selected);
+}
+.select option::checkmark {
+  color: var(--a2l-color-accent);
 }
 .chevron {
   position: absolute;

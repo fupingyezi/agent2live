@@ -56,8 +56,8 @@ export function registerPromptReverseRoutes(
   app.post('/api/v1/prompt-reverse-results/:resultId/apply', async (request, reply) => {
     const resultId = (request.params as { resultId: string }).resultId
     const expected = parseIfMatch(ifMatchValue(request))
-    applyPromptReverseInputSchema.parse(request.body ?? {})
-    const result = services.promptReverse.apply(resultId, expected, idsOf(request))
+    const input = applyPromptReverseInputSchema.parse(request.body ?? {})
+    const result = services.promptReverse.apply(resultId, expected, idsOf(request), input.blockIds)
     reply.header('etag', `"${result.draft.rowVersion}"`)
     return result
   })

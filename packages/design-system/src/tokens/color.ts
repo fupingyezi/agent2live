@@ -15,9 +15,11 @@ export const colorTokens = {
   warning: '#8F6423',
   danger: '#A85468',
   dangerBorder: '#EFD8D3',
-  focus: '#3FB0A0',
+  focus: '#1F826F',
   onAccent: '#FFFFFF',
   overlay: 'rgba(37, 42, 50, 0.45)',
+  scrollbarThumb: '#7A8580',
+  scrollbarThumbHover: '#626C78',
   petGradient: 'linear-gradient(135deg, #EBF6F2 0%, #F0F5FA 27.5%, #FCF0F5 50%)'
 } as const
 

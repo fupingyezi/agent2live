@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import type { RefinementCtx } from 'zod'
-import { materialRoleSchema, promptRequirementSchema, providerCapabilitiesSchema } from './prompt'
+import {
+  imageSizeSchema,
+  materialRoleSchema,
+  promptRequirementSchema,
+  providerCapabilitiesSchema
+} from './prompt'
 import type { MaterialRole, PromptOperation, PromptRequirement, PromptSpecV2 } from './prompt'
 import type { PromptReference } from './prompt-reference'
 import { characterBriefContentSchema } from './character-brief'
@@ -228,11 +233,9 @@ export const createGenerationInputSchema = z
     providerConnectionId: z.string().min(1).max(64),
     modelId: z.string().min(1).max(200).optional(),
     count: z.number().int().min(1).max(8).default(1),
-    size: z
-      .string()
-      .regex(/^\d{3,4}x\d{3,4}$/)
-      .optional(),
-    seed: z.number().int().min(0).max(2_147_483_647).nullable().optional()
+    size: imageSizeSchema.optional(),
+    seed: z.number().int().min(0).max(2_147_483_647).nullable().optional(),
+    includeBaseArtworkReference: z.boolean().default(false)
   })
   .strict()
 
@@ -252,7 +255,11 @@ export const promptSuggestionInputSchema = z
   })
   .strict()
 
-export const applyPromptReverseInputSchema = z.object({}).strict()
+export const applyPromptReverseInputSchema = z
+  .object({
+    blockIds: z.array(z.string().min(1).max(100)).min(1).max(200).optional()
+  })
+  .strict()
 
 export const promptReverseResultStatusSchema = z.enum(['ready', 'applied', 'discarded'])
 export const listPromptReverseResultsQuerySchema = z

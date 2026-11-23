@@ -21,6 +21,21 @@
   font-size: var(--a2l-text-body-sm-size);
   line-height: var(--a2l-text-body-sm-line);
 }
+.review-block-head {
+  display: flex;
+  gap: var(--a2l-space-2);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.review-block-head > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2l-space-1);
+  align-items: center;
+}
+.review-block[data-received='false'] {
+  opacity: 0.6;
+}
 .review-block p {
   margin: var(--a2l-space-1) 0 0;
 }

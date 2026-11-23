@@ -143,9 +143,11 @@ section.new-character-reference-card {
   opacity: 1;
 }
 .new-character-reference-image img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .new-character-reference-role {
   position: absolute;

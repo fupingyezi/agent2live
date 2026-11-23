@@ -29,6 +29,41 @@ describe('prompt suggestion output', () => {
     ).toHaveLength(1)
   })
 
+  it('fills optional fields on minimal add blocks returned by chat models', () => {
+    const output = parseSuggestionOutput(
+      JSON.stringify({
+        operations: [
+          {
+            op: 'add',
+            block: {
+              id: 'outfit.shoes',
+              category: 'outfit',
+              text: '酒红色高跟鞋',
+              weight: 1.1,
+              locked: false,
+              source: 'ai-suggestion'
+            }
+          }
+        ]
+      })
+    )
+    expect(output.operations[0]).toMatchObject({
+      op: 'add',
+      block: {
+        id: 'outfit.shoes',
+        label: 'outfit.shoes',
+        confidence: 0.7,
+        priority: 0,
+        evidence: [],
+        requirementRefs: [],
+        materialRefs: []
+      }
+    })
+    expect(validateSuggestionOutput(base, output).blocks.some((block) => block.id === 'outfit.shoes')).toBe(
+      true
+    )
+  })
+
   it('maps malformed or locked add operations to PROMPT_SUGGESTION_INVALID_OUTPUT', () => {
     expect(() => parseSuggestionOutput('nope')).toThrow(
       expect.objectContaining({ code: 'PROMPT_SUGGESTION_INVALID_OUTPUT' })

@@ -26,10 +26,11 @@
   font-weight: 500;
 }
 .wb3-candidate-image {
+  position: relative;
   display: grid;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   width: 100%;
-  min-height: 320px;
+  aspect-ratio: 3 / 4;
   padding: 0;
   overflow: hidden;
   color: var(--a2l-color-text-muted);
@@ -45,9 +46,11 @@
   cursor: default;
 }
 .wb3-candidate-image img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .wb3-candidate-fail {
   display: flex;

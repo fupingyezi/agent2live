@@ -6,6 +6,7 @@ import {
   findDefaultVisionSelection,
   initialProviderValues,
   modelOptionLabel,
+  modelsForConnectionKind,
   presetIdForConnection,
   providerCounts,
   providerDisplayName,
@@ -90,6 +91,11 @@ describe('provider catalog helpers', () => {
     // 视觉模型同时也是对话模型，对话计数包含视觉。
     expect(providerCounts(ark)).toEqual({ chat: 2, vision: 1, image: 1 })
     expect(providerModels(ark, 'chat').map((model) => model.id)).toEqual(['chat-a', 'vision-a'])
+    expect(modelsForConnectionKind(ark.models, 'image').map((model) => model.id)).toEqual(['image-a'])
+    expect(modelsForConnectionKind(ark.models, 'chat').map((model) => model.id)).toEqual([
+      'chat-a',
+      'vision-a'
+    ])
     expect(findDefaultTextSelection([ark])).toMatchObject({ model: { id: 'chat-a' } })
     expect(findDefaultVisionSelection([ark])).toMatchObject({ model: { id: 'vision-a' } })
     expect(modelOptionLabel(ark.models[0]!)).toContain('（对话）')

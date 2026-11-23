@@ -46,6 +46,25 @@ describe('provider catalog', () => {
     }
   })
 
+  it('exposes the documented Seedream size families per Ark image model', () => {
+    const ark = FIXED_PROVIDER_PRESETS.find((preset) => preset.id === 'volcengine-ark')!
+    const imageModels = ark.presetModels.filter((model) => model.kind === 'image')
+    const sizes = (id: string): string[] =>
+      imageModels.find((model) => model.id === id)!.capabilities.image!.sizes
+
+    expect(sizes('doubao-seedream-5-5-261028')).toEqual(
+      expect.arrayContaining(['1K', '1.5K', '2K', '2816x1584'])
+    )
+    expect(sizes('doubao-seedream-5-5-261028')).not.toContain('4K')
+    expect(sizes('doubao-seedream-5-0-260128')).toEqual(
+      expect.arrayContaining(['2K', '3K', '4K', '5504x3040'])
+    )
+    expect(sizes('doubao-seedream-4-5-251128')).toEqual(expect.arrayContaining(['2K', '4K']))
+    expect(sizes('doubao-seedream-4-0-20260415')).toEqual(
+      expect.arrayContaining(['1K', '2K', '4K', '720x1280'])
+    )
+  })
+
   it('validates model profiles against their kind', () => {
     expect(
       providerModelProfileSchema.parse({

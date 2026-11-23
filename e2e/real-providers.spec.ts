@@ -33,32 +33,21 @@ function providerTitle(settings: RealProviderSettings): string {
   return '火山方舟'
 }
 
-async function chooseProviderOption(page: Page, testId: string, value: string): Promise<void> {
-  await page.getByTestId(testId).click()
-  await page.locator(`[data-testid="${testId}-option"][data-value="${value}"]`).click()
-}
-
 async function selectProviderModel(page: Page, settings: RealProviderSettings): Promise<void> {
   const select = page.getByTestId('provider-model-select')
   await expect(select).toBeVisible()
-  await select.click()
-  const options = await page.locator('[data-testid="provider-model-select-option"]').evaluateAll((entries) =>
-    entries.map((entry) => ({
-      value: entry.getAttribute('data-value') ?? '',
-      text: entry.textContent ?? ''
-    }))
-  )
+  const options = await select
+    .locator('option')
+    .evaluateAll((entries) =>
+      entries.map((entry) => ({ value: (entry as HTMLOptionElement).value, text: entry.textContent ?? '' }))
+    )
   const match = options.find((option) => option.value === settings.model)
   const fallback =
     settings.kind === 'image'
       ? options.find((option) => option.text.includes('生图'))
       : options.find((option) => !option.text.includes('生图'))
   const target = match ?? fallback
-  if (!target) {
-    await select.click()
-    return
-  }
-  await page.locator(`[data-testid="provider-model-select-option"][data-value="${target.value}"]`).click()
+  if (target) await select.selectOption(target.value)
 }
 
 function requiredVisionSettings(): RealProviderSettings | null {
@@ -134,7 +123,7 @@ function requiredSettings(): {
 
 async function addProvider(page: Page, settings: RealProviderSettings): Promise<void> {
   await page.getByTestId('add-provider').click()
-  await chooseProviderOption(page, 'provider-preset', settings.preset)
+  await page.locator('[data-testid="provider-preset"]').selectOption(settings.preset)
   await page.getByTestId('provider-api-key').fill(settings.apiKey)
   await selectProviderModel(page, settings)
   await page.getByTestId('provider-submit').click()
@@ -149,9 +138,9 @@ async function expectImageCatalog(page: Page, settings: RealProviderSettings): P
 
 async function addCustomImageProvider(page: Page, settings: RealProviderSettings): Promise<void> {
   await page.getByTestId('add-provider').click()
-  await chooseProviderOption(page, 'provider-preset', 'custom')
+  await page.locator('[data-testid="provider-preset"]').selectOption('custom')
   await page.getByTestId('provider-base-url').fill(settings.baseUrl)
-  await chooseProviderOption(page, 'provider-kind', 'image')
+  await page.locator('[data-testid="provider-kind"]').selectOption('image')
   await page.getByTestId('provider-api-key').fill(settings.apiKey)
   await page.getByTestId('provider-model-manual').fill(settings.model)
   await page.getByTestId('provider-submit').click()

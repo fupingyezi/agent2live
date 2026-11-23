@@ -29,6 +29,7 @@ import {
   createProviderFlow,
   editCatalogPatch,
   initialProviderValues,
+  modelsForConnectionKind,
   presetIdForConnection,
   presetModelsFor,
   providerDisplayName,
@@ -116,7 +117,10 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
   const startEdit = (connection: ProviderConnectionDto): void => {
     const presetId = presetIdForConnection(connection)
     const fallbackModels = presetId && presetId !== 'custom' ? presetModelsFor(presetId) : []
-    const models = connection.models.length > 0 ? connection.models : fallbackModels
+    const models = modelsForConnectionKind(
+      connection.models.length > 0 ? connection.models : fallbackModels,
+      connection.kind
+    )
     const selected = models.find((model) => model.id === connection.model) ?? models[0]
     setEditor({
       mode: 'edit',

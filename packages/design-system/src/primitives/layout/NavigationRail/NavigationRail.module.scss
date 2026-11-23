@@ -50,7 +50,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--a2l-radius-md);
-  object-fit: cover;
+  object-fit: contain;
 }
 .railItems {
   display: flex;

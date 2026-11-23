@@ -1,5 +1,11 @@
 import { z } from 'zod'
-import { SEEDREAM_CAPABILITIES } from './capabilities'
+import {
+  SEEDREAM_4_0_CAPABILITIES,
+  SEEDREAM_4_5_CAPABILITIES,
+  SEEDREAM_5_CAPABILITIES,
+  SEEDREAM_5_LITE_CAPABILITIES,
+  SEEDREAM_CAPABILITIES
+} from './capabilities'
 import { providerCapabilitiesSchema, type ProviderCapabilities } from './prompt'
 import { providerBaseUrlSchema, providerSecretRefSchema } from './provider-shared'
 
@@ -38,13 +44,17 @@ function chatModel(id: string, name: string, supportsVision = false): ProviderMo
   }
 }
 
-function imageModel(id: string, name: string): ProviderModelProfile {
+function imageModel(
+  id: string,
+  name: string,
+  capabilities: ProviderCapabilities = SEEDREAM_CAPABILITIES
+): ProviderModelProfile {
   return {
     id,
     name,
     kind: 'image',
     adapter: 'seedream',
-    capabilities: SEEDREAM_CAPABILITIES
+    capabilities
   }
 }
 
@@ -97,12 +107,12 @@ export const FIXED_PROVIDER_PRESETS: readonly FixedProviderPreset[] = [
       chatModel('doubao-seed-2-1-pro-260915', 'Doubao Seed 2.1 Pro', true),
       chatModel('doubao-seed-2-1-lite-260915', 'Doubao Seed 2.1 Lite', true),
       chatModel('deepseek-v4-1-flash-261017', 'DeepSeek V4.1 Flash', true),
-      imageModel('doubao-seedream-5-5-261028', 'Seedream 5.5'),
-      imageModel('doubao-seedream-5-0-flash-260915', 'Seedream 5.0 Flash'),
-      imageModel('doubao-seedream-5-0-pro-260628', 'Seedream 5.0 Pro'),
-      imageModel('doubao-seedream-5-0-260128', 'Seedream 5.0'),
-      imageModel('doubao-seedream-4-5-251128', 'Seedream 4.5'),
-      imageModel('doubao-seedream-4-0-20260415', 'Seedream 4.0')
+      imageModel('doubao-seedream-5-5-261028', 'Seedream 5.5', SEEDREAM_5_CAPABILITIES),
+      imageModel('doubao-seedream-5-0-flash-260915', 'Seedream 5.0 Flash', SEEDREAM_5_CAPABILITIES),
+      imageModel('doubao-seedream-5-0-pro-260628', 'Seedream 5.0 Pro', SEEDREAM_5_CAPABILITIES),
+      imageModel('doubao-seedream-5-0-260128', 'Seedream 5.0', SEEDREAM_5_LITE_CAPABILITIES),
+      imageModel('doubao-seedream-4-5-251128', 'Seedream 4.5', SEEDREAM_4_5_CAPABILITIES),
+      imageModel('doubao-seedream-4-0-20260415', 'Seedream 4.0', SEEDREAM_4_0_CAPABILITIES)
     ]
   },
   {

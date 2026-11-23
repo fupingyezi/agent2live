@@ -44,6 +44,22 @@ describe('design tokens', () => {
     expect(radiusTokens.control).toBe('11px')
   })
 
+  it('keeps focus and control boundaries above 3:1 contrast', () => {
+    const luminance = (hex: string): number => {
+      const channels = [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255)
+      const [r, g, b] = channels.map((channel) =>
+        channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+      ) as [number, number, number]
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const contrast = (foreground: string, background: string): number => {
+      const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
+      return (light! + 0.05) / (dark! + 0.05)
+    }
+    expect(contrast(colorTokens.focus, colorTokens.surface)).toBeGreaterThanOrEqual(3)
+    expect(contrast(colorTokens.scrollbarThumb, colorTokens.appBg)).toBeGreaterThanOrEqual(3)
+  })
+
   it('defines the local font stack and reduced-motion reset', () => {
     // Prettier normalizes font-family quotes to single quotes.
     expect(css).toContain("--a2l-font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;")

@@ -20,6 +20,7 @@ import {
   InlineNotice,
   Select,
   StatusPill,
+  Switch,
   TextField
 } from '@agent2live/design-system'
 import { MATERIAL_ROLE_LABELS } from '../../prompt-labels'
@@ -32,6 +33,27 @@ export interface GenerationDefaults {
   count?: number | null
   size?: string | null
   seed?: number | null
+}
+
+function greatestCommonDivisor(left: number, right: number): number {
+  let a = left
+  let b = right
+  while (b !== 0) {
+    const remainder = a % b
+    a = b
+    b = remainder
+  }
+  return a
+}
+
+function generationSizeLabel(value: string): string {
+  if (/^(1K|1\.5K|2K|3K|4K)$/.test(value)) return `${value}（自动比例）`
+  const match = /^(\d+)x(\d+)$/.exec(value)
+  if (!match) return value
+  const width = Number(match[1])
+  const height = Number(match[2])
+  const divisor = greatestCommonDivisor(width, height)
+  return `${value}（${width / divisor}:${height / divisor}）`
 }
 
 function generationStorageKey(projectId: string): string {
@@ -67,6 +89,7 @@ export interface GenerationDialogProps {
   initialPromptVersionId: string | null
   initialPromptVersionNumber: number | null
   initialParams?: GenerationDefaults | null
+  currentArtworkAssetId: string | null
   providers: ProviderConnectionDto[]
   providersLoading: boolean
   providersError: string | null
@@ -81,6 +104,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   initialPromptVersionId,
   initialPromptVersionNumber,
   initialParams = null,
+  currentArtworkAssetId,
   providers,
   providersLoading,
   providersError,
@@ -98,6 +122,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   const [count, setCount] = useState(1)
   const [size, setSize] = useState('')
   const [seed, setSeed] = useState('')
+  const [includeCurrentArtwork, setIncludeCurrentArtwork] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const selectedProvider =
@@ -119,6 +144,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   useEffect(() => {
     if (!open) return
     setLocalError(null)
+    setIncludeCurrentArtwork(false)
     const nextProvider =
       imageProviders.find((provider) => provider.id === initialParams?.providerId) ??
       imageProviders[0] ??
@@ -182,6 +208,22 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
     selectedPrompt?.versionNumber ??
     promptVersions.find((version) => version.id === promptVersionId)?.versionNumber ??
     initialPromptVersionNumber
+  const promptReferenceCount = selectedPrompt?.references.length ?? 0
+  const referenceLimit = Math.min(caps?.maxReferenceImages ?? 0, 14)
+  const currentArtworkAlreadyReferenced = Boolean(
+    currentArtworkAssetId &&
+      selectedPrompt?.references.some((reference) => reference.assetId === currentArtworkAssetId)
+  )
+  const canIncludeCurrentArtwork =
+    Boolean(currentArtworkAssetId) &&
+    !currentArtworkAlreadyReferenced &&
+    !promptQuery.isPending &&
+    !promptQuery.isError &&
+    promptReferenceCount < referenceLimit
+
+  useEffect(() => {
+    if (!canIncludeCurrentArtwork) setIncludeCurrentArtwork(false)
+  }, [canIncludeCurrentArtwork])
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -202,7 +244,8 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
         modelId: selectedModel.id,
         count,
         ...(size ? { size } : {}),
-        ...(parsedSeed !== undefined ? { seed: parsedSeed } : {})
+        ...(parsedSeed !== undefined ? { seed: parsedSeed } : {}),
+        ...(includeCurrentArtwork && canIncludeCurrentArtwork ? { includeBaseArtworkReference: true } : {})
       })
     },
     onMutate: () => setLocalError(null),
@@ -325,13 +368,17 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             />
           </Field>
 
-          <Field label="尺寸">
-            <ChipGroup
-              ariaLabel="生成尺寸"
-              value={size}
-              onValueChange={setSize}
-              options={sizes.map((value) => ({ id: value, label: value }))}
-            />
+          <Field
+            label="尺寸"
+            description="2K/4K 是分辨率档位，宽高比由模型决定；需要固定比例请选择带比例的像素尺寸。"
+          >
+            <Select data-testid="wb3-generation-size" value={size} onValueChange={setSize}>
+              {sizes.map((value) => (
+                <option key={value} value={value}>
+                  {generationSizeLabel(value)}
+                </option>
+              ))}
+            </Select>
           </Field>
 
           {seedSupported ? (
@@ -351,7 +398,11 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             </Field>
           ) : null}
 
-          <Field label={`参考图 取当前版本 ${selectedPrompt?.references.length ?? 0} 张`}>
+          <Field
+            label={`参考图 取当前版本 ${promptReferenceCount} 张${
+              includeCurrentArtwork && canIncludeCurrentArtwork ? ' + 当前立绘' : ''
+            }`}
+          >
             {promptQuery.isPending ? (
               <p className={styles['wb3-overview-muted']!}>正在加载参考图…</p>
             ) : promptQuery.isError ? null : selectedPrompt && selectedPrompt.references.length > 0 ? (
@@ -366,6 +417,33 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
               </div>
             ) : (
               <p className={styles['wb3-overview-muted']!}>该版本没有参考图，本次按文生图生成。</p>
+            )}
+          </Field>
+
+          <Field label="当前立绘">
+            {!currentArtworkAssetId ? (
+              <p className={styles['wb3-overview-muted']!}>当前还没有立绘，本次只能使用提示词参考图。</p>
+            ) : currentArtworkAlreadyReferenced ? (
+              <p className={styles['wb3-overview-muted']!}>当前立绘已经在提示词参考图中，本次会直接使用。</p>
+            ) : (
+              <div className={styles['wb3-generation-current-art']!}>
+                <ReferenceThumb assetId={currentArtworkAssetId} label="当前立绘" />
+                <div className={styles['wb3-generation-current-copy']!}>
+                  <span>将当前立绘作为参考图</span>
+                  <p>
+                    {promptReferenceCount >= referenceLimit
+                      ? `参考图已达 ${referenceLimit} 张上限，请先减少提示词参考图。`
+                      : '会作为身份参考一起发送，占用 1 张参考图额度。'}
+                  </p>
+                </div>
+                <Switch
+                  aria-label="将当前立绘作为参考图"
+                  data-testid="wb3-generation-include-artwork"
+                  checked={includeCurrentArtwork}
+                  disabled={!canIncludeCurrentArtwork || createMutation.isPending}
+                  onCheckedChange={setIncludeCurrentArtwork}
+                />
+              </div>
             )}
           </Field>
 
