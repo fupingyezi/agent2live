@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type RouteOptions } from 'fastify'
 import cors from '@fastify/cors'
 import type Database from 'better-sqlite3'
 import { newId } from '@agent2live/contracts'
@@ -33,6 +33,7 @@ export interface AppOptions {
   db?: Database.Database
   eventStore?: EventStore
   services?: Services
+  onRoute?: (route: RouteOptions) => void
 }
 
 declare module 'fastify' {
@@ -52,6 +53,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
     genReqId: () => newId('request'),
     bodyLimit: 32 * 1024 * 1024
   })
+  if (options.onRoute) app.addHook('onRoute', options.onRoute)
 
   app.decorateRequest('traceId', '')
   // API JSON is the only HTTP boundary that converts domain milliseconds to RFC 3339.
@@ -134,63 +136,7 @@ export function buildApp(options: AppOptions): FastifyInstance {
   // exactly once and `request.parts()` stays decorated across route groups.
   const services = options.services
   if (services) {
-    app.register(async (scope) => {
-      await registerMultipart(scope)
-      registerAssetRoutes(scope, services.assets)
-      registerPromptRoutes(scope, {
-        inputs: services.inputs,
-        drafts: services.drafts,
-        versions: services.versions,
-        idempotency: services.idempotency
-      })
-      registerCharacterRoutes(scope, {
-        characters: services.characters,
-        characterBriefs: services.briefs,
-        projects: services.projects
-      })
-      registerProjectRoutes(scope, {
-        projects: services.projects,
-        projectTree: services.projectTree
-      })
-      registerProviderRoutes(scope, {
-        connections: services.providerConnections,
-        probes: services.providerProbes,
-        models: services.providerModels,
-        secrets: services.secrets,
-        idempotency: services.idempotency
-      })
-      registerJobRoutes(scope, services.jobs)
-      registerPromptReverseRoutes(scope, {
-        promptReverse: services.reverse,
-        jobs: services.jobs
-      })
-      registerPromptSuggestionRoutes(scope, {
-        promptSuggestions: services.suggestions,
-        jobs: services.jobs
-      })
-      registerPromptSyncRoutes(scope, {
-        promptSync: services.promptSync,
-        jobs: services.jobs
-      })
-      registerGenerationRoutes(scope, {
-        generations: services.generations,
-        jobs: services.jobs,
-        idempotency: services.idempotency
-      })
-      registerArtVersionRoutes(scope, {
-        artVersions: services.artVersions,
-        idempotency: services.idempotency
-      })
-      registerForkRoutes(scope, {
-        forks: services.forks,
-        idempotency: services.idempotency
-      })
-      registerBackupRoutes(scope, {
-        backups: services.backups,
-        jobs: services.jobs,
-        idempotency: services.idempotency
-      })
-    })
+    registerDomainRoutes(app, services)
   }
 
   app.setNotFoundHandler((request, _reply) => {
@@ -211,4 +157,64 @@ export function buildApp(options: AppOptions): FastifyInstance {
   })
 
   return app
+}
+
+export function registerDomainRoutes(app: FastifyInstance, services: Services): void {
+  app.register(async (scope) => {
+    await registerMultipart(scope)
+    registerAssetRoutes(scope, services.assets)
+    registerPromptRoutes(scope, {
+      inputs: services.inputs,
+      drafts: services.drafts,
+      versions: services.versions,
+      idempotency: services.idempotency
+    })
+    registerCharacterRoutes(scope, {
+      characters: services.characters,
+      characterBriefs: services.briefs,
+      projects: services.projects
+    })
+    registerProjectRoutes(scope, {
+      projects: services.projects,
+      projectTree: services.projectTree
+    })
+    registerProviderRoutes(scope, {
+      connections: services.providerConnections,
+      probes: services.providerProbes,
+      models: services.providerModels,
+      secrets: services.secrets,
+      idempotency: services.idempotency
+    })
+    registerJobRoutes(scope, services.jobs)
+    registerPromptReverseRoutes(scope, {
+      promptReverse: services.reverse,
+      jobs: services.jobs
+    })
+    registerPromptSuggestionRoutes(scope, {
+      promptSuggestions: services.suggestions,
+      jobs: services.jobs
+    })
+    registerPromptSyncRoutes(scope, {
+      promptSync: services.promptSync,
+      jobs: services.jobs
+    })
+    registerGenerationRoutes(scope, {
+      generations: services.generations,
+      jobs: services.jobs,
+      idempotency: services.idempotency
+    })
+    registerArtVersionRoutes(scope, {
+      artVersions: services.artVersions,
+      idempotency: services.idempotency
+    })
+    registerForkRoutes(scope, {
+      forks: services.forks,
+      idempotency: services.idempotency
+    })
+    registerBackupRoutes(scope, {
+      backups: services.backups,
+      jobs: services.jobs,
+      idempotency: services.idempotency
+    })
+  })
 }
