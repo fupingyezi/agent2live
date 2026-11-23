@@ -25,6 +25,13 @@ APIFOX_PROJECT_ID=
 
 CLI 令牌通过 `apifox auth login --with-token` 持久化；需要清除时运行 `apifox auth logout`。
 
+## 故障处理
+
+如果导入返回 `Automation caller branch required`，说明项目开启了外部 AI 写入保护。二选一：
+
+1. 在 Apifox 客户端 2.8.32+ 的「项目设置 - 功能设置 - 外部 AI 编辑权限」中开启当前分支的直接编辑权限，然后重试。
+2. 创建或选择一个 AI 分支，把分支名写入 `.env` 的 `APIFOX_BRANCH`，再重试。AI 分支改动需要你在 Apifox 中确认后再合并，wrapper 不会自动 merge。
+
 ## 新增端点
 
 1. 在 `apps/server/openapi/manifest/` 对应分组增加 `OperationSpec`。
