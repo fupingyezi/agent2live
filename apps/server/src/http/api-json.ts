@@ -1,4 +1,4 @@
-const TIMESTAMP_KEYS: ReadonlySet<string> = new Set([
+export const API_TIMESTAMP_KEYS: ReadonlySet<string> = new Set([
   'createdAt',
   'updatedAt',
   'deletedAt',
@@ -31,7 +31,7 @@ export function serializeApiTimestamps(value: unknown): unknown {
 
   const result: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(value)) {
-    if (TIMESTAMP_KEYS.has(key) && typeof child === 'number' && Number.isFinite(child)) {
+    if (API_TIMESTAMP_KEYS.has(key) && typeof child === 'number' && Number.isFinite(child)) {
       result[key] = new Date(child).toISOString()
     } else {
       result[key] = serializeApiTimestamps(child)

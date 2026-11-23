@@ -12,6 +12,11 @@ allowBuilds:
   esbuild: true
   electron-winstaller: false
   '@parcel/watcher': false
+  cpu-features: false
+  ibm_db: false
+  kerberos: false
+  oracledb: false
+  ssh2: false
 
 onlyBuiltDependencies:
   - electron

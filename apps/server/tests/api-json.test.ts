@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildApp } from '../src/app'
-import { serializeApiTimestamps } from '../src/http/api-json'
+import { API_TIMESTAMP_KEYS, serializeApiTimestamps } from '../src/http/api-json'
 
 const STAMP = Date.UTC(2026, 10, 9, 4, 5, 6)
 
@@ -33,6 +33,14 @@ describe('API JSON timestamp boundary', () => {
     }) as { createdAt: string; payload: { createdAt: string; seq: number } }
     expect(result.createdAt).toBe('2026-11-09T04:05:06.000Z')
     expect(result.payload).toEqual({ createdAt: '2026-11-09T04:05:06.000Z', seq: 7 })
+  })
+
+  it('exports the timestamp whitelist used by the reply serializer', () => {
+    expect(API_TIMESTAMP_KEYS.has('createdAt')).toBe(true)
+    expect(API_TIMESTAMP_KEYS.has('modelsRefreshedAt')).toBe(true)
+    expect(API_TIMESTAMP_KEYS.has('checkedAt')).toBe(false)
+    expect(API_TIMESTAMP_KEYS.has('rowVersion')).toBe(false)
+    expect(API_TIMESTAMP_KEYS.size).toBe(18)
   })
 
   it('serializes provider model refresh timestamps', () => {
