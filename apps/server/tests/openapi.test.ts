@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { createGenerationInputSchema } from '@agent2live/contracts'
 import { assertManifestCoverage, collectRegisteredRoutes } from '../openapi/coverage'
 import { buildOpenApiDocument, OPENAPI_TITLE } from '../openapi/generate'
 import { manifest } from '../openapi/manifest'
+import { OPENAPI_OUTPUT, renderOpenApi } from '../openapi/pipeline'
 import { buildResponseSchemas, responseTypeNames, zodSchemaToJsonSchema } from '../openapi/schema-registry'
 import { validateManifest, validateOpenApi } from '../openapi/validate'
 
@@ -158,5 +160,9 @@ describe('openapi document', () => {
 
   it('rejects an invalid OpenAPI document', async () => {
     await expect(validateOpenApi({ openapi: '3.0.3' })).rejects.toThrow()
+  })
+
+  it('committed OpenAPI file matches the generator', async () => {
+    expect(readFileSync(OPENAPI_OUTPUT, 'utf8')).toBe(await renderOpenApi())
   })
 })
