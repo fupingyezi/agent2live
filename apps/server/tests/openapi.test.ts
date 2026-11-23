@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createGenerationInputSchema } from '@agent2live/contracts'
 import { collectRegisteredRoutes } from '../openapi/coverage'
+import { manifest } from '../openapi/manifest'
 import { buildResponseSchemas, responseTypeNames, zodSchemaToJsonSchema } from '../openapi/schema-registry'
 
 describe('openapi route coverage', () => {
@@ -53,5 +54,26 @@ describe('openapi wire timestamps', () => {
     expect(schemas.ProviderProbeDto.properties.checkedAt).toMatchObject({ type: 'number' })
     expect(schemas.SseEvent.properties.createdAt).toMatchObject({ type: 'number' })
     expect(JSON.stringify(schemas)).not.toContain('#/definitions/')
+  })
+})
+
+describe('openapi manifest groups', () => {
+  it('covers system, character, project, and fork routes', () => {
+    const group = manifest.filter((operation) =>
+      ['system', 'characters', 'projects'].includes(operation.group)
+    )
+    expect(group).toHaveLength(18)
+    expect(group.map((operation) => `${operation.method} ${operation.path}`)).toEqual(
+      expect.arrayContaining([
+        'GET /health',
+        'GET /api/v1/events',
+        'GET /api/v1/characters',
+        'POST /api/v1/characters',
+        'GET /api/v1/art-projects/:id',
+        'GET /api/v1/art-projects/tree',
+        'POST /api/v1/prompt-versions/:versionId/forks',
+        'PATCH /api/v1/art-projects/:id/fork-link'
+      ])
+    )
   })
 })
