@@ -1,8 +1,12 @@
 import React from 'react'
 import { AsyncButton, Button, SectionHeader, StatusPill, SurfaceCard } from '@agent2live/design-system'
 import type { ProviderConnectionDto, ProviderProbeDto } from '@studio/api'
-import { formatDateTime } from '@studio/format'
-import { providerCounts, providerDisplayName } from '@studio/providers'
+import {
+  modelOptionLabel,
+  presetIdForConnection,
+  providerCounts,
+  providerDisplayName
+} from '@studio/providers'
 import styles from './ProvidersPage.module.scss'
 
 export interface ProviderProbeState {
@@ -12,29 +16,29 @@ export interface ProviderProbeState {
 
 export interface ProviderCardProps {
   connection: ProviderConnectionDto
-  refreshing: boolean
   toggling: boolean
   probing: boolean
   probeResult: ProviderProbeState | undefined
   onEdit(connection: ProviderConnectionDto): void
-  onRefresh(connection: ProviderConnectionDto): void
   onToggle(connection: ProviderConnectionDto): void
   onProbe(connection: ProviderConnectionDto): void
 }
 
 export const ProviderCard: React.FC<ProviderCardProps> = ({
   connection,
-  refreshing,
   toggling,
   probing,
   probeResult,
   onEdit,
-  onRefresh,
   onToggle,
   onProbe
 }) => {
   const counts = providerCounts(connection)
   const canToggle = connection.adapter === 'mock' || connection.hasSecret
+  const displayName = providerDisplayName(connection)
+  const selectedModel = connection.models.find((model) => model.id === connection.model)
+  const selectedLabel = selectedModel ? modelOptionLabel(selectedModel) : (connection.model ?? '未选择')
+  const fixedProvider = connection.adapter !== 'mock' && presetIdForConnection(connection) !== 'custom'
 
   return (
     <SurfaceCard asChild>
@@ -46,11 +50,11 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
       >
         <div className={styles['provider-row-main']!}>
           <span className={styles['provider-icon']!} aria-hidden="true">
-            {connection.label.slice(0, 1)}
+            {displayName.slice(0, 1)}
           </span>
           <SectionHeader
-            title={connection.label}
-            description={`${providerDisplayName(connection)} · 对话 ${counts.chat} · 视觉 ${counts.vision} · 生图 ${counts.image}`}
+            title={displayName}
+            description={`默认 ${selectedLabel} · 对话 ${counts.chat} · 视觉 ${counts.vision} · 生图 ${counts.image}`}
             actions={
               <StatusPill
                 label={connection.enabled ? '已启用' : '已停用'}
@@ -60,7 +64,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           />
         </div>
         <dl className={styles['provider-meta']!}>
-          {connection.baseUrl ? (
+          {connection.baseUrl && !fixedProvider ? (
             <>
               <dt>Base URL</dt>
               <dd>
@@ -68,6 +72,8 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
               </dd>
             </>
           ) : null}
+          <dt>默认模型</dt>
+          <dd data-testid="provider-selected-model">{selectedLabel}</dd>
           <dt>密钥</dt>
           <dd
             className={styles['provider-secret-state']!}
@@ -76,11 +82,8 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           >
             {connection.adapter === 'mock' ? '无需密钥' : connection.hasSecret ? '已保存' : '未配置'}
           </dd>
-          <dt>模型目录</dt>
-          <dd data-testid="provider-model-catalog">
-            {connection.models.length} 个模型
-            {connection.modelsRefreshedAt ? ` · 刷新于 ${formatDateTime(connection.modelsRefreshedAt)}` : ''}
-          </dd>
+          <dt>可选模型</dt>
+          <dd data-testid="provider-model-catalog">{connection.models.length} 个</dd>
         </dl>
         <div className={styles['provider-actions']!}>
           <Button variant="quiet" onClick={() => onEdit(connection)}>
@@ -94,18 +97,6 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           >
             {connection.enabled ? '停用' : canToggle ? '启用' : '配置密钥'}
           </AsyncButton>
-          {connection.adapter === 'mock' ? null : (
-            <AsyncButton
-              variant="secondary"
-              data-testid="provider-refresh-models"
-              busy={refreshing}
-              busyLabel="刷新中…"
-              disabled={!connection.hasSecret}
-              onClick={() => onRefresh(connection)}
-            >
-              刷新模型目录
-            </AsyncButton>
-          )}
           <AsyncButton
             variant="quiet"
             busy={probing}

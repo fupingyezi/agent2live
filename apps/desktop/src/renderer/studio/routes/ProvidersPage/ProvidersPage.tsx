@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AsyncButton,
@@ -17,8 +17,6 @@ import {
   createProvider,
   getProvider,
   listProviders,
-  previewProviderModels,
-  refreshProviderModels,
   testProviderConnection,
   updateProvider
 } from '@studio/api'
@@ -32,33 +30,27 @@ import {
   editCatalogPatch,
   initialProviderValues,
   presetIdForConnection,
-  previewModelsForForm,
+  presetModelsFor,
+  providerDisplayName,
   providerModels,
   updateProviderFlow,
   type ProviderFlowPort,
   type ProviderFormValues,
   type ProviderModelProfile,
-  type ProviderModelsPort,
   type ProviderPresetId
 } from '@studio/providers'
 import { ProviderCard, type ProviderProbeState } from './ProviderCard'
 import { PROVIDER_FORM_ID, ProviderEditor, type ProviderFormFailure } from './ProviderEditor'
 import styles from './ProvidersPage.module.scss'
 
-const CUSTOM_URL_KEY_MESSAGE = '修改 Base URL 后请重新填写 API Key 再获取模型。'
-
 interface EditorState {
   mode: 'create' | 'edit'
   connection: ProviderConnectionDto | null
   values: ProviderFormValues
   models: ProviderModelProfile[] | null
-  modelsError: string | null
-  fetchingModels: boolean
-  draftSecretRef: string | null
-  draftLabel: string
 }
 
-const port: ProviderFlowPort & ProviderModelsPort = {
+const port: ProviderFlowPort = {
   create: createProvider,
   update: updateProvider,
   get: getProvider,
@@ -71,9 +63,7 @@ const port: ProviderFlowPort & ProviderModelsPort = {
     const bridge = window.agent2live
     if (!bridge) return Promise.resolve()
     return bridge.secrets.delete(secretRef).then(() => undefined)
-  },
-  previewModels: previewProviderModels,
-  refreshModels: refreshProviderModels
+  }
 }
 
 function failureFrom(error: unknown): ProviderFormFailure {
@@ -99,22 +89,10 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
-  const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [probingId, setProbingId] = useState<string | null>(null)
   const [pendingImageProbe, setPendingImageProbe] = useState<ProviderConnectionDto | null>(null)
   const [probeResults, setProbeResults] = useState<Record<string, ProviderProbeState>>({})
   const [pageError, setPageError] = useState<string | null>(null)
-  // 页面卸载时编辑器里的草稿密钥不会经过 closeEditor，需要在卸载清理里兜底删除。
-  const draftSecretRef = useRef<string | null>(null)
-  useEffect(() => {
-    draftSecretRef.current = editor?.draftSecretRef ?? null
-  }, [editor?.draftSecretRef])
-  useEffect(() => {
-    return () => {
-      const draft = draftSecretRef.current
-      if (draft) void port.deleteSecret(draft).catch(() => undefined)
-    }
-  }, [])
 
   const query = useQuery({
     queryKey: queryKeys.providers,
@@ -123,20 +101,13 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
 
   const invalidate = (): Promise<void> => queryClient.invalidateQueries({ queryKey: queryKeys.providers })
 
-  const discardDraft = (secretRef: string | null): void => {
-    if (secretRef) void port.deleteSecret(secretRef).catch(() => undefined)
-  }
-
   const startCreate = (): void => {
+    const values = initialProviderValues('deepseek-chat')
     setEditor({
       mode: 'create',
       connection: null,
-      values: initialProviderValues('deepseek-chat'),
-      models: null,
-      modelsError: null,
-      fetchingModels: false,
-      draftSecretRef: null,
-      draftLabel: `provider-draft:${crypto.randomUUID()}`
+      values,
+      models: presetModelsFor(values.presetId)
     })
     setFailure(null)
     setPageError(null)
@@ -144,6 +115,9 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
 
   const startEdit = (connection: ProviderConnectionDto): void => {
     const presetId = presetIdForConnection(connection)
+    const fallbackModels = presetId && presetId !== 'custom' ? presetModelsFor(presetId) : []
+    const models = connection.models.length > 0 ? connection.models : fallbackModels
+    const selected = models.find((model) => model.id === connection.model) ?? models[0]
     setEditor({
       mode: 'edit',
       connection,
@@ -153,15 +127,11 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
         baseUrl: connection.baseUrl ?? '',
         kind: connection.kind,
         adapter: connection.adapter === 'seedream' ? 'seedream' : 'openai-compatible',
-        manualModel: connection.model ?? '',
+        manualModel: selected?.id ?? connection.model ?? '',
         apiKey: '',
         enabled: connection.enabled
       },
-      models: connection.models,
-      modelsError: null,
-      fetchingModels: false,
-      draftSecretRef: null,
-      draftLabel: `provider-draft:${crypto.randomUUID()}`
+      models
     })
     setFailure(null)
     setPageError(null)
@@ -169,117 +139,36 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
 
   const closeEditor = (): void => {
     if (saving) return
-    const draft = editor?.draftSecretRef
     setEditor(null)
     setFailure(null)
-    discardDraft(draft ?? null)
   }
 
   const updateValues = (patch: Partial<ProviderFormValues>): void => {
     if (!editor) return
     const custom = editor.values.presetId === 'custom'
-    const catalogInvalidated =
-      patch.apiKey !== undefined ||
-      (custom && (patch.baseUrl !== undefined || patch.kind !== undefined || patch.adapter !== undefined))
-    if (catalogInvalidated) discardDraft(editor.draftSecretRef)
     const endpointChanged =
-      editor.mode === 'edit' &&
-      custom &&
-      patch.baseUrl !== undefined &&
-      patch.baseUrl.trim() !== (editor.connection?.baseUrl ?? '')
-    const values: ProviderFormValues = {
-      ...editor.values,
-      ...patch,
-      ...(editor.mode === 'create' && patch.apiKey !== undefined ? { manualModel: '' } : {}),
-      // 旧模型名属于旧端点；URL 变更后必须重新获取目录或手工填写。
-      ...(endpointChanged ? { manualModel: '' } : {})
-    }
-    const customUrlChanged =
-      editor.mode === 'edit' && custom && values.baseUrl.trim() !== (editor.connection?.baseUrl ?? '')
-    const modelsError =
-      catalogInvalidated && customUrlChanged && !values.apiKey.trim() ? CUSTOM_URL_KEY_MESSAGE : null
+      custom && (patch.baseUrl !== undefined || patch.kind !== undefined || patch.adapter !== undefined)
     setEditor({
       ...editor,
-      values,
-      ...(catalogInvalidated ? { models: null, draftSecretRef: null, modelsError } : {})
+      values: {
+        ...editor.values,
+        ...patch,
+        ...(endpointChanged ? { manualModel: '' } : {})
+      },
+      ...(endpointChanged ? { models: null } : {})
     })
     setFailure(null)
   }
 
   const onPresetChange = (presetId: ProviderPresetId): void => {
     if (!editor || editor.mode === 'edit') return
-    discardDraft(editor.draftSecretRef)
+    const values = initialProviderValues(presetId)
     setEditor({
       ...editor,
-      values: initialProviderValues(presetId),
-      models: null,
-      modelsError: null,
-      fetchingModels: false,
-      draftSecretRef: null
+      values,
+      models: presetId === 'custom' ? null : presetModelsFor(presetId)
     })
     setFailure(null)
-  }
-
-  const fetchModels = async (): Promise<void> => {
-    if (!editor || editor.fetchingModels) return
-    if (editor.connection?.adapter === 'mock') return
-    if (
-      editor.mode === 'edit' &&
-      editor.values.presetId === 'custom' &&
-      editor.connection &&
-      editor.values.baseUrl.trim() !== (editor.connection.baseUrl ?? '') &&
-      !editor.values.apiKey.trim()
-    ) {
-      setEditor((current) => (current ? { ...current, modelsError: CUSTOM_URL_KEY_MESSAGE } : current))
-      return
-    }
-    setEditor({ ...editor, fetchingModels: true, modelsError: null })
-    setPageError(null)
-    try {
-      if (editor.mode === 'edit' && editor.connection && !editor.values.apiKey.trim()) {
-        const updated = await refreshProviderModels(editor.connection.id, editor.connection.rowVersion)
-        setEditor((current) =>
-          current
-            ? { ...current, connection: updated, models: updated.models, fetchingModels: false }
-            : current
-        )
-        await invalidate()
-        setNotice('模型目录已刷新。')
-        return
-      }
-      const { secretRef, models } = await previewModelsForForm(port, editor.values, editor.draftLabel)
-      setEditor((current) =>
-        current
-          ? {
-              ...current,
-              models,
-              ...(current.values.presetId === 'custom' && models.length > 0 && !current.values.manualModel
-                ? { values: { ...current.values, manualModel: models[0]!.id } }
-                : {}),
-              draftSecretRef: secretRef,
-              fetchingModels: false,
-              modelsError: models.length === 0 ? '当前 Key 下没有产品支持的模型。' : null
-            }
-          : current
-      )
-    } catch (error) {
-      setEditor((current) =>
-        current
-          ? {
-              ...current,
-              fetchingModels: false,
-              modelsError:
-                error instanceof ProviderFormError
-                  ? (Object.values(error.fields)[0] ?? error.message)
-                  : error instanceof ApiError
-                    ? error.message
-                    : error instanceof Error
-                      ? error.message
-                      : '模型目录获取失败。'
-            }
-          : current
-      )
-    }
   }
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -290,29 +179,25 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
     setPageError(null)
     try {
       if (editor.mode === 'create') {
-        await createProviderFlow(port, editor.values, editor.models ?? [], editor.draftSecretRef)
-        setNotice('连接与模型目录已保存。')
+        await createProviderFlow(port, editor.values, editor.models ?? [], null)
+        setNotice('模型供应商已保存。')
       } else if (editor.connection) {
         if (editor.connection.adapter === 'mock') {
           await updateProvider(
             editor.connection.id,
-            {
-              label: editor.values.label.trim(),
-              enabled: editor.values.enabled
-            },
+            { enabled: editor.values.enabled },
             editor.connection.rowVersion
           )
-          setNotice('连接已更新。')
+          setNotice('模型供应商已更新。')
           setEditor(null)
           await invalidate()
           return
         }
         const models = editCatalogPatch(editor.values, editor.connection, editor.models)
         await updateProviderFlow(port, editor.connection, editor.values, {
-          ...(models ? { models } : {}),
-          draftSecretRef: editor.draftSecretRef
+          ...(models ? { models } : {})
         })
-        setNotice('连接已更新。')
+        setNotice('模型供应商已更新。')
       }
       setEditor(null)
       await invalidate()
@@ -337,26 +222,11 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
     try {
       await updateProvider(connection.id, { enabled: !connection.enabled }, connection.rowVersion)
       await invalidate()
-      setNotice(connection.enabled ? '连接已停用。' : '连接已启用。')
+      setNotice(connection.enabled ? '模型供应商已停用。' : '模型供应商已启用。')
     } catch (error) {
       setPageError(error instanceof ApiError ? error.message : '更新连接状态失败。')
     } finally {
       setTogglingId(null)
-    }
-  }
-
-  const refreshCard = async (connection: ProviderConnectionDto): Promise<void> => {
-    if (refreshingId) return
-    setRefreshingId(connection.id)
-    setPageError(null)
-    try {
-      await refreshProviderModels(connection.id, connection.rowVersion)
-      await invalidate()
-      setNotice('模型目录已刷新。')
-    } catch (error) {
-      setPageError(error instanceof ApiError ? error.message : '模型目录刷新失败。')
-    } finally {
-      setRefreshingId(null)
     }
   }
 
@@ -384,12 +254,12 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
   }
 
   const providers = query.data ?? []
-  const imageLabel = providers.find(
+  const imageProvider = providers.find(
     (connection) => connection.enabled && providerModels(connection, 'image').length > 0
-  )?.label
-  const chatLabel = providers.find(
+  )
+  const chatProvider = providers.find(
     (connection) => connection.enabled && providerModels(connection, 'chat').length > 0
-  )?.label
+  )
 
   return (
     <div className={`${styles['studio-settings-layout']!} providers-page`} data-testid="providers-page">
@@ -415,10 +285,10 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
         <PageHeader
           eyebrow="设置"
           title="模型供应商"
-          description="固定服务商只需填写 API Key，模型目录从 /models 实时读取；密钥只保存在本机系统钥匙串。"
+          description="固定供应商使用内置的新版模型，填写 API Key 后选择默认模型；自定义可配置地址与模型。密钥只保存在本机系统钥匙串。"
           actions={
             <Button data-testid="add-provider" onClick={startCreate}>
-              添加连接
+              添加模型供应商
             </Button>
           }
         />
@@ -447,9 +317,9 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
           <div data-testid="providers-empty">
             <EmptyState
               icon="◇"
-              title="还没有模型连接"
-              description="添加一个固定服务商或自定义连接，保存 API Key 后即可实时获取模型目录。"
-              action={<Button onClick={startCreate}>添加第一个连接</Button>}
+              title="还没有模型供应商"
+              description="添加固定供应商，或配置自定义供应商；填写 API Key 并选择模型。"
+              action={<Button onClick={startCreate}>添加第一个模型供应商</Button>}
             />
           </div>
         ) : null}
@@ -459,14 +329,10 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
               <ProviderCard
                 key={connection.id}
                 connection={connection}
-                refreshing={refreshingId === connection.id}
                 toggling={togglingId === connection.id}
                 probing={probingId === connection.id}
                 probeResult={probeResults[connection.id]}
                 onEdit={startEdit}
-                onRefresh={(item) => {
-                  void refreshCard(item)
-                }}
                 onToggle={(item) => {
                   void toggleEnabled(item)
                 }}
@@ -481,14 +347,14 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
 
         {query.isSuccess && providers.length > 0 ? (
           <section className={styles['provider-assignment']!} aria-label="默认模型分配">
-            <SectionHeader title="默认分配" description="当前能力使用的首个已启用连接" />
+            <SectionHeader title="默认分配" description="当前能力使用的首个已启用的模型供应商" />
             <div className={styles['provider-assignment-row']!}>
               <span>生成立绘候选</span>
-              <strong>{imageLabel ?? '尚未分配'}</strong>
+              <strong>{imageProvider ? providerDisplayName(imageProvider) : '尚未分配'}</strong>
             </div>
             <div className={styles['provider-assignment-row']!}>
               <span>提示词与人格</span>
-              <strong>{chatLabel ?? '尚未分配'}</strong>
+              <strong>{chatProvider ? providerDisplayName(chatProvider) : '尚未分配'}</strong>
             </div>
           </section>
         ) : null}
@@ -497,7 +363,7 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
           <StatusPill label="本地服务运行中" tone="success" />
           <div>
             <strong>模型管理可用</strong>
-            <p>连接与密钥保存在本机；测试失败不会停用现有连接。</p>
+            <p>供应商与密钥保存在本机；测试失败不会停用现有供应商。</p>
           </div>
         </section>
 
@@ -507,8 +373,8 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
             onOpenChange={(open) => {
               if (!open) closeEditor()
             }}
-            title={editor.mode === 'create' ? '添加模型连接' : '编辑模型连接'}
-            description="连接类型创建后不可变；密钥只保存在本机系统钥匙串，不会写入项目数据、日志或页面存储。"
+            title={editor.mode === 'create' ? '添加模型供应商' : '编辑模型供应商'}
+            description="供应商类型创建后不可变"
             busy={saving}
             footer={
               <>
@@ -528,23 +394,19 @@ export const ProvidersPage: React.FC<EmptyProps> = () => {
             }
           >
             <ProviderEditor
+              key={`${editor.mode}:${editor.connection?.id ?? 'new'}`}
               mode={editor.mode}
               values={editor.values}
               failure={failure}
               saving={saving}
-              fetchingModels={editor.fetchingModels}
               models={editor.models}
-              modelsError={editor.modelsError}
               legacyMock={editor.connection?.adapter === 'mock'}
+              hasSecret={editor.connection?.hasSecret ?? false}
               onChange={updateValues}
               onPresetChange={onPresetChange}
-              onFetchModels={() => {
-                void fetchModels()
-              }}
               onSubmit={(event) => {
                 void onSubmit(event)
               }}
-              onClose={closeEditor}
             />
           </Dialog>
         ) : null}

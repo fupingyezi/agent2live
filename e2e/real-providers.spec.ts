@@ -23,6 +23,42 @@ interface RealProviderSettings {
   baseUrl: string
   model: string
   apiKey: string
+  custom?: boolean
+}
+
+function providerTitle(settings: RealProviderSettings): string {
+  if (settings.custom) return '自定义'
+  if (settings.preset === 'deepseek-chat') return 'DeepSeek'
+  if (settings.preset === 'zhipu-vision') return '智谱 GLM'
+  return '火山方舟'
+}
+
+async function chooseProviderOption(page: Page, testId: string, value: string): Promise<void> {
+  await page.getByTestId(testId).click()
+  await page.locator(`[data-testid="${testId}-option"][data-value="${value}"]`).click()
+}
+
+async function selectProviderModel(page: Page, settings: RealProviderSettings): Promise<void> {
+  const select = page.getByTestId('provider-model-select')
+  await expect(select).toBeVisible()
+  await select.click()
+  const options = await page.locator('[data-testid="provider-model-select-option"]').evaluateAll((entries) =>
+    entries.map((entry) => ({
+      value: entry.getAttribute('data-value') ?? '',
+      text: entry.textContent ?? ''
+    }))
+  )
+  const match = options.find((option) => option.value === settings.model)
+  const fallback =
+    settings.kind === 'image'
+      ? options.find((option) => option.text.includes('生图'))
+      : options.find((option) => !option.text.includes('生图'))
+  const target = match ?? fallback
+  if (!target) {
+    await select.click()
+    return
+  }
+  await page.locator(`[data-testid="provider-model-select-option"][data-value="${target.value}"]`).click()
 }
 
 function requiredVisionSettings(): RealProviderSettings | null {
@@ -75,7 +111,7 @@ function requiredSettings(): {
     process.env.AGENT2LIVE_REAL_CHAT_BASE_URL ??
     process.env.DEEPSEEK_BASE_URL ??
     'https://api.deepseek.com/v1'
-  const chatModel = process.env.AGENT2LIVE_REAL_CHAT_MODEL ?? process.env.DEEPSEEK_MODEL ?? 'deepseek-chat'
+  const chatModel = process.env.AGENT2LIVE_REAL_CHAT_MODEL ?? process.env.DEEPSEEK_MODEL ?? 'deepseek-flash'
   return {
     chat: {
       kind: 'chat',
@@ -98,37 +134,32 @@ function requiredSettings(): {
 
 async function addProvider(page: Page, settings: RealProviderSettings): Promise<void> {
   await page.getByTestId('add-provider').click()
-  await page.getByTestId('provider-preset').selectOption(settings.preset)
-  await page.getByTestId('provider-label').fill(settings.label)
+  await chooseProviderOption(page, 'provider-preset', settings.preset)
   await page.getByTestId('provider-api-key').fill(settings.apiKey)
-  await page.getByTestId('provider-fetch-models').click()
-  await expect(page.getByTestId('provider-model-counts')).toBeVisible({ timeout: 120_000 })
+  await selectProviderModel(page, settings)
   await page.getByTestId('provider-submit').click()
-  await expect(page.getByTestId('provider-card').filter({ hasText: settings.label })).toBeVisible()
+  await expect(page.getByTestId('provider-card').filter({ hasText: providerTitle(settings) })).toBeVisible()
 }
 
 async function expectImageCatalog(page: Page, settings: RealProviderSettings): Promise<void> {
-  const card = page.getByTestId('provider-card').filter({ hasText: settings.label })
+  const card = page.getByTestId('provider-card').filter({ hasText: providerTitle(settings) })
   await expect(card).toBeVisible()
   await expect(card).toContainText(/生图\s+[1-9]\d*/)
 }
 
 async function addCustomImageProvider(page: Page, settings: RealProviderSettings): Promise<void> {
   await page.getByTestId('add-provider').click()
-  await page.getByTestId('provider-preset').selectOption('custom')
-  await page.getByTestId('provider-label').fill(settings.label)
+  await chooseProviderOption(page, 'provider-preset', 'custom')
   await page.getByTestId('provider-base-url').fill(settings.baseUrl)
-  await page.getByTestId('provider-kind').selectOption('image')
+  await chooseProviderOption(page, 'provider-kind', 'image')
   await page.getByTestId('provider-api-key').fill(settings.apiKey)
-  await page.getByTestId('provider-fetch-models').click()
-  await expect(page.getByTestId('provider-model-counts')).toBeVisible({ timeout: 120_000 })
-  await page.getByTestId('provider-model-select').selectOption(settings.model)
+  await page.getByTestId('provider-model-manual').fill(settings.model)
   await page.getByTestId('provider-submit').click()
-  await expect(page.getByTestId('provider-card').filter({ hasText: settings.label })).toBeVisible()
+  await expect(page.getByTestId('provider-card').filter({ hasText: '自定义' })).toBeVisible()
 }
 
 async function probeProvider(page: Page, settings: RealProviderSettings): Promise<ProviderCheck> {
-  const card = page.locator('[data-testid="provider-card"]').filter({ hasText: settings.label })
+  const card = page.locator('[data-testid="provider-card"]').filter({ hasText: providerTitle(settings) })
   await card.getByRole('button', { name: '测试连接', exact: true }).click()
   if (settings.kind === 'image') {
     const dialog = page.getByRole('dialog')
@@ -201,7 +232,8 @@ test('runs opt-in real Chat and Image provider probes', async () => {
     // 图片探针改用同源的自定义 Seedream 连接（kind: image）。
     const imageProbe: RealProviderSettings = {
       ...settings.image,
-      label: `${settings.image.label} Seedream`
+      label: `${settings.image.label} Seedream`,
+      custom: true
     }
     await addCustomImageProvider(studio.page, imageProbe)
     checks.image = await probeProvider(studio.page, imageProbe)
@@ -246,7 +278,7 @@ test('runs the opt-in real Zhipu vision reverse pipeline', async () => {
     await addProvider(studio.page, settings)
     const providerCard = studio.page
       .locator('[data-testid="provider-card"]')
-      .filter({ hasText: settings.label })
+      .filter({ hasText: providerTitle(settings) })
     await expect(providerCard).toBeVisible()
     const providerId = await providerCard.getAttribute('data-provider-id')
     expect(providerId).toMatch(/^conn_/)

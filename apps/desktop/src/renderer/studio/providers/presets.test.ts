@@ -5,8 +5,10 @@ import {
   findDefaultTextSelection,
   findDefaultVisionSelection,
   initialProviderValues,
+  modelOptionLabel,
   presetIdForConnection,
   providerCounts,
+  providerDisplayName,
   providerModels
 } from './presets'
 
@@ -56,20 +58,28 @@ function connection(patch: Partial<ProviderConnectionDto> = {}): ProviderConnect
 }
 
 describe('provider catalog helpers', () => {
-  it('exposes the four create targets and seeds fixed values', () => {
+  it('exposes the six fixed providers and seeds default models', () => {
     expect(FIXED_PROVIDER_PRESETS.map((preset) => preset.id)).toEqual([
       'deepseek-chat',
       'zhipu-vision',
-      'volcengine-ark'
+      'volcengine-ark',
+      'kimi-chat',
+      'qwen-chat',
+      'minimax-chat'
     ])
     expect(initialProviderValues('deepseek-chat')).toMatchObject({
       presetId: 'deepseek-chat',
       label: 'DeepSeek',
       baseUrl: 'https://api.deepseek.com/v1',
       kind: 'chat',
-      adapter: 'openai-compatible'
+      adapter: 'openai-compatible',
+      manualModel: 'deepseek-flash'
     })
-    expect(initialProviderValues('custom')).toMatchObject({ presetId: 'custom', label: '自定义' })
+    expect(initialProviderValues('custom')).toMatchObject({
+      presetId: 'custom',
+      label: '自定义',
+      manualModel: ''
+    })
   })
 
   it('derives preset ids, counts and default selections from the catalog', () => {
@@ -77,10 +87,24 @@ describe('provider catalog helpers', () => {
     expect(presetIdForConnection(ark)).toBe('volcengine-ark')
     expect(presetIdForConnection(connection({ baseUrl: 'https://example.com/v1' }))).toBe('custom')
     expect(presetIdForConnection(connection({ adapter: 'mock', baseUrl: null }))).toBeNull()
-    expect(providerCounts(ark)).toEqual({ chat: 1, vision: 1, image: 1 })
+    // 视觉模型同时也是对话模型，对话计数包含视觉。
+    expect(providerCounts(ark)).toEqual({ chat: 2, vision: 1, image: 1 })
     expect(providerModels(ark, 'chat').map((model) => model.id)).toEqual(['chat-a', 'vision-a'])
     expect(findDefaultTextSelection([ark])).toMatchObject({ model: { id: 'chat-a' } })
     expect(findDefaultVisionSelection([ark])).toMatchObject({ model: { id: 'vision-a' } })
+    expect(modelOptionLabel(ark.models[0]!)).toContain('（对话）')
+    expect(modelOptionLabel(ark.models[1]!)).toContain('（对话 · 视觉）')
+    expect(modelOptionLabel(ark.models[2]!)).toContain('（生图）')
+    expect(providerDisplayName(ark)).toBe('火山方舟')
+    expect(providerDisplayName(connection({ baseUrl: 'https://example.com/v1' }))).toBe(
+      '自定义 · example.com'
+    )
+  })
+
+  it('prefers the connection default model selected in settings', () => {
+    const selected = connection({ model: 'vision-a' })
+    expect(findDefaultTextSelection([selected])).toMatchObject({ model: { id: 'vision-a' } })
+    expect(findDefaultVisionSelection([selected])).toMatchObject({ model: { id: 'vision-a' } })
   })
 
   it('falls back to a vision chat model when the catalog has no text-only model', () => {

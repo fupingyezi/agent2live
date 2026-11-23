@@ -101,8 +101,15 @@ describe('provider create flow', () => {
     expect(JSON.stringify(input)).not.toContain('sk-test')
   })
 
-  it('requires a model catalog for fixed providers and allows manual custom models', () => {
-    expect(() => buildCreateInput(values(), [])).toThrow(ProviderFormError)
+  it('uses built-in models for fixed providers and allows manual custom models', () => {
+    const fixed = buildCreateInput(values(), [])
+    expect(fixed).toMatchObject({
+      presetId: 'volcengine-ark',
+      kind: 'chat',
+      adapter: 'openai-compatible',
+      model: 'doubao-seed-2-1-pro-260915'
+    })
+    expect(fixed.models).toHaveLength(9)
     const custom = buildCreateInput(
       values({
         presetId: 'custom',

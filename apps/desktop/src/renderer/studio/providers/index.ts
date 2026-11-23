@@ -6,7 +6,11 @@ export {
   getFixedProviderPreset,
   initialProviderValues,
   manualModelProfile,
+  modelKindLabel,
+  modelOptionLabel,
+  preferredModel,
   presetIdForConnection,
+  presetModelsFor,
   providerCounts,
   providerDisplayName,
   providerModels

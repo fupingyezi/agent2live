@@ -9,7 +9,7 @@ import type {
 } from '@studio/api'
 import { ApiError, createGeneration, getPromptVersion, queryKeys } from '@studio/api'
 import { useAssetUrl } from '@studio/hooks'
-import { providerModels } from '@studio/providers'
+import { modelOptionLabel, providerDisplayName, providerModels } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -124,7 +124,11 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
       imageProviders[0] ??
       null
     const nextModels = nextProvider ? providerModels(nextProvider, 'image') : []
-    const nextModel = nextModels.find((model) => model.id === initialParams?.modelId) ?? nextModels[0] ?? null
+    const nextModel =
+      nextModels.find((model) => model.id === initialParams?.modelId) ??
+      nextModels.find((model) => model.id === nextProvider?.model) ??
+      nextModels[0] ??
+      null
     setProviderId(nextProvider?.id ?? '')
     setModelId(nextModel?.id ?? '')
     const nextCaps = nextModel?.capabilities.image
@@ -150,7 +154,9 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
   useEffect(() => {
     if (!selectedProvider) return
     if (!imageModels.some((model) => model.id === modelId)) {
-      setModelId(imageModels[0]?.id ?? '')
+      setModelId(
+        imageModels.find((model) => model.id === selectedProvider.model)?.id ?? imageModels[0]?.id ?? ''
+      )
     }
   }, [selectedProvider?.id, imageModels, modelId])
 
@@ -290,7 +296,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             <Select value={selectedProvider?.id ?? ''} onValueChange={setProviderId}>
               {imageProviders.map((provider) => (
                 <option key={provider.id} value={provider.id}>
-                  {provider.label}
+                  {providerDisplayName(provider)}
                 </option>
               ))}
             </Select>
@@ -304,7 +310,7 @@ export const GenerationDialog: React.FC<GenerationDialogProps> = ({
             >
               {imageModels.map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.name ?? model.id}
+                  {modelOptionLabel(model)}
                 </option>
               ))}
             </Select>

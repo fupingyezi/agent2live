@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { PromptDraftDto, PromptWorkspaceDto, ProviderConnectionDto } from '@studio/api'
 import { getPromptReverseResult, isTerminalJobStatus, queryKeys, requestPromptReverse } from '@studio/api'
 import { useJob } from '@studio/hooks'
-import { providerModels } from '@studio/providers'
+import { modelOptionLabel, providerDisplayName, providerModels } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -65,8 +65,9 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
         ),
     [providers, references.length]
   )
-  const [providerId, setProviderId] = useState(available[0]?.provider.id ?? '')
-  const [modelId, setModelId] = useState(available[0]?.model.id ?? '')
+  const initial = available.find((entry) => entry.provider.model === entry.model.id) ?? available[0]
+  const [providerId, setProviderId] = useState(initial?.provider.id ?? '')
+  const [modelId, setModelId] = useState(initial?.model.id ?? '')
   const [activeJob, setActiveJob] = useState<ReverseJob | null>(initialJob)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,14 +89,18 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
   useEffect(() => {
     if (!available.some((entry) => entry.provider.id === providerId)) {
       const first = available[0]
+      const models = available.filter((entry) => entry.provider.id === first?.provider.id)
+      const preferred = models.find((entry) => entry.model.id === first?.provider.model) ?? models[0]
       setProviderId(first?.provider.id ?? '')
-      setModelId(first?.model.id ?? '')
+      setModelId(preferred?.model.id ?? '')
     }
   }, [available, providerId])
 
   useEffect(() => {
     if (modelOptions.some((entry) => entry.model.id === modelId)) return
-    setModelId(modelOptions[0]?.model.id ?? '')
+    const preferred =
+      modelOptions.find((entry) => entry.model.id === modelOptions[0]?.provider.model) ?? modelOptions[0]
+    setModelId(preferred?.model.id ?? '')
   }, [modelOptions, modelId])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
@@ -197,7 +202,7 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
               >
                 {providerOptions.map((provider) => (
                   <option key={provider.id} value={provider.id}>
-                    {provider.label}
+                    {providerDisplayName(provider)}
                   </option>
                 ))}
               </Select>
@@ -210,7 +215,7 @@ export const ReverseDialog: React.FC<ReverseDialogProps> = ({
               >
                 {modelOptions.map(({ model }) => (
                   <option key={model.id} value={model.id}>
-                    {model.name ?? model.id}
+                    {modelOptionLabel(model)}
                   </option>
                 ))}
               </Select>

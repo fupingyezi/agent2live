@@ -77,6 +77,16 @@ function parseConfig(row: ProviderConnectionRow): ProviderConfig {
   return legacyConfig(row)
 }
 
+/** 固定 Provider 的产品预设模型始终可用；连接里额外保存的旧模型保留在后面。 */
+function allModelsForRow(row: ProviderConnectionRow): ProviderModelProfile[] {
+  const stored = parseConfig(row).models
+  const preset = fixedPresetForBaseUrl(row.base_url)
+  if (!preset) return stored
+  const presetIds = new Set(preset.presetModels.map((model) => model.id))
+  const extras = stored.filter((model) => !presetIds.has(model.id))
+  return [...preset.presetModels, ...extras]
+}
+
 function configJsonFor(models: ProviderModelProfile[] | undefined, refreshedAt: number): string {
   if (models === undefined) return '{}'
   const parsed = providerModelProfilesSchema.parse(models)
@@ -114,7 +124,7 @@ export class ProviderConnectionService {
   }
 
   modelsForRow(row: ProviderConnectionRow): ProviderModelProfile[] {
-    return parseConfig(row).models
+    return allModelsForRow(row)
   }
 
   resolveModel(
@@ -125,7 +135,7 @@ export class ProviderConnectionService {
   ): ProviderModelSelection {
     const row = this.row(connectionId)
     if (!row.enabled) throw new AppError('PROVIDER_NOT_CONFIGURED', { connectionId })
-    const models = parseConfig(row).models.filter((model) => model.kind === kind)
+    const models = allModelsForRow(row).filter((model) => model.kind === kind)
     const candidates = options.requireVision
       ? models.filter((model) => model.capabilities.chat?.supportsVision === true)
       : models
@@ -317,7 +327,7 @@ function toDto(row: ProviderConnectionRow): ProviderConnectionDto {
     model: row.model,
     enabled: Boolean(row.enabled),
     capabilities: JSON.parse(row.capabilities_json),
-    models: config.models,
+    models: allModelsForRow(row),
     modelsRefreshedAt: config.modelsRefreshedAt,
     hasSecret: Boolean(row.secret_ref),
     createdAt: row.created_at,
@@ -343,7 +353,13 @@ function assertModelsMatchConnection(
   }
   // 旧 API 创建的单模型连接 / Mock 旧连接没有 presetId，不做固定目录约束。
   if (!presetId) return
-  if (presetId === 'deepseek-chat' || presetId === 'zhipu-vision') {
+  if (
+    presetId === 'deepseek-chat' ||
+    presetId === 'zhipu-vision' ||
+    presetId === 'kimi-chat' ||
+    presetId === 'qwen-chat' ||
+    presetId === 'minimax-chat'
+  ) {
     if (connectionAdapter !== 'openai-compatible') {
       throw new AppError('REQUEST_INVALID', { reason: 'preset requires the openai-compatible adapter' })
     }

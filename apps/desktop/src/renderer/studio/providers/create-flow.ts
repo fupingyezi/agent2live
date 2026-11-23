@@ -29,7 +29,7 @@ export class ProviderFormError extends Error {
 export class ProviderActivationError extends Error {
   readonly providerId: string
   constructor(providerId: string, cause: unknown) {
-    super('连接已创建，但启用失败。请检查密钥后重试。')
+    super('模型供应商已创建，但启用失败。请检查密钥后重试。')
     this.name = 'ProviderActivationError'
     this.providerId = providerId
     this.cause = cause
@@ -50,10 +50,14 @@ export function validateProviderBaseUrl(value: string): string | null {
 function resolveProfiles(values: ProviderFormValues, models: ProviderModelProfile[]): ProviderModelProfile[] {
   if (models.length > 0) return models.map((model) => providerModelProfileSchema.parse(model))
   if (values.presetId !== 'custom') {
-    throw new ProviderFormError({ model: '请先获取可用模型。' })
+    const preset = getFixedProviderPreset(values.presetId)
+    if (preset && preset.presetModels.length > 0) {
+      return preset.presetModels.map((model) => providerModelProfileSchema.parse(model))
+    }
+    throw new ProviderFormError({ model: '请选择模型。' })
   }
   if (!values.manualModel.trim()) {
-    throw new ProviderFormError({ model: '请输入模型名，或先获取可用模型。' })
+    throw new ProviderFormError({ model: '请输入模型名。' })
   }
   return [providerModelProfileSchema.parse(manualModelProfile(values))]
 }
@@ -63,7 +67,7 @@ function representativeProfile(
   profiles: ProviderModelProfile[]
 ): ProviderModelProfile {
   const requested = profiles.find((model) => model.id === values.manualModel.trim())
-  if (values.presetId === 'custom' && requested) return requested
+  if (requested) return requested
   return (
     profiles.find((model) => model.kind === values.kind) ??
     profiles.find((model) => model.kind === 'chat') ??
@@ -150,8 +154,10 @@ export function editCatalogPatch(
     if (models !== null && models.length > 0) return models
     return values.manualModel.trim() ? [manualModelProfile(values)] : undefined
   }
-  if (models !== null && JSON.stringify(models) !== JSON.stringify(current.models)) return models
-  if (models === null && current.models.length === 0 && values.manualModel.trim()) {
+  if (models !== null && models.length > 0 && JSON.stringify(models) !== JSON.stringify(current.models)) {
+    return models
+  }
+  if ((models === null || models.length === 0) && current.models.length === 0 && values.manualModel.trim()) {
     return [manualModelProfile(values)]
   }
   return undefined
@@ -172,7 +178,7 @@ export async function updateProviderFlow(
     if (baseError) fields.baseUrl = baseError
   }
   if (values.enabled && !current.hasSecret && !values.apiKey.trim()) {
-    fields.apiKey = '启用真实连接需要现有密钥或新密钥。'
+    fields.apiKey = '启用真实供应商需要现有密钥或新密钥。'
   }
   const customUrlChanged = values.presetId === 'custom' && values.baseUrl.trim() !== (current.baseUrl ?? '')
   if (customUrlChanged && (!options.models || options.models.length === 0) && !values.manualModel.trim()) {
@@ -190,8 +196,8 @@ export async function updateProviderFlow(
   const selectedDefault = (options.models ?? current.models).find(
     (model) => model.id === values.manualModel.trim()
   )
-  if (values.presetId === 'custom' && selectedDefault && selectedDefault.id !== current.model) {
-    // 自定义连接的“默认模型”落到 legacy model/capabilities，供 probe 与旧流程使用。
+  if (selectedDefault && selectedDefault.id !== current.model) {
+    // 设置页选中的默认模型落到 legacy model/capabilities，后续任务默认使用它。
     patch.model = selectedDefault.id
     patch.capabilities = selectedDefault.capabilities
   }

@@ -11,9 +11,25 @@
     border-color var(--a2l-motion-fast) var(--a2l-ease-standard),
     box-shadow var(--a2l-motion-fast) var(--a2l-ease-standard);
 }
+.wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+}
 .select {
   min-height: 40px;
-  appearance: auto;
+  appearance: none;
+  padding-right: 34px;
+}
+.chevron {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  color: var(--a2l-color-text);
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 .select:hover {
   border-color: var(--a2l-color-text-muted);

@@ -1,15 +1,19 @@
-import React from 'react'
-import { AsyncButton, Field, InlineNotice, Select, Switch, TextField } from '@agent2live/design-system'
+import React, { useState } from 'react'
+import { Field, InlineNotice, Switch, TextField } from '@agent2live/design-system'
 import {
   FIXED_PROVIDER_PRESETS,
   getFixedProviderPreset,
+  modelOptionLabel,
   type ProviderFormValues,
   type ProviderModelProfile,
   type ProviderPresetId
 } from '@studio/providers'
+import { ProviderSelect } from './ProviderSelect'
 import styles from './ProvidersPage.module.scss'
 
 export const PROVIDER_FORM_ID = 'provider-editor-form'
+
+const SECRET_MASK = '••••••••'
 
 export interface ProviderFormFailure {
   message: string
@@ -21,15 +25,12 @@ export interface ProviderEditorProps {
   values: ProviderFormValues
   failure: ProviderFormFailure | null
   saving: boolean
-  fetchingModels: boolean
   models: ProviderModelProfile[] | null
-  modelsError: string | null
   legacyMock: boolean
+  hasSecret: boolean
   onChange(patch: Partial<ProviderFormValues>): void
   onPresetChange(presetId: ProviderPresetId): void
-  onFetchModels(): void
   onSubmit(event: React.FormEvent<HTMLFormElement>): void
-  onClose(): void
 }
 
 export const ProviderEditor: React.FC<ProviderEditorProps> = ({
@@ -37,64 +38,49 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   values,
   failure,
   saving,
-  fetchingModels,
   models,
-  modelsError,
   legacyMock,
+  hasSecret,
   onChange,
   onPresetChange,
-  onFetchModels,
   onSubmit
 }) => {
+  const [keyDirty, setKeyDirty] = useState(false)
   const presetDescription =
     values.presetId === 'custom'
-      ? '自定义 Base URL、协议与手工模型；模型目录可选。'
+      ? '自定义 Base URL、协议和模型名。'
       : (getFixedProviderPreset(values.presetId)?.description ?? '')
 
-  const counts = (models ?? []).reduce(
-    (acc, model) => {
-      if (model.kind === 'image') acc.image += 1
-      else if (model.capabilities.chat?.supportsVision === true) acc.vision += 1
-      else acc.chat += 1
-      return acc
-    },
-    { chat: 0, vision: 0, image: 0 }
-  )
-
-  const manualModelVisible = !legacyMock && values.presetId === 'custom' && (!models || models.length === 0)
-  const modelSelectVisible =
-    !legacyMock && values.presetId === 'custom' && models !== null && models.length > 0
+  const custom = values.presetId === 'custom'
+  const manualModelVisible = custom && (!models || models.length === 0)
+  const modelSelectVisible = !legacyMock && models !== null && models.length > 0
+  const modelError = failure?.fields.model
+  const showSecretMask = mode === 'edit' && hasSecret && !keyDirty
 
   return (
     <form id={PROVIDER_FORM_ID} className={styles['provider-form']!} noValidate onSubmit={onSubmit}>
-      {legacyMock ? null : (
-        <Field label="连接类型" description={presetDescription}>
-          <Select
-            data-testid="provider-preset"
+      {legacyMock ? null : mode === 'create' ? (
+        <Field label="供应商类型" description={presetDescription}>
+          <ProviderSelect
+            testId="provider-preset"
             value={values.presetId}
-            disabled={mode === 'edit' || saving}
+            disabled={saving}
+            options={[
+              ...FIXED_PROVIDER_PRESETS.map((preset) => ({ value: preset.id, label: preset.name })),
+              { value: 'custom', label: '自定义' }
+            ]}
             onValueChange={(value) => onPresetChange(value as ProviderPresetId)}
-          >
-            {FIXED_PROVIDER_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
-            <option value="custom">自定义</option>
-          </Select>
+          />
+        </Field>
+      ) : (
+        <Field label="供应商类型" description={presetDescription}>
+          <span data-testid="provider-preset-readonly">
+            {custom ? '自定义' : (getFixedProviderPreset(values.presetId)?.name ?? values.presetId)}
+          </span>
         </Field>
       )}
 
-      <Field label="连接名称" {...(failure?.fields.label ? { error: failure.fields.label } : {})}>
-        <TextField
-          data-testid="provider-label"
-          value={values.label}
-          maxLength={80}
-          onValueChange={(value) => onChange({ label: value })}
-        />
-      </Field>
-
-      {legacyMock ? null : values.presetId === 'custom' ? (
+      {legacyMock || !custom ? null : (
         <Field label="API Base URL" {...(failure?.fields.baseUrl ? { error: failure.fields.baseUrl } : {})}>
           <TextField
             data-testid="provider-base-url"
@@ -103,117 +89,97 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             spellCheck={false}
           />
         </Field>
-      ) : (
-        <Field label="API Base URL">
-          <code data-testid="provider-fixed-base-url">{values.baseUrl}</code>
-        </Field>
       )}
 
-      {legacyMock || values.presetId !== 'custom' ? null : (
+      {legacyMock || !custom ? null : mode === 'create' ? (
         <>
-          <Field
-            label="类型"
-            {...(values.kind === 'image'
-              ? {
-                  description: '自动发现只列出 Seedream/SeedEdit 兼容模型；其他生图模型请手工填写模型名。'
-                }
-              : {})}
-          >
-            <Select
-              data-testid="provider-kind"
+          <Field label="类型">
+            <ProviderSelect
+              testId="provider-kind"
               value={values.kind}
-              disabled={mode === 'edit' || saving}
+              disabled={saving}
+              options={[
+                { value: 'chat', label: '对话' },
+                { value: 'image', label: '生图' }
+              ]}
               onValueChange={(value) =>
                 onChange({
                   kind: value as 'chat' | 'image',
                   adapter: value === 'chat' ? 'openai-compatible' : 'seedream'
                 })
               }
-            >
-              <option value="chat">对话</option>
-              <option value="image">生图</option>
-            </Select>
+            />
           </Field>
           <Field label="协议">
-            <Select
-              data-testid="provider-protocol"
+            <ProviderSelect
+              testId="provider-protocol"
               value={values.adapter}
-              disabled={values.kind === 'chat' || mode === 'edit' || saving}
+              disabled={values.kind === 'chat' || saving}
+              options={[
+                { value: 'openai-compatible', label: 'OpenAI 兼容对话' },
+                { value: 'seedream', label: 'Seedream 兼容生图' }
+              ]}
               onValueChange={(value) => onChange({ adapter: value as 'openai-compatible' | 'seedream' })}
-            >
-              <option value="openai-compatible">OpenAI 兼容对话</option>
-              <option value="seedream">Seedream 兼容生图</option>
-            </Select>
+            />
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field label="类型">
+            <span data-testid="provider-kind-readonly">{values.kind === 'chat' ? '对话' : '生图'}</span>
+          </Field>
+          <Field label="协议">
+            <span data-testid="provider-protocol-readonly">
+              {values.adapter === 'seedream' ? 'Seedream 兼容生图' : 'OpenAI 兼容对话'}
+            </span>
           </Field>
         </>
       )}
 
       {legacyMock ? null : (
-        <Field
-          label="API Key"
-          description={
-            mode === 'edit'
-              ? '留空则保留现有密钥；刷新模型目录会直接使用钥匙串里的 Key。'
-              : '仅通过本机 preload 密钥桥保存；不会进入模型目录请求或日志。'
-          }
-          {...(failure?.fields.apiKey ? { error: failure.fields.apiKey } : {})}
-        >
+        <Field label="API Key">
           <TextField
             data-testid="provider-api-key"
             type="password"
             autoComplete="new-password"
-            value={values.apiKey}
-            onValueChange={(value) => onChange({ apiKey: value })}
-            placeholder={mode === 'edit' ? '仅在轮换密钥时填写' : 'sk-…'}
+            value={showSecretMask ? SECRET_MASK : values.apiKey}
+            onFocus={(event) => {
+              if (showSecretMask) event.currentTarget.select()
+            }}
+            onClick={(event) => {
+              if (showSecretMask) event.currentTarget.select()
+            }}
+            onValueChange={(value) => {
+              if (showSecretMask) {
+                setKeyDirty(true)
+                // 掩码只是展示值，任何输入都先剥离掩码字符，绝不写入表单状态。
+                onChange({ apiKey: value.replaceAll('•', '') })
+                return
+              }
+              onChange({ apiKey: value })
+            }}
+            placeholder={showSecretMask ? undefined : 'sk-…'}
           />
         </Field>
       )}
 
-      {legacyMock ? null : (
-        <div className={styles['provider-fetch-row']!}>
-          <AsyncButton
-            variant="secondary"
-            data-testid="provider-fetch-models"
-            busy={fetchingModels}
-            busyLabel="正在获取…"
-            disabled={
-              fetchingModels ||
-              (mode === 'create' && !values.apiKey.trim()) ||
-              (values.presetId === 'custom' && !values.baseUrl.trim())
-            }
-            onClick={onFetchModels}
-          >
-            获取可用模型
-          </AsyncButton>
-          {models ? (
-            <span data-testid="provider-model-counts">
-              对话 {counts.chat} · 视觉 {counts.vision} · 生图 {counts.image}
-            </span>
-          ) : null}
-        </div>
-      )}
-
       {modelSelectVisible ? (
-        <Field label="默认模型" description="从 /models 实时列表选择；任务中仍可改选其他模型。">
-          <Select
-            data-testid="provider-model-select"
+        <Field label="默认模型" {...(modelError ? { error: modelError } : {})}>
+          <ProviderSelect
+            testId="provider-model-select"
             value={values.manualModel}
+            disabled={saving}
+            options={models.map((model) => ({ value: model.id, label: modelOptionLabel(model) }))}
             onValueChange={(value) => onChange({ manualModel: value })}
-          >
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name ?? model.id}
-              </option>
-            ))}
-          </Select>
+          />
         </Field>
       ) : null}
 
       {manualModelVisible ? (
         <Field
           label="模型名"
-          description="拉取失败时可手工填写；自定义连接不会伪造模型列表。"
-          {...(failure?.fields.model ? { error: failure.fields.model } : {})}
+          description="自定义供应商手工填写模型名。"
+          {...(modelError ? { error: modelError } : {})}
         >
           <TextField
             data-testid="provider-model-manual"
@@ -224,41 +190,14 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         </Field>
       ) : null}
 
-      {!legacyMock && models && models.length > 0 ? (
-        <div data-testid="provider-models">
-          <Field label="可访问模型">
-            <ul className={styles['provider-model-list']!}>
-              {models.map((model) => (
-                <li key={model.id}>
-                  <code>{model.id}</code>
-                  <span>
-                    {model.kind === 'image'
-                      ? '生图'
-                      : model.capabilities.chat?.supportsVision
-                        ? '视觉'
-                        : '对话'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Field>
-        </div>
-      ) : null}
-
-      {!legacyMock && (modelsError || (!manualModelVisible && failure?.fields.model)) ? (
-        <div role="alert" data-testid="provider-models-error">
-          <InlineNotice tone="danger">{modelsError || failure?.fields.model}</InlineNotice>
-        </div>
-      ) : null}
-
       {mode === 'edit' ? (
         <div className={styles['provider-toggle-row']!}>
           <div>
             <span className={styles['provider-toggle-label']!}>保存后启用</span>
             <p className={styles['provider-toggle-hint']!}>
               {legacyMock
-                ? 'Mock 旧连接只保留连接名称与启用状态，不访问网络。'
-                : '真实连接只有在密钥保存成功并通过校验后才会启用。'}
+                ? 'Mock 旧连接只保留启用状态，不访问网络。'
+                : '真实供应商只有在密钥保存成功并通过校验后才会启用。'}
             </p>
           </div>
           <Switch
@@ -272,9 +211,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       ) : null}
 
       {legacyMock ? (
-        <InlineNotice tone="info">
-          Mock 旧连接只支持修改连接名称与启用状态；它不访问网络，也没有模型目录。
-        </InlineNotice>
+        <InlineNotice tone="info">Mock 旧连接只支持启用/停用；它不访问网络，也没有模型目录。</InlineNotice>
       ) : null}
 
       {failure ? (

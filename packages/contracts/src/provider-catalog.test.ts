@@ -26,15 +26,24 @@ const IMAGE = {
 }
 
 describe('provider catalog', () => {
-  it('exposes exactly the three fixed presets (plus custom)', () => {
+  it('exposes the six fixed presets (plus custom) with built-in models', () => {
     expect(FIXED_PROVIDER_PRESETS.map((preset) => preset.id)).toEqual([
       'deepseek-chat',
       'zhipu-vision',
-      'volcengine-ark'
+      'volcengine-ark',
+      'kimi-chat',
+      'qwen-chat',
+      'minimax-chat'
     ])
     expect(fixedPresetForBaseUrl('https://api.deepseek.com/v1/')?.id).toBe('deepseek-chat')
     expect(fixedPresetForBaseUrl('https://ark.cn-beijing.volces.com/api/v3')?.id).toBe('volcengine-ark')
+    expect(fixedPresetForBaseUrl('https://api.moonshot.cn/v1')?.id).toBe('kimi-chat')
+    expect(fixedPresetForBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1')?.id).toBe('qwen-chat')
+    expect(fixedPresetForBaseUrl('https://api.minimaxi.com/v1')?.id).toBe('minimax-chat')
     expect(fixedPresetForBaseUrl('https://example.com/v1')).toBeNull()
+    for (const preset of FIXED_PROVIDER_PRESETS) {
+      expect(preset.presetModels.length).toBeGreaterThan(0)
+    }
   })
 
   it('validates model profiles against their kind', () => {

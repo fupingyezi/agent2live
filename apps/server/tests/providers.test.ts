@@ -23,8 +23,8 @@ const CHAT_CAPABILITIES = {
 } satisfies ProviderCapabilities
 
 const ARK_CHAT_MODEL = {
-  id: 'doubao-seed-1-6',
-  name: 'Doubao Seed',
+  id: 'doubao-seed-2-1-pro-260915',
+  name: 'doubao-seed-2-1-pro',
   kind: 'chat' as const,
   adapter: 'openai-compatible' as const,
   capabilities: {
@@ -33,7 +33,7 @@ const ARK_CHAT_MODEL = {
   }
 }
 const ARK_IMAGE_MODEL = {
-  id: 'doubao-seedream-5-0-pro',
+  id: 'doubao-seedream-5-0-pro-260628',
   name: 'Seedream',
   kind: 'image' as const,
   adapter: 'seedream' as const,
@@ -451,18 +451,22 @@ describe('provider connections', () => {
         rowVersion: number
       }>()
       expect(provider.baseUrl).toBe('https://ark.cn-beijing.volces.com/api/v3')
-      expect(provider.models).toHaveLength(2)
+      // 固定 Provider 的产品预设模型（Chat/视觉/生图）始终可用。
+      expect(provider.models).toHaveLength(9)
       expect(provider.modelsRefreshedAt).toBe(new Date(ctx.clock.now()).toISOString())
       expect(ctx.services.providerConnections.get(provider.id).modelsRefreshedAt).toBe(ctx.clock.now())
 
       const chat = ctx.services.providerConnections.resolveModel(provider.id, 'chat')
-      expect(chat).toMatchObject({ modelId: 'doubao-seed-1-6', adapter: 'openai-compatible' })
+      expect(chat).toMatchObject({
+        modelId: 'doubao-seed-2-1-pro-260915',
+        adapter: 'openai-compatible'
+      })
       const image = ctx.services.providerConnections.resolveModel(
         provider.id,
         'image',
-        'doubao-seedream-5-0-pro'
+        'doubao-seedream-5-0-pro-260628'
       )
-      expect(image).toMatchObject({ modelId: 'doubao-seedream-5-0-pro', adapter: 'seedream' })
+      expect(image).toMatchObject({ modelId: 'doubao-seedream-5-0-pro-260628', adapter: 'seedream' })
       expect(() =>
         ctx.services.providerConnections.resolveModel(provider.id, 'image', 'missing-model')
       ).toThrow(expect.objectContaining({ code: 'PROVIDER_MODEL_NOT_AVAILABLE' }))
@@ -485,7 +489,7 @@ describe('provider connections', () => {
           kind: 'chat',
           adapter: 'openai-compatible',
           presetId: 'deepseek-chat',
-          model: 'deepseek-chat',
+          model: 'deepseek-flash',
           capabilities: CHAT_CAPABILITIES,
           secretRef: 'sec_01J00000000000000000000000',
           enabled: true

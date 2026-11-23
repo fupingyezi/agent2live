@@ -12,7 +12,7 @@ import {
 } from '@studio/api'
 import type { PromptSpecV2 } from '@studio/api'
 import { useJob } from '@studio/hooks'
-import { providerModels } from '@studio/providers'
+import { modelOptionLabel, providerDisplayName, providerModels } from '@studio/providers'
 import {
   AsyncButton,
   Button,
@@ -190,9 +190,11 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
 
   useEffect(() => {
     if (!chatModels.some((model) => model.id === modelId)) {
-      setModelId(chatModels[0]?.id ?? '')
+      setModelId(
+        chatModels.find((model) => model.id === selectedProvider?.model)?.id ?? chatModels[0]?.id ?? ''
+      )
     }
-  }, [chatModels, modelId])
+  }, [chatModels, modelId, selectedProvider?.model])
 
   const jobQuery = useJob(activeJob?.jobId ?? null)
   const job = jobQuery.data ?? null
@@ -420,7 +422,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 >
                   {chatProviders.map((provider) => (
                     <option key={provider.id} value={provider.id}>
-                      {provider.label}
+                      {providerDisplayName(provider)}
                     </option>
                   ))}
                 </Select>
@@ -434,7 +436,7 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
               >
                 {chatModels.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name ?? model.id}
+                    {modelOptionLabel(model)}
                   </option>
                 ))}
               </Select>
