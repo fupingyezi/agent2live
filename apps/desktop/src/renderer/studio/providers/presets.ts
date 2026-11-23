@@ -2,11 +2,10 @@ import {
   FIXED_PROVIDER_PRESETS,
   fixedPresetForBaseUrl,
   getFixedProviderPreset,
-  SEEDREAM_CAPABILITIES,
-  type ProviderCapabilities,
   type ProviderModelProfile,
   type ProviderPresetId
-} from '@agent2live/contracts'
+} from '@agent2live/contracts/provider-catalog'
+import { SEEDREAM_CAPABILITIES, type ProviderCapabilities } from '@agent2live/contracts/capabilities'
 import type { ProviderConnectionDto } from '@studio/api'
 
 export { FIXED_PROVIDER_PRESETS, fixedPresetForBaseUrl, getFixedProviderPreset }

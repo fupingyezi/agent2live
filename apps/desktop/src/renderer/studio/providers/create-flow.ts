@@ -1,5 +1,5 @@
 import type { CreateProviderConnectionInput, UpdateProviderConnectionInput } from '@agent2live/contracts/api'
-import { providerModelProfileSchema, type ProviderModelProfile } from '@agent2live/contracts'
+import { providerModelProfileSchema, type ProviderModelProfile } from '@agent2live/contracts/provider-catalog'
 import type { ProviderConnectionDto } from '@studio/api'
 import { getFixedProviderPreset, manualModelProfile, type ProviderFormValues } from './presets'
 

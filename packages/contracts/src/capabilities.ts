@@ -1,5 +1,7 @@
 import type { ImageCapabilityProfile, ProviderCapabilities } from './prompt'
 
+export type { ProviderCapabilities } from './prompt'
+
 export const SEEDREAM_CAPABILITIES: ProviderCapabilities = {
   schemaVersion: 'provider-capabilities/1',
   image: {

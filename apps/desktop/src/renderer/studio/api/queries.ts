@@ -1,5 +1,5 @@
 import { ApiClient, newIdempotencyKey } from './client'
-import type { ProviderModelsPreviewInput } from '@agent2live/contracts'
+import type { ProviderModelsPreviewInput } from '@agent2live/contracts/provider-catalog'
 import type {
   CreateProviderConnectionInput,
   PromptInputMultipartMetadata,

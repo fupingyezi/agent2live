@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
+    "./provider-catalog": "./src/provider-catalog.ts",
     "./prompt-reference": "./src/prompt-reference.ts",
     "./capabilities": "./src/capabilities.ts",
     "./character-brief": "./src/character-brief.ts",

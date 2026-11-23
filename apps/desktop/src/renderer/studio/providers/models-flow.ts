@@ -1,4 +1,4 @@
-import type { ProviderModelsPreviewInput } from '@agent2live/contracts'
+import type { ProviderModelsPreviewInput } from '@agent2live/contracts/provider-catalog'
 import type { ProviderConnectionDto, ProviderModelProfile } from '@studio/api'
 import { ProviderFormError, validateProviderBaseUrl } from './create-flow'
 import type { ProviderFormValues } from './presets'
