@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createGenerationInputSchema } from '@agent2live/contracts'
-import { collectRegisteredRoutes } from '../openapi/coverage'
+import { assertManifestCoverage, collectRegisteredRoutes } from '../openapi/coverage'
+import { buildOpenApiDocument, OPENAPI_TITLE } from '../openapi/generate'
 import { manifest } from '../openapi/manifest'
 import { buildResponseSchemas, responseTypeNames, zodSchemaToJsonSchema } from '../openapi/schema-registry'
+import { validateManifest, validateOpenApi } from '../openapi/validate'
 
 describe('openapi route coverage', () => {
   it('collects every registered route exactly once without HEAD twins', async () => {
@@ -116,5 +118,45 @@ describe('openapi manifest groups', () => {
         'GET /api/v1/backups/:backupId/download'
       ])
     )
+  })
+})
+
+describe('openapi document', () => {
+  it('generates and validates all operations', async () => {
+    validateManifest(manifest)
+    const doc = buildOpenApiDocument() as any
+    expect(doc.info.title).toBe(OPENAPI_TITLE)
+    expect(doc.security).toEqual([{ bearerAuth: [] }])
+    const methods = new Set(['get', 'post', 'patch', 'delete'])
+    const operations = Object.values(doc.paths as Record<string, Record<string, unknown>>).flatMap((path) =>
+      Object.entries(path).filter(([method]) => methods.has(method))
+    )
+    expect(operations).toHaveLength(62)
+    expect(
+      new Set(operations.map(([, operation]) => (operation as { operationId: string }).operationId)).size
+    ).toBe(62)
+    await expect(validateOpenApi(doc)).resolves.toBeUndefined()
+  })
+
+  it('matches the real Fastify route set', async () => {
+    const routes = await collectRegisteredRoutes()
+    expect(() => assertManifestCoverage(manifest, routes)).not.toThrow()
+  })
+
+  it('documents multipart, binary, and SSE content', () => {
+    const doc = buildOpenApiDocument() as any
+    expect(doc.paths['/api/v1/assets'].post.requestBody.content['multipart/form-data']).toBeDefined()
+    expect(
+      doc.paths['/api/v1/art-projects/{id}/prompt-inputs'].post.requestBody.content['multipart/form-data']
+        .schema.properties.metadata
+    ).toBeDefined()
+    expect(
+      doc.paths['/api/v1/assets/{id}/content'].get.responses['200'].content['image/png'].schema.format
+    ).toBe('binary')
+    expect(doc.paths['/api/v1/events'].get.responses['200'].content['text/event-stream']).toBeDefined()
+  })
+
+  it('rejects an invalid OpenAPI document', async () => {
+    await expect(validateOpenApi({ openapi: '3.0.3' })).rejects.toThrow()
   })
 })

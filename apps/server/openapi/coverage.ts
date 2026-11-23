@@ -1,6 +1,7 @@
 import { buildApp } from '../src/app'
 import type { EventStore } from '../src/events/store'
 import type { Services } from '../src/services/container'
+import type { OperationSpec } from './manifest/types'
 
 export interface RegisteredRoute {
   method: string
@@ -26,4 +27,19 @@ export async function collectRegisteredRoutes(): Promise<RegisteredRoute[]> {
   await app.ready()
   await app.close()
   return routes
+}
+
+export function normalizeOpenApiPath(path: string): string {
+  return path.replace(/:([A-Za-z0-9_]+)/g, '{$1}')
+}
+
+export function assertManifestCoverage(manifest: OperationSpec[], routes: RegisteredRoute[]): void {
+  const toKey = (method: string, path: string): string => `${method} ${normalizeOpenApiPath(path)}`
+  const expected = new Set(manifest.map((operation) => toKey(operation.method, operation.path)))
+  const actual = new Set(routes.map((route) => toKey(route.method, route.path)))
+  const missing = [...expected].filter((key) => !actual.has(key))
+  const extra = [...actual].filter((key) => !expected.has(key))
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(`route coverage mismatch; missing=[${missing.join(', ')}]; extra=[${extra.join(', ')}]`)
+  }
 }
