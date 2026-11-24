@@ -3,6 +3,7 @@ import { existsSync, readFileSync, rmSync, watch, type FSWatcher } from 'node:fs
 import { basename, dirname, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseLocalServiceEndpoint, type LocalServiceInfo } from '@agent2live/contracts'
+import { resolveEnvValue } from './env-file'
 import { getSecretVault } from './secrets'
 
 const ENTRY_WATCH_DEBOUNCE_MS = 200
@@ -37,6 +38,11 @@ function dataDir(): string {
   return process.env.AGENT2LIVE_DATA_DIR ?? app.getPath('userData')
 }
 
+function repoEnvCandidates(): string[] {
+  // Dev only: the repo root .env. app path is apps/desktop (or the repo root itself).
+  return [join(app.getAppPath(), '..', '.env'), join(app.getAppPath(), '..', '..', '.env')]
+}
+
 function respondToSecretRequest(proc: UtilityProcess, message: unknown): void {
   const request = message as { type?: string; id?: string; secretRef?: string }
   if (request.type !== 'secret.request' || !request.id || !request.secretRef) return
@@ -66,6 +72,14 @@ export async function startSidecar(): Promise<LocalServiceInfo> {
     if (value !== undefined) env[key] = value
   }
   env.AGENT2LIVE_DATA_DIR = dir
+  // Dev convenience: fill selected vars from the repo .env unless the shell already set them.
+  if (!app.isPackaged) {
+    for (const key of ['AGENT2LIVE_PORT', 'AGENT2LIVE_TOKEN']) {
+      if (process.env[key] !== undefined) continue
+      const value = resolveEnvValue(repoEnvCandidates(), key)
+      if (value) env[key] = value
+    }
+  }
   if (app.isPackaged) {
     env.AGENT2LIVE_MIGRATIONS_DIR = join(process.resourcesPath, 'server', 'migrations')
   }
