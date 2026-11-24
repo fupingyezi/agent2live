@@ -23,8 +23,8 @@ import {
   Switch,
   TextField
 } from '@agent2live/design-system'
-import { MATERIAL_ROLE_LABELS } from '../../prompt-labels'
-import { clampGenerationCount, generationCountOptions } from '../../generation-params'
+import { MATERIAL_ROLE_LABELS } from '../../../prompt-labels'
+import { clampGenerationCount, generationCountOptions } from '../../../generation-params'
 import styles from './GenerationDialog.module.scss'
 
 export interface GenerationDefaults {

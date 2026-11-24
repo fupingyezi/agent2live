@@ -1,6 +1,6 @@
 /** 配置图像模型、张数、尺寸和种子并创建生成任务。 */
-export { GenerationDialog } from './GenerationDialog'
-export type { GenerationDialogProps, GenerationDefaults } from './GenerationDialog'
+export { GenerationDialog } from './generation/GenerationDialog'
+export type { GenerationDialogProps, GenerationDefaults } from './generation/GenerationDialog'
 
 /** 编辑 PromptVersion 的有序参考图集合。 */
 export { PromptReferenceEditor } from './PromptReferenceEditor'
