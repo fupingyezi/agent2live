@@ -71,7 +71,8 @@ erDiagram
   ART_PROJECTS ||--o{ LIVE2D_PROJECTS : "创建制作项目"
   PROMPT_INPUT_SUBMISSIONS ||--o{ ASSET_LINKS : "关联素材"
   PROMPT_VERSIONS ||--o{ PROMPT_SUGGESTIONS : "接收建议"
-  ART_VERSIONS ||--o{ ASSET_LINKS : "保存素材快照"
+  PROMPT_VERSIONS ||--o{ ASSET_LINKS : "保存有序参考图"
+  ASSETS ||--o{ ART_VERSIONS : "提供最终立绘"
   GENERATION_CANDIDATES }o--o| ART_VERSIONS : "被采纳为"
   LIVE2D_PROJECTS ||--o{ LAYER_SPEC_VERSIONS : "包含图层方案"
   LIVE2D_PROJECTS ||--o{ RIG_PLAN_VERSIONS : "包含绑定方案"
@@ -112,7 +113,10 @@ erDiagram
   PROMPT_INPUT_SUBMISSIONS ||--o{ PROMPT_VERSIONS : "固化为"
   PROMPT_VERSIONS ||--o{ ART_VERSIONS : "生成立绘"
   PROMPT_INPUT_SUBMISSIONS ||--o{ ASSET_LINKS : "关联素材"
-  ART_VERSIONS ||--o{ ASSET_LINKS : "保存素材快照"
+  PROMPT_VERSIONS ||--o{ ASSET_LINKS : "保存有序参考图"
+  PROMPT_VERSIONS ||--o{ GENERATION_JOBS : "作为生成输入"
+  GENERATION_JOBS ||--o{ GENERATION_CANDIDATES : "产生候选"
+  GENERATION_CANDIDATES }o--o| ART_VERSIONS : "被采纳为"
   ART_PROJECTS ||--o{ PROJECT_FORKS : "派生分支"
 ```
 
@@ -483,19 +487,18 @@ CREATE UNIQUE INDEX ux_forks_branch
 
 ### 5.3 `asset_links`
 
-| 字段         | 类型      | 必填 | 约束        | 说明                                                       |
-| ------------ | --------- | ---- | ----------- | ---------------------------------------------------------- |
-| `id`         | TEXT      | 是   | PK          |                                                            |
-| `asset_id`   | TEXT      | 是   | FK assets   |                                                            |
-| `owner_type` | TEXT      | 是   | enum        | `prompt_input/prompt_version/art_version/layer_spec/model` |
-| `owner_id`   | TEXT      | 是   |             | 对应实体                                                   |
-| `role`       | TEXT      | 是   | enum        | 素材用途                                                   |
-| `note`       | TEXT NULL | 否   | ≤1000       | 单素材要求                                                 |
-| `weight`     | REAL      | 是   | 0.1..2.0    | 参考权重                                                   |
-| `sort_order` | INTEGER   | 是   | ≥0          | UI 排序                                                    |
-| `is_primary` | INTEGER   | 是   | 0/1，默认 0 | ArtVersion 的主参考图                                      |
-| `locked`     | INTEGER   | 是   | 0/1，默认 0 | 锁定素材的角色、备注和权重                                 |
-| `created_at` | INTEGER   | 是   |             |                                                            |
+| 字段         | 类型      | 必填 | 约束        | 说明                                           |
+| ------------ | --------- | ---- | ----------- | ---------------------------------------------- |
+| `id`         | TEXT      | 是   | PK          |                                                |
+| `asset_id`   | TEXT      | 是   | FK assets   |                                                |
+| `owner_type` | TEXT      | 是   | enum        | `prompt_input/prompt_version/layer_spec/model` |
+| `owner_id`   | TEXT      | 是   |             | 对应实体                                       |
+| `role`       | TEXT      | 是   | enum        | 素材用途                                       |
+| `note`       | TEXT NULL | 否   | ≤1000       | 单素材要求                                     |
+| `weight`     | REAL      | 是   | 0.1..2.0    | 参考权重                                       |
+| `sort_order` | INTEGER   | 是   | ≥0          | PromptVersion 参考图持久化顺序                 |
+| `locked`     | INTEGER   | 是   | 0/1，默认 0 | 锁定素材的角色、备注和权重                     |
+| `created_at` | INTEGER   | 是   |             |                                                |
 
 素材角色：
 
@@ -504,9 +507,9 @@ identity_reference, style_reference, outfit_reference, color_reference,
 background_reference, pose_reference, sketch, texture, other
 ```
 
-`owner_id` 是 `owner_type` 指向的领域实体 ID（例如 `art_version`），不是用户 ID。首版没有用户表，也不按本地操作系统用户拆分数据。
+`owner_id` 是 `owner_type` 指向的领域实体 ID（例如 `prompt_version`），不是用户 ID。首版没有用户表，也不按本地操作系统用户拆分数据。
 
-ArtVersion 的参考图使用 `asset_links` 保存，至少有一条，且同一 owner 恰有一条 `is_primary=1`。主图 `sort_order=0`，其余值从 1 开始连续且唯一。每个资产在同一 ArtVersion 中只能关联一次；`sort_order` 和 `is_primary` 都进入 ArtVersion 的 `content_hash`。用户增删、排序、修改 role/note/weight 或切换主图时，不能更新已提交 ArtVersion 的 links，而是复制当前状态并创建新的 ArtVersion 引用集快照。删除关联只减少引用计数，Blob 由延迟 GC 回收。
+PromptVersion 的有序参考图使用 `asset_links(owner_type='prompt_version')` 保存。数组顺序是权威顺序，数据库用连续的 `sort_order` 持久化；不保存主图标记。每个资产在同一 PromptVersion 中只能关联一次，且 `(owner_id, sort_order)` 唯一。PromptVersion 提交后 references 不再原地修改；提示词或参考图变化都会创建新的 PromptVersion。删除关联只减少引用计数，Blob 由延迟 GC 回收。
 
 `PromptInputSubmission.materials[].partName` 是 `multipart/form-data` 中临时文件 part 的键，仅用于上传阶段把文件和 metadata 对应起来，不作为业务列持久化；提交完成后以 `asset_links.asset_id` 为准。素材的 `locked` 则必须写入 `asset_links.locked`，不能只存在于请求中。
 
@@ -543,7 +546,9 @@ ArtVersion 的参考图使用 `asset_links` 保存，至少有一条，且同一
 | `revision`            | INTEGER   | 是   | ≥1                          | 单调递增                      |
 | `status`              | TEXT      | 是   | enum                        | `active/committed/superseded` |
 | `state_json`          | TEXT      | 是   | JSON                        | PromptSpec Draft              |
+| `content_hash`        | TEXT      | 是   | 64 hex                      | Draft 完整内容 hash           |
 | `input_submission_id` | TEXT NULL | 否   | FK prompt_input_submissions | 当前素材/要求快照             |
+| `base_version_id`     | TEXT NULL | 否   | FK prompt_versions          | 创建 Draft 时的基线版本       |
 | `created_at`          | INTEGER   | 是   |                             |                               |
 | `updated_at`          | INTEGER   | 是   |                             |                               |
 | `row_version`         | INTEGER   | 是   | ≥1                          |                               |
@@ -562,21 +567,32 @@ ArtVersion 的参考图使用 `asset_links` 保存，至少有一条，且同一
 | `input_submission_id`       | TEXT      | 是   | FK prompt_input_submissions | 固化素材与要求        |
 | `content_json`              | TEXT      | 是   | JSON                        | `prompt-spec/2`       |
 | `content_hash`              | TEXT      | 是   | 64 hex                      | canonical hash        |
+| `version_number`            | INTEGER   | 是   | ≥1，项目内唯一              | PromptVersion 版本号  |
 | `created_at`                | INTEGER   | 是   |                             |                       |
+
+`PromptVersion` 是完整生成输入版本：`content_json` 保存 PromptSpec，`asset_links(owner_type='prompt_version')` 保存同一版本的有序 references。读取时按 `sort_order` 恢复数组，并用 references 覆盖 DTO 中派生的 `materialRefs`。空 references 表示纯文生图。
 
 ### 6.4 `prompt_suggestions`
 
-| 字段                     | 类型         | 必填 | 约束                    | 说明                               |
-| ------------------------ | ------------ | ---- | ----------------------- | ---------------------------------- |
-| `id`                     | TEXT         | 是   | PK                      |                                    |
-| `base_version_id`        | TEXT         | 是   | FK prompt_versions      | 建议基线                           |
-| `base_content_hash`      | TEXT         | 是   | 64 hex                  | 防止 stale                         |
-| `operations_json`        | TEXT         | 是   | JSON                    | 结构化 patch                       |
-| `intent`                 | TEXT         | 是   | ≤2000                   | 用户要求                           |
-| `status`                 | TEXT         | 是   | enum                    | `proposed/accepted/rejected/stale` |
-| `provider_invocation_id` | TEXT NULL    | 否   | FK provider_invocations |                                    |
-| `created_at`             | INTEGER      | 是   |                         |                                    |
-| `resolved_at`            | INTEGER NULL | 否   |                         |                                    |
+| 字段                      | 类型         | 必填 | 约束                    | 说明                               |
+| ------------------------- | ------------ | ---- | ----------------------- | ---------------------------------- |
+| `id`                      | TEXT         | 是   | PK                      |                                    |
+| `job_id`                  | TEXT         | 是   | UNIQUE FK jobs          | 通用任务                           |
+| `base_kind`               | TEXT         | 是   | enum                    | `prompt_version/prompt_draft`      |
+| `base_version_id`         | TEXT NULL    | 否   | FK prompt_versions      | version 基线                       |
+| `base_draft_id`           | TEXT NULL    | 否   | FK prompt_drafts        | Draft 基线                         |
+| `base_draft_revision`     | INTEGER NULL | 否   | ≥1                      | Draft 基线 revision                |
+| `base_draft_row_version`  | INTEGER NULL | 否   | ≥1                      | Draft CAS                          |
+| `base_content_hash`       | TEXT         | 是   | 64 hex                  | 防止 stale                         |
+| `operations_json`         | TEXT         | 是   | JSON                    | 结构化 patch                       |
+| `warnings_json`           | TEXT         | 是   | JSON                    | 建议警告                           |
+| `intent`                  | TEXT         | 是   | ≤2000                   | 用户要求                           |
+| `status`                  | TEXT         | 是   | enum                    | `proposed/accepted/rejected/stale` |
+| `accepted_draft_id`       | TEXT NULL    | 否   | FK prompt_drafts        | 采纳后的 Draft                     |
+| `accepted_draft_revision` | INTEGER NULL | 否   | ≥1                      | 采纳后的 revision                  |
+| `provider_invocation_id`  | TEXT         | 是   | FK provider_invocations | Provider 调用                      |
+| `created_at`              | INTEGER      | 是   |                         |                                    |
+| `resolved_at`             | INTEGER NULL | 否   |                         |                                    |
 
 ### 6.5 `generation_jobs`
 
@@ -585,12 +601,11 @@ ArtVersion 的参考图使用 `asset_links` 保存，至少有一条，且同一
 | `id`                     | TEXT      | 是   | PK                      |                                          |
 | `art_project_id`         | TEXT      | 是   | FK art_projects         |                                          |
 | `prompt_version_id`      | TEXT      | 是   | FK prompt_versions      |                                          |
-| `base_art_version_id`    | TEXT NULL | 否   | FK art_versions         | 固定本次使用的 active 版本及其参考图集合 |
+| `base_art_version_id`    | TEXT NULL | 否   | FK art_versions         | 可选的继续创作来源；默认当前 active 立绘 |
 | `provider_connection_id` | TEXT NULL | 否   | FK provider_connections |                                          |
 | `request_json`           | TEXT      | 是   | JSON                    | 编译后请求，不含密钥                     |
 | `request_hash`           | TEXT      | 是   | 64 hex                  |                                          |
 | `job_id`                 | TEXT      | 是   | FK jobs                 | 通用任务                                 |
-| `status`                 | TEXT      | 是   |                         | 来自 jobs                                |
 | `created_at`             | INTEGER   | 是   |                         |                                          |
 
 ### 6.6 `generation_candidates`
@@ -607,20 +622,26 @@ ArtVersion 的参考图使用 `asset_links` 保存，至少有一条，且同一
 
 ### 6.7 `art_versions`
 
-| 字段                    | 类型      | 必填 | 约束               | 说明                             |
-| ----------------------- | --------- | ---- | ------------------ | -------------------------------- |
-| `id`                    | TEXT      | 是   | PK                 |                                  |
-| `art_project_id`        | TEXT      | 是   | FK art_projects    |                                  |
-| `parent_version_id`     | TEXT NULL | 否   | FK art_versions    | 项目内 DAG                       |
-| `origin_version_id`     | TEXT NULL | 否   |                    | Fork 复制来源                    |
-| `prompt_version_id`     | TEXT      | 是   | FK prompt_versions | 生成时提示词                     |
-| `source_json`           | TEXT      | 是   | JSON               | provider/model/candidateIds/seed |
-| `validation_json`       | TEXT      | 是   | JSON               | 构图/alpha/hash                  |
-| `canvas_transform_json` | TEXT      | 是   | JSON               | 后续模型画布映射                 |
-| `content_hash`          | TEXT      | 是   | 64 hex             | 版本快照 hash                    |
-| `created_at`            | INTEGER   | 是   |                    |                                  |
+| 字段                    | 类型      | 必填 | 约束               | 说明                                |
+| ----------------------- | --------- | ---- | ------------------ | ----------------------------------- |
+| `id`                    | TEXT      | 是   | PK                 |                                     |
+| `art_project_id`        | TEXT      | 是   | FK art_projects    |                                     |
+| `parent_version_id`     | TEXT NULL | 否   | FK art_versions    | 项目内 DAG                          |
+| `origin_version_id`     | TEXT NULL | 否   |                    | Fork 复制来源                       |
+| `prompt_version_id`     | TEXT      | 是   | FK prompt_versions | 生成时提示词                        |
+| `artwork_asset_id`      | TEXT      | 是   | FK assets          | 最终立绘图片                        |
+| `generation_job_id`     | TEXT NULL | 否   | FK generation_jobs | generated 版本对应的生成任务        |
+| `source_kind`           | TEXT      | 是   | enum               | `generated/manual_upload/fork_seed` |
+| `source_json`           | TEXT      | 是   | JSON               | 候选、手工上传或 Fork 来源          |
+| `validation_json`       | TEXT      | 是   | JSON               | 构图/alpha/hash                     |
+| `canvas_transform_json` | TEXT      | 是   | JSON               | 后续模型画布映射                    |
+| `content_hash`          | TEXT      | 是   | 64 hex             | 版本快照 hash                       |
+| `version_number`        | INTEGER   | 是   | ≥1，项目内唯一     | ArtVersion 版本号                   |
+| `created_at`            | INTEGER   | 是   |                    |                                     |
 
-`art_versions` 主表不保存参考图列。版本的 1..N 个参考图及其顺序、角色、权重、备注、锁定和主图标记由对应 `asset_links(owner_type='art_version', owner_id=art_versions.id)` 组成，并全部纳入 `content_hash`。主参考图用于 Studio 主画布、平图自动分层和 Live2D 构建；其他参考图作为生成辅助条件。
+`art_versions` 只表示最终立绘结果。`artwork_asset_id` 是唯一图片事实源，`prompt_version_id` 指向生成输入版本，`generation_job_id` 用于追溯 exact request。ArtVersion 不拥有参考图链接，也不定义主图。
+
+`source_kind=generated` 时必须存在 `generation_job_id`；`manual_upload` 和 `fork_seed` 必须没有生成任务。`content_hash` 包含 artwork assetId/sha256、PromptVersion、generation job request hash、父版本、来源、校验和画布转换。
 
 `art_versions.canvas_transform_json` 保存该立绘版本的默认画布映射；实际模型构建必须在 `model_builds.canvas_transform_json` 再固化本次使用的值，二者相同时也要复制快照，避免后续默认映射变化影响历史构建。
 
@@ -1182,17 +1203,18 @@ CREATE INDEX ix_prompt_inputs_project
   ON prompt_input_submissions(art_project_id, created_at DESC);
 CREATE INDEX ix_asset_links_owner
   ON asset_links(owner_type, owner_id, sort_order);
-CREATE UNIQUE INDEX ux_asset_links_art_version_primary
-  ON asset_links(owner_type, owner_id)
-  WHERE owner_type = 'art_version' AND is_primary = 1;
-CREATE UNIQUE INDEX ux_asset_links_art_version_asset
-  ON asset_links(owner_type, owner_id, asset_id)
-  WHERE owner_type = 'art_version';
-CREATE UNIQUE INDEX ux_asset_links_art_version_order
-  ON asset_links(owner_type, owner_id, sort_order)
-  WHERE owner_type = 'art_version';
+CREATE UNIQUE INDEX ux_asset_links_prompt_version_asset
+  ON asset_links(owner_id, asset_id)
+  WHERE owner_type = 'prompt_version';
+CREATE UNIQUE INDEX ux_asset_links_prompt_version_order
+  ON asset_links(owner_id, sort_order)
+  WHERE owner_type = 'prompt_version';
 CREATE INDEX ix_art_versions_project
   ON art_versions(art_project_id, created_at DESC);
+CREATE INDEX ix_art_versions_artwork
+  ON art_versions(artwork_asset_id);
+CREATE INDEX ix_art_versions_generation_job
+  ON art_versions(generation_job_id);
 CREATE INDEX ix_prompt_versions_project
   ON prompt_versions(art_project_id, created_at DESC);
 CREATE INDEX ix_live2d_project
@@ -1241,21 +1263,22 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(
 
 ## 12. 状态枚举
 
-| 域                  | 枚举                                                                                                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| PromptDraft         | `active, committed, superseded`                                                                                                                                    |
-| PromptSuggestion    | `proposed, accepted, rejected, stale`                                                                                                                              |
-| GenerationCandidate | `ready, accepted, rejected, expired`                                                                                                                               |
-| Live2DProject       | `created, image_ready, decomposing, layer_review, psd_composed, rig_planning, rigging, rig_review, motion_review, qc, published, externally_edited, failed, stale` |
-| RigProposal         | `draft, preview_ready, approved, applied, rejected, stale, failed`                                                                                                 |
-| ModelBuild          | `queued, running, qc_pending, qc_passed, qc_failed, failed, unknown_outcome`                                                                                       |
-| Job                 | `queued, leased, running, waiting_user, succeeded, failed, retrying, cancelled, unknown_outcome`                                                                   |
-| AgentApproval       | `pending, accepted, declined, expired, cancelled`                                                                                                                  |
-| ToolSource          | `unknown, ready, degraded, offline, auth_required`                                                                                                                 |
-| ToolReview          | `approved, pending_reapproval, blocked`                                                                                                                            |
-| ToolInvocation      | `requested, waiting_approval, running, succeeded, failed, cancelled`                                                                                               |
-| ToolApproval        | `pending, allowed_once, allowed_session, denied, expired`                                                                                                          |
-| Fork                | `active, detached`                                                                                                                                                 |
+| 域                   | 枚举                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PromptDraft          | `active, committed, superseded`                                                                                                                                    |
+| PromptSuggestion     | `proposed, accepted, rejected, stale`                                                                                                                              |
+| GenerationCandidate  | `ready, accepted, rejected, expired`                                                                                                                               |
+| ArtVersionSourceKind | `generated, manual_upload, fork_seed`                                                                                                                              |
+| Live2DProject        | `created, image_ready, decomposing, layer_review, psd_composed, rig_planning, rigging, rig_review, motion_review, qc, published, externally_edited, failed, stale` |
+| RigProposal          | `draft, preview_ready, approved, applied, rejected, stale, failed`                                                                                                 |
+| ModelBuild           | `queued, running, qc_pending, qc_passed, qc_failed, failed, unknown_outcome`                                                                                       |
+| Job                  | `queued, leased, running, waiting_user, succeeded, failed, retrying, cancelled, unknown_outcome`                                                                   |
+| AgentApproval        | `pending, accepted, declined, expired, cancelled`                                                                                                                  |
+| ToolSource           | `unknown, ready, degraded, offline, auth_required`                                                                                                                 |
+| ToolReview           | `approved, pending_reapproval, blocked`                                                                                                                            |
+| ToolInvocation       | `requested, waiting_approval, running, succeeded, failed, cancelled`                                                                                               |
+| ToolApproval         | `pending, allowed_once, allowed_session, denied, expired`                                                                                                          |
+| Fork                 | `active, detached`                                                                                                                                                 |
 
 ## 13. 事务边界
 
@@ -1263,9 +1286,9 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(
 | ----------------------------- | ----------------------------------------------------------------------------------------------- |
 | 修改角色设定                  | 新 CharacterBriefVersion + characters.active_brief_version_id + audit                           |
 | 保存 PromptInput              | Submission + asset_links + draft revision                                                       |
-| 提交 PromptVersion            | Version + input snapshot 引用 + audit                                                           |
-| 采纳候选                      | Candidate status + ArtVersion + 主参考图 asset_links + active pointer + audit                   |
-| 修改 ArtVersion 参考图        | 新 ArtVersion + 完整 asset_links 快照 + 必要时 active pointer + audit                           |
+| 提交 PromptVersion            | Version + 有序 prompt_version asset_links + input snapshot + active prompt pointer + audit      |
+| 采纳候选                      | Candidate status + ArtVersion(artwork asset/generation source) + active pointer + audit         |
+| 手工上传立绘                  | ArtVersion(artwork asset/manual source) + active pointer + audit                                |
 | Fork                          | Child project + seed versions + fork relation + audit                                           |
 | 采纳 SemanticPatch            | Candidate status + BindingReadyPsd + compose report + LayerSpecVersion + active pointer + audit |
 | 重建 PSD                      | BindingReadyPsd + compose report + LayerSpecVersion + active pointer + audit                    |

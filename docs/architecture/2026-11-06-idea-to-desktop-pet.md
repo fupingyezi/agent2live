@@ -99,7 +99,7 @@
 ### 2.1 目标
 
 - 让不会画画的人可以从文字、设定或参考图开始，经过可控的多轮提示词版本形成可用立绘。
-- 每版立绘有不可变提示词快照、可管理的多参考图集合、生成参数和来源链。
+- 每个 PromptVersion 固化提示词与有序参考图；每个 ArtVersion 固化最终图片、生成参数和来源链。
 - 用户可锁定颗粒块，AI 只能对未锁定块提出建议，不能直接覆盖当前版本。
 - PSD 进入系统后可自动做语义识别、差分候选、规整、绑定、预览和质检。
 - 每套模型拥有独立人格、动作映射、Provider 配置和记忆空间。
@@ -117,14 +117,14 @@
 ### 2.3 系统不变量
 
 1. 已采纳的立绘版本、提示词版本和模型构建都不可变；修正是创建新版本。
-2. 下一版生成若使用参考图，服务端必须解析当前 active ArtVersion 中已保存的完整参考图集合，不接受客户端传入任意旧 assetId 绕过版本链。
+2. PromptVersion 是提示词与有序参考图的完整生成输入；服务端只从明确 PromptVersion 读取 references，不接受客户端传入任意旧 assetId 绕过版本链。
 3. AI 建议不得修改锁定块；检查发生在服务端领域层，而非只做 UI 禁用。
 4. 模型构建必须绑定明确的 ArtVersion、LayerSpecVersion、BindingReadyPsd、RigPlanVersion 和 CanvasTransform，不能使用“当前项目最新文件”这种漂移引用。
 5. 只有通过 QC 的 ModelArtifact 才能发布给桌宠。
 6. Forward 模式不得写入消息历史、语义记忆或摘要记忆。
 7. Agent 模式只持久化任务投影摘要、状态和完成度；原始工作轨迹由 Codex/Claude 自身管理。
 8. 外部模型、PSD、SVG、Hook 内容和 Agent 输出都按不可信输入处理。
-9. PromptVersion 必须固化生成它的角色设定版本（如有）、素材角色、可选要求快照和 input hash；角色设定、素材或要求变化后旧建议不得静默复用。
+9. PromptVersion 必须固化生成它的角色设定版本（如有）、PromptSpec、有序 references、可选要求快照和 input hash；角色设定、提示词、参考图或要求变化后旧建议不得静默复用。
 10. Fork 只能引用已提交版本；父项目和子项目不共享可变 active 指针，谱系关系不因父项目删除而级联删除。
 11. AI 修绑必须先产生用户可理解的预览，采用后才写正式 RigPlan；每次采用都生成可回退版本。
 12. 工具调用必须同时通过 Pet 授权、当前 Schema hash 和风险策略，MCP/Skill 更新不得自动继承旧授权。
@@ -306,8 +306,8 @@ Character
 ├── ArtProject
 │   ├── PromptInputSubmission
 │   ├── PromptDraft
-│   ├── PromptVersion (immutable, DAG by parentId)
-│   ├── ArtVersion (immutable, points to PromptVersion + managed reference set)
+│   ├── PromptVersion (immutable, DAG by parentId; owns ordered references)
+│   ├── ArtVersion (immutable, points to PromptVersion + final artwork asset)
 │   └── Live2DProject
 │       ├── LayerSpecVersion
 │       ├── SemanticPatchCandidate
@@ -323,13 +323,14 @@ Character
         └── AgentTaskProjection           (仅 Agent)
 ```
 
-一个 Character 可以有多个 ArtProject、ArtVersion 和 ModelArtifact。`ArtProject.active_version_id` 是立绘 active 指针的唯一事实源；`Pet.active_model_id` 是该桌宠模型指针的唯一事实源。`runtime_bindings` 是可重建的运行投影，不持有第二个 active 指针。切换模型时创建新绑定，不改写旧记录。
+一个 Character 可以有多个 ArtProject、ArtVersion 和 ModelArtifact。`ArtProject.active_version_id` 是立绘 active 指针的唯一事实源；`ArtProject.active_prompt_version_id` 是当前生成输入版本指针。`ArtVersion` 只保存最终图片和来源，参考图归属于不可变 `PromptVersion`。`Pet.active_model_id` 是该桌宠模型指针的唯一事实源；`runtime_bindings` 是可重建的运行投影，不持有第二个 active 指针。
 
 ### 4.2 颗粒化提示词
 
 ```json
 {
   "schemaVersion": "prompt-spec/2",
+  "fullPrompt": "银灰色短发的青年女性，碧绿色眼睛，正视半身，左上方柔和冷光，纯白背景。",
   "promptVersionId": "pv_01J...",
   "artProjectId": "artp_01J...",
   "characterId": "chr_01J...",
@@ -340,22 +341,23 @@ Character
     {
       "id": "req_01",
       "text": "必须保留左眼下的泪痣",
-      "strength": "must",
-      "appliesTo": ["identity", "ref_face"]
+      "strength": "must"
     }
   ],
   "materialRefs": [
     {
-      "assetId": "sha256:...",
+      "assetId": "ast_01J...",
       "role": "identity_reference",
       "note": "脸型和眼睛以这张为准",
-      "weight": 1.0
+      "weight": 1.0,
+      "locked": true
     },
     {
-      "assetId": "sha256:...",
+      "assetId": "ast_01K...",
       "role": "outfit_reference",
       "note": "只参考服装结构，不参考人物",
-      "weight": 0.7
+      "weight": 0.7,
+      "locked": false
     }
   ],
   "blocks": [
@@ -367,8 +369,16 @@ Character
       "weight": 1.0,
       "locked": true,
       "confidence": 0.96,
-      "evidence": [{ "assetId": "sha256:...", "region": "face" }],
-      "source": "user"
+      "evidence": [
+        {
+          "assetId": "ast_01J...",
+          "region": { "x": 0.3, "y": 0.1, "width": 0.4, "height": 0.3 }
+        }
+      ],
+      "source": "user",
+      "priority": 100,
+      "requirementRefs": ["req_01"],
+      "materialRefs": ["ast_01J..."]
     },
     {
       "id": "lighting.key",
@@ -378,8 +388,11 @@ Character
       "weight": 0.8,
       "locked": false,
       "confidence": 0.74,
-      "evidence": [{ "assetId": "sha256:...", "region": "full" }],
-      "source": "vision-model"
+      "evidence": [],
+      "source": "vision-model",
+      "priority": 20,
+      "requirementRefs": [],
+      "materialRefs": []
     }
   ],
   "negativeBlocks": [
@@ -389,19 +402,26 @@ Character
       "label": "Live2D 反例",
       "text": "文字，水印，复杂背景，头发遮眼，手脚裁切",
       "weight": 1.0,
-      "locked": true
+      "locked": true,
+      "confidence": 1,
+      "evidence": [],
+      "source": "user",
+      "priority": 100,
+      "requirementRefs": [],
+      "materialRefs": []
     }
   ],
   "constraints": {
-    "orientation": "portrait",
-    "background": "solid-white",
-    "fullBody": true,
-    "canvas": { "width": 1584, "height": 2816 }
+    "canvas": { "width": 1584, "height": 2816 },
+    "background": "solid",
+    "aspect": "portrait"
   }
 }
 ```
 
-建议的 `category` 枚举：
+`materialRefs` 是草稿编辑态和 PromptVersion references 的派生视图。提交 PromptVersion 时，服务端按数组顺序写入 `asset_links(owner_type='prompt_version')`；读取时再根据该有序数组恢复 `materialRefs`。参考图没有主图标记。
+
+`category` 枚举：
 
 ```text
 subject, identity, age, body, face, hair, eyes, outfit, accessory,
@@ -447,57 +467,37 @@ color, lighting, rendering, material, negative, safety
   "schemaVersion": "art-version/2",
   "id": "art_01J...",
   "artProjectId": "artp_01J...",
-  "characterId": "chr_01J...",
-  "parentVersionId": "art_01H...",
+  "versionNumber": 4,
+  "artworkAssetId": "ast_01J...",
   "promptVersionId": "pv_01J...",
-  "referenceAssets": [
-    {
-      "assetId": "sha256:primary...",
-      "role": "identity_reference",
-      "note": "本版主参考图，用于预览、自动分层和模型构建",
-      "weight": 1.0,
-      "sortOrder": 0,
-      "isPrimary": true
-    },
-    {
-      "assetId": "sha256:outfit...",
-      "role": "outfit_reference",
-      "note": "保持服装结构",
-      "weight": 0.8,
-      "sortOrder": 1,
-      "isPrimary": false
-    },
-    {
-      "assetId": "sha256:style...",
-      "role": "style_reference",
-      "note": "只参考笔触和配色",
-      "weight": 0.5,
-      "sortOrder": 2,
-      "isPrimary": false
-    }
-  ],
+  "generationId": "gen_01J...",
+  "parentVersionId": "art_01H...",
+  "originVersionId": "art_01H...",
+  "sourceKind": "generated",
   "source": {
-    "type": "generated",
-    "provider": "image-provider",
-    "model": "image-model",
-    "candidateIds": ["cand_01J...", "cand_01K..."],
-    "seed": 123456
+    "schemaVersion": "art-source/1",
+    "kind": "generation_candidate",
+    "candidateId": "cand_01J...",
+    "generationJobId": "gen_01J...",
+    "generationRequestHash": "sha256:..."
   },
   "validation": {
+    "schemaVersion": "art-validation/1",
+    "status": "passed",
     "width": 1584,
     "height": 2816,
-    "alphaBounds": { "x": 170, "y": 8, "w": 1240, "h": 2800 },
-    "verticalCoverage": 0.994,
-    "horizontalOffset": 0.018,
-    "warnings": []
+    "mediaType": "image/png",
+    "sha256": "sha256:..."
   },
+  "canvasTransform": { "scale": 1, "offsetX": 0, "offsetY": 0, "rotationDeg": 0 },
+  "contentHash": "sha256:...",
   "createdAt": "2026-11-06T15:00:00+08:00"
 }
 ```
 
-一个 ArtVersion 可以采纳并管理多个参考图，但必须恰好有一个主参考图。用户可以增加、移除、排序参考图，修改角色、备注和权重，或切换主参考图。由于 ArtVersion 不可变，这些操作针对已提交版本时创建新的 ArtVersion 引用集快照，而不是原地修改旧版本；新快照的 `content_hash` 必须包含全部参考图及其顺序和元数据。若源版本是 active，新引用集快照在同一事务中成为 active；回退到旧版本时恢复该版本完整的参考图集合。
+`ArtVersion` 只表示最终立绘结果。`artworkAssetId` 用于 Studio 画布、平图自动分层和后续 Live2D 构建；参考图、角色、权重和顺序由关联的 PromptVersion 保存。ArtVersion 不拥有参考图，也没有主图。生成、手工上传和 Fork seed 是三种互斥的 `sourceKind`。
 
-主参考图用于 Studio 主画布、单图自动分层和 Live2D 构建；其余参考图作为生图或补层时的受控辅助条件，不要求都存在，也不会自动参与最终 PSD 合成。所有参考图仍按内容寻址引用 Blob，删除版本或参考关联不立即删除文件。
+用户可以激活任意历史 ArtVersion。激活只移动 `ArtProject.active_version_id`，不修改 PromptVersion，也不删除其他版本。
 
 采纳候选时使用乐观并发控制：
 
@@ -506,7 +506,7 @@ POST /generation-candidates/:id/accept
 If-Match: currentActiveVersionId
 ```
 
-若 active 已变化，返回 `409 ACTIVE_VERSION_CHANGED`，由用户重新确认，不静默覆盖。
+若 active 已变化，返回 `409 ART_ACTIVE_VERSION_CHANGED`，由用户重新确认，不静默覆盖。
 
 ### 4.5 Live2D 构建契约
 
@@ -590,48 +590,48 @@ If-Match: currentActiveVersionId
 
 ### 4.6 数据库表
 
-| 表                          | 关键字段                                                                                                                                                                                                                                                                 | 说明                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `characters`                | id, title, summary, active_brief_version_id, row_version                                                                                                                                                                                                                 | 角色聚合根；保存角色设定 active 指针，不保存立绘 active 指针          |
-| `assets`                    | id, sha256, media_type, byte_size, storage_key, width, height                                                                                                                                                                                                            | 元数据；大文件在 Blob Store                                           |
-| `asset_provenance`          | asset_id, source_kind, source_ref, license, consent, model_ref                                                                                                                                                                                                           | 用户素材、AI 产物和第三方素材的来源链                                 |
-| `art_projects`              | id, character_id, title, active_version_id, active_prompt_version_id, stage, row_version                                                                                                                                                                                 | 立绘与提示词聚合根；active 指针的唯一来源                             |
-| `character_brief_versions`  | id, character_id, parent_version_id, content_json, source_kind, content_hash                                                                                                                                                                                             | 不可变角色设定快照                                                    |
-| `project_forks`             | id, child_project_id, parent_project_id, root_project_id, source_kind, source_version_id, source_hash, branch_label, status                                                                                                                                              | 跨 ArtProject 的分支谱系；不拥有版本 active 指针                      |
-| `prompt_input_submissions`  | id, art_project_id, draft_id, revision, character_brief_version_id, global_notes, requirements_json, created_at, row_version                                                                                                                                             | 不可变初始化输入；角色设定版本或参考图至少有一种                      |
-| `asset_links`               | asset_id, owner_type, owner_id, role, note, weight, sort_order, is_primary, locked                                                                                                                                                                                       | 素材和 PromptInput/PromptVersion/ArtVersion 的角色化关联              |
-| `prompt_drafts`             | id, art_project_id, revision, status, state_json, input_submission_id, row_version                                                                                                                                                                                       | 可编辑草稿及其当前输入快照                                            |
-| `prompt_versions`           | id, art_project_id, parent_version_id, input_submission_id, content_json, content_hash                                                                                                                                                                                   | 不可变提示词快照                                                      |
-| `prompt_suggestions`        | id, base_version_id, operations_json, status, provider_run_id                                                                                                                                                                                                            | AI 建议                                                               |
-| `art_versions`              | id, art_project_id, parent_version_id, origin_version_id, prompt_version_id, source_json, validation_json, canvas_transform_json, content_hash                                                                                                                           | 不可变立绘版本；参考图通过 `asset_links(owner_type=art_version)` 保存 |
-| `generation_jobs`           | id, art_project_id, prompt_version_id, base_art_version_id, provider_connection_id, request_json, job_id, status                                                                                                                                                         | 生成任务及固定参考图集合来源                                          |
-| `generation_candidates`     | id, generation_job_id, asset_id, validation_json, status, accepted_art_version_id                                                                                                                                                                                        | 候选图                                                                |
-| `live2d_projects`           | id, art_project_id, base_art_version_id, active_layer_spec_version_id, active_rig_plan_version_id, stage, row_version                                                                                                                                                    | Live2D 项目及其当前图层/绑定版本指针                                  |
-| `layer_spec_versions`       | id, live2d_project_id, parent_version_id, source_art_version_id, label, change_summary, source_kind, source_psd_asset_id, binding_ready_psd_asset_id, compose_report_asset_id, layers_json, decomposer_json, qc_json, content_hash                                       | 不可变图层方案、PSD 输入输出及合成报告                                |
-| `semantic_patch_candidates` | id, live2d_project_id, layer_spec_version_id, role, asset_id, confidence, status, accepted_layer_spec_version_id                                                                                                                                                         | 闭眼、张嘴、SVG/栅格补层候选及采纳结果                                |
-| `rig_plan_versions`         | id, live2d_project_id, parent_version_id, label, change_summary, source_layer_spec_version_id, binding_ready_psd_asset_id, plan_json, binder_state_asset_id, base_state_hash, edit_log_json, content_hash                                                                | 固定输入 PSD 的可重放绑定方案                                         |
-| `rig_copilot_sessions`      | id, project_id, model_build_id, selection_json, status                                                                                                                                                                                                                   | 绑定协作会话，不进入桌宠记忆                                          |
-| `rig_copilot_messages`      | id, session_id, role, content_json, created_at                                                                                                                                                                                                                           | 用户与 AI 的绑定协作记录，可单独清理                                  |
-| `rig_edit_proposals`        | id, session_id, base_state_hash, intent, edits_json, preview_json, verification_json, status                                                                                                                                                                             | 不可变修改提案                                                        |
-| `rig_preview_renders`       | id, proposal_id, probe_id, before_asset_id, after_asset_id, metrics_json                                                                                                                                                                                                 | 参数/动作采样预览                                                     |
-| `model_builds`              | id, live2d_project_id, art_version_id, layer_spec_version_id, binding_ready_psd_asset_id, rig_plan_version_id, label, change_summary, canvas_transform_json, target_cubism_version, required_capabilities_json, binder_connection_id, binder_version, input_hash, status | 固定全部输入的一次构建                                                |
-| `model_artifacts`           | id, build_id, entry, content_digest, capabilities_json, qc_report_id                                                                                                                                                                                                     | 可发布模型                                                            |
-| `pets`                      | id, name, character_id, active_model_id, window_config_json                                                                                                                                                                                                              | 桌宠实例；唯一 active model 指针                                      |
-| `persona_versions`          | id, pet_id, model_artifact_id, character_brief_version_id, overrides_json, persona_json, prompt_hash                                                                                                                                                                     | 从 CharacterBriefVersion 与运行时覆盖生成的人格投影                   |
-| `runtime_bindings`          | id, pet_id, model_artifact_id, motion_map_json, provider_connection_id                                                                                                                                                                                                   | 运行时绑定                                                            |
-| `provider_connections`      | id, kind, label, config_json, secret_ref, capabilities_json                                                                                                                                                                                                              | 不含明文密钥                                                          |
-| `conversations`             | id, pet_id, mode, external_session_ref, status                                                                                                                                                                                                                           | 仅 Direct 持久化；Forward 不创建                                      |
-| `messages`                  | id, conversation_id, role, content_json, created_at                                                                                                                                                                                                                      | 仅 Direct 的聊天内容                                                  |
-| `memory_spaces`             | id, pet_id, model_artifact_id, namespace                                                                                                                                                                                                                                 | 隔离空间                                                              |
-| `memory_items`              | id, space_id, kind, content, importance, source, status, expires_at                                                                                                                                                                                                      | 可检索长期记忆                                                        |
-| `memory_vectors`            | memory_id, embedding_model, embedding_revision, dimensions, embedding                                                                                                                                                                                                    | 向量必须与模型、版本和维度绑定                                        |
-| `agent_tasks`               | id, pet_id, provider, native_session_ref, objective, status                                                                                                                                                                                                              | Agent 任务元数据                                                      |
-| `agent_task_projections`    | agent_task_id, completion, summary, blockers_json, revision                                                                                                                                                                                                              | 唯一允许进入桌宠记忆的 Agent 投影                                     |
-| `agent_approvals`           | id, agent_task_id, native_turn_ref, native_tool_request_ref, payload_hash, permission_mode, normalized_cwd, scope_hash, kind, status, expires_at                                                                                                                         | 审批状态机；scope_hash 的组成字段同时持久化                           |
-| `jobs`                      | id, type, payload_json, status, attempts, lease_until                                                                                                                                                                                                                    | 持久任务                                                              |
-| `job_events`                | id, job_id, seq, type, payload_json, created_at                                                                                                                                                                                                                          | SSE 可重放事件                                                        |
-| `outbox`                    | id, topic, payload_json, published_at                                                                                                                                                                                                                                    | 跨模块可靠通知                                                        |
-| `audit_events`              | seq, at, actor_json, action, target_json, outcome, request_id, trace_id, before_hash, after_hash, metadata_json                                                                                                                                                          | 追加式安全与业务审计，不是调试日志                                    |
+| 表                          | 关键字段                                                                                                                                                                                                                                                                 | 说明                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `characters`                | id, title, summary, active_brief_version_id, row_version                                                                                                                                                                                                                 | 角色聚合根；保存角色设定 active 指针，不保存立绘 active 指针  |
+| `assets`                    | id, sha256, media_type, byte_size, storage_key, width, height                                                                                                                                                                                                            | 元数据；大文件在 Blob Store                                   |
+| `asset_provenance`          | asset_id, source_kind, source_ref, license, consent, model_ref                                                                                                                                                                                                           | 用户素材、AI 产物和第三方素材的来源链                         |
+| `art_projects`              | id, character_id, title, active_version_id, active_prompt_version_id, stage, row_version                                                                                                                                                                                 | 立绘与提示词聚合根；active 指针的唯一来源                     |
+| `character_brief_versions`  | id, character_id, parent_version_id, content_json, source_kind, content_hash                                                                                                                                                                                             | 不可变角色设定快照                                            |
+| `project_forks`             | id, child_project_id, parent_project_id, root_project_id, source_kind, source_version_id, source_hash, branch_label, status                                                                                                                                              | 跨 ArtProject 的分支谱系；不拥有版本 active 指针              |
+| `prompt_input_submissions`  | id, art_project_id, draft_id, revision, character_brief_version_id, global_notes, requirements_json, created_at, row_version                                                                                                                                             | 不可变初始化输入；角色设定版本或参考图至少有一种              |
+| `asset_links`               | asset_id, owner_type, owner_id, role, note, weight, sort_order, locked                                                                                                                                                                                                   | PromptInput/PromptVersion/LayerSpec/Model 的角色化素材关联    |
+| `prompt_drafts`             | id, art_project_id, revision, status, state_json, input_submission_id, row_version                                                                                                                                                                                       | 可编辑草稿及其当前输入快照                                    |
+| `prompt_versions`           | id, art_project_id, parent_version_id, input_submission_id, content_json, content_hash, version_number                                                                                                                                                                   | 不可变生成输入版本；PromptSpec + 有序参考图                   |
+| `prompt_suggestions`        | id, job_id, base_kind, base_version_id, base_draft_id, operations_json, status, provider_invocation_id                                                                                                                                                                   | AI 建议及精确基线                                             |
+| `art_versions`              | id, art_project_id, parent_version_id, origin_version_id, prompt_version_id, artwork_asset_id, generation_job_id, source_kind, source_json, validation_json, canvas_transform_json, content_hash, version_number                                                         | 不可变最终立绘；只保存 artwork asset 与来源                   |
+| `generation_jobs`           | id, art_project_id, prompt_version_id, base_art_version_id, provider_connection_id, request_json, request_hash, job_id                                                                                                                                                   | 固定 PromptVersion、可选 base ArtVersion 与实际 Provider 请求 |
+| `generation_candidates`     | id, generation_job_id, asset_id, validation_json, status, accepted_art_version_id                                                                                                                                                                                        | 候选图                                                        |
+| `live2d_projects`           | id, art_project_id, base_art_version_id, active_layer_spec_version_id, active_rig_plan_version_id, stage, row_version                                                                                                                                                    | Live2D 项目及其当前图层/绑定版本指针                          |
+| `layer_spec_versions`       | id, live2d_project_id, parent_version_id, source_art_version_id, label, change_summary, source_kind, source_psd_asset_id, binding_ready_psd_asset_id, compose_report_asset_id, layers_json, decomposer_json, qc_json, content_hash                                       | 不可变图层方案、PSD 输入输出及合成报告                        |
+| `semantic_patch_candidates` | id, live2d_project_id, layer_spec_version_id, role, asset_id, confidence, status, accepted_layer_spec_version_id                                                                                                                                                         | 闭眼、张嘴、SVG/栅格补层候选及采纳结果                        |
+| `rig_plan_versions`         | id, live2d_project_id, parent_version_id, label, change_summary, source_layer_spec_version_id, binding_ready_psd_asset_id, plan_json, binder_state_asset_id, base_state_hash, edit_log_json, content_hash                                                                | 固定输入 PSD 的可重放绑定方案                                 |
+| `rig_copilot_sessions`      | id, project_id, model_build_id, selection_json, status                                                                                                                                                                                                                   | 绑定协作会话，不进入桌宠记忆                                  |
+| `rig_copilot_messages`      | id, session_id, role, content_json, created_at                                                                                                                                                                                                                           | 用户与 AI 的绑定协作记录，可单独清理                          |
+| `rig_edit_proposals`        | id, session_id, base_state_hash, intent, edits_json, preview_json, verification_json, status                                                                                                                                                                             | 不可变修改提案                                                |
+| `rig_preview_renders`       | id, proposal_id, probe_id, before_asset_id, after_asset_id, metrics_json                                                                                                                                                                                                 | 参数/动作采样预览                                             |
+| `model_builds`              | id, live2d_project_id, art_version_id, layer_spec_version_id, binding_ready_psd_asset_id, rig_plan_version_id, label, change_summary, canvas_transform_json, target_cubism_version, required_capabilities_json, binder_connection_id, binder_version, input_hash, status | 固定全部输入的一次构建                                        |
+| `model_artifacts`           | id, build_id, entry, content_digest, capabilities_json, qc_report_id                                                                                                                                                                                                     | 可发布模型                                                    |
+| `pets`                      | id, name, character_id, active_model_id, window_config_json                                                                                                                                                                                                              | 桌宠实例；唯一 active model 指针                              |
+| `persona_versions`          | id, pet_id, model_artifact_id, character_brief_version_id, overrides_json, persona_json, prompt_hash                                                                                                                                                                     | 从 CharacterBriefVersion 与运行时覆盖生成的人格投影           |
+| `runtime_bindings`          | id, pet_id, model_artifact_id, motion_map_json, provider_connection_id                                                                                                                                                                                                   | 运行时绑定                                                    |
+| `provider_connections`      | id, kind, label, config_json, secret_ref, capabilities_json                                                                                                                                                                                                              | 不含明文密钥                                                  |
+| `conversations`             | id, pet_id, mode, external_session_ref, status                                                                                                                                                                                                                           | 仅 Direct 持久化；Forward 不创建                              |
+| `messages`                  | id, conversation_id, role, content_json, created_at                                                                                                                                                                                                                      | 仅 Direct 的聊天内容                                          |
+| `memory_spaces`             | id, pet_id, model_artifact_id, namespace                                                                                                                                                                                                                                 | 隔离空间                                                      |
+| `memory_items`              | id, space_id, kind, content, importance, source, status, expires_at                                                                                                                                                                                                      | 可检索长期记忆                                                |
+| `memory_vectors`            | memory_id, embedding_model, embedding_revision, dimensions, embedding                                                                                                                                                                                                    | 向量必须与模型、版本和维度绑定                                |
+| `agent_tasks`               | id, pet_id, provider, native_session_ref, objective, status                                                                                                                                                                                                              | Agent 任务元数据                                              |
+| `agent_task_projections`    | agent_task_id, completion, summary, blockers_json, revision                                                                                                                                                                                                              | 唯一允许进入桌宠记忆的 Agent 投影                             |
+| `agent_approvals`           | id, agent_task_id, native_turn_ref, native_tool_request_ref, payload_hash, permission_mode, normalized_cwd, scope_hash, kind, status, expires_at                                                                                                                         | 审批状态机；scope_hash 的组成字段同时持久化                   |
+| `jobs`                      | id, type, payload_json, status, attempts, lease_until                                                                                                                                                                                                                    | 持久任务                                                      |
+| `job_events`                | id, job_id, seq, type, payload_json, created_at                                                                                                                                                                                                                          | SSE 可重放事件                                                |
+| `outbox`                    | id, topic, payload_json, published_at                                                                                                                                                                                                                                    | 跨模块可靠通知                                                |
+| `audit_events`              | seq, at, actor_json, action, target_json, outcome, request_id, trace_id, before_hash, after_hash, metadata_json                                                                                                                                                          | 追加式安全与业务审计，不是调试日志                            |
 
 关键索引：
 
@@ -642,9 +642,8 @@ If-Match: currentActiveVersionId
 - `project_forks(parent_project_id, lower(branch_label)) WHERE status='active'` 唯一
 - `prompt_input_submissions(art_project_id, created_at desc)`
 - `asset_links(owner_type, owner_id, sort_order)`
-- `asset_links(owner_type, owner_id) WHERE owner_type='art_version' AND is_primary=1` 唯一
-- `asset_links(owner_type, owner_id, asset_id) WHERE owner_type='art_version'` 唯一
-- `asset_links(owner_type, owner_id, sort_order) WHERE owner_type='art_version'` 唯一
+- `asset_links(owner_id, asset_id) WHERE owner_type='prompt_version'` 唯一
+- `asset_links(owner_id, sort_order) WHERE owner_type='prompt_version'` 唯一
 - `prompt_drafts(art_project_id, status)`，其中每个 art project 只允许一个 `active` draft
 - `prompt_versions(content_hash)`
 - `layer_spec_versions(live2d_project_id, created_at desc)`
@@ -738,7 +737,6 @@ idea_draft
 
 ```json
 {
-  "schemaVersion": "prompt-input/2",
   "id": "inp_01J...",
   "artProjectId": "artp_01J...",
   "draftId": "pd_01J...",
@@ -749,34 +747,32 @@ idea_draft
     {
       "id": "req_01",
       "text": "必须保留左眼下的泪痣",
-      "strength": "must",
-      "appliesTo": ["identity", "asset_face"],
-      "locked": true
+      "strength": "must"
     },
     {
       "id": "req_02",
       "text": "不要写实厚涂，保持干净赛璐璐",
-      "strength": "avoid",
-      "appliesTo": ["style", "rendering"],
-      "locked": true
+      "strength": "avoid"
     }
   ],
   "materials": [
     {
-      "partName": "face",
-      "assetId": "sha256:...",
+      "id": "alink_01J...",
+      "assetId": "ast_01J...",
       "role": "identity_reference",
       "note": "脸型、眼型以此图为准",
       "weight": 1.0,
-      "locked": true
+      "locked": true,
+      "sortOrder": 0
     },
     {
-      "partName": "outfit",
-      "assetId": "sha256:...",
+      "id": "alink_01K...",
+      "assetId": "ast_01K...",
       "role": "outfit_reference",
       "note": "只参考外套结构，不参考人物和配色",
       "weight": 0.7,
-      "locked": false
+      "locked": false,
+      "sortOrder": 1
     }
   ]
 }
@@ -895,11 +891,11 @@ avoid     避免项，进入反向约束或 QA checklist
 
 1. 上传文件先进入 quarantine，完成 MIME、尺寸、hash 和恶意内容检查。
 2. `PromptInputService` 在需要时创建 `CharacterBriefVersion`，并在同一事务中保存 `PromptInputSubmission`、`asset_links` 和 draft revision。
-3. `PromptReverseService` 在同一多模态上下文里同时读取角色设定（如有）、全部素材、各素材备注和可选的创作要求，不能把“图像分析”和“文字要求”拆成两个互不知情的请求。
+3. `PromptReverseService` 读取当前 PromptDraft 的有序 references、草稿提示词、角色设定（如有）和创作要求；视觉能力由当前 references 是否为空决定，不能把“图像分析”和“文字要求”拆成两个互不知情的请求。
 4. 输出颗粒块时，每个块附带 `requirementRefs`、`materialRefs`、置信度和证据区域。
 5. `PromptRequirementAudit` 检查每个 `must` 和 `avoid` 是否至少映射到一个正向/反向块；未覆盖项必须显示在审查面板。
-6. 用户修改块、调整素材角色/权重或补充要求，保存新的 input revision。
-7. 保存为不可变 `PromptVersion` 时，同时固化 `inputSubmissionId`、角色设定版本（如有）、素材 hash 和可选的创作要求快照。
+6. 用户在 PromptDraft 中修改提示词或调整 references 的增删、顺序、角色、备注、权重和锁定。
+7. 提交为不可变 `PromptVersion` 时，同时固化 PromptSpec、`inputSubmissionId`、有序 references、角色设定版本（如有）和可选的创作要求快照。
 
 模型输出必须使用 JSON Schema 约束。无效 JSON 最多重试两次；仍失败则降级为“模板 + 用户手填”，不将原始自由文本直接写入数据库。
 
@@ -913,23 +909,28 @@ avoid     避免项，进入反向约束或 QA checklist
 - 只有角色设定、没有参考图时，允许从文字设定反推提示词。
 - 只有参考图、没有角色设定时，允许从视觉素材生成提示词，并可生成视觉向的 `CharacterBrief` 草稿；不得静默推断性格、背景或说话方式。
 - 两者都没有时拒绝初始化，不创建 AI 任务。
-- `PromptVersion` 同时固化 `CharacterBriefVersion`（如有）、素材和可选的创作要求，避免后续修改角色设定导致历史提示词漂移。
+- `PromptVersion` 同时固化 `CharacterBriefVersion`（如有）、PromptSpec 和有序 references，避免后续修改角色设定或参考图导致历史提示词漂移。
 
 响应：
 
 ```json
 {
-  "inputSubmissionId": "inp_01J...",
-  "revision": 3,
-  "characterBriefVersionId": "cbv_01J...",
-  "materials": [
-    {
-      "assetId": "sha256:...",
-      "role": "identity_reference",
-      "status": "ready"
-    }
-  ],
-  "requirementWarnings": []
+  "submission": {
+    "id": "inp_01J...",
+    "revision": 3,
+    "characterBriefVersionId": "cbv_01J...",
+    "globalNotes": "正面全身，深蓝色工装外套，白色纯色背景。",
+    "requirements": [],
+    "materials": []
+  },
+  "draft": {
+    "id": "pd_01J...",
+    "revision": 4,
+    "status": "active",
+    "contentHash": "sha256:...",
+    "rowVersion": 2
+  },
+  "warnings": []
 }
 ```
 
@@ -968,20 +969,22 @@ PromptSpec
 
 规则如下：
 
-1. 客户端发起下一版生成时只传 `promptVersionId`。
-2. 若当前存在 active ArtVersion，服务端自动解析它保存的完整参考图集合。主参考图 `sortOrder` 固定为 0，其余参考图从 1 开始按升序发送；`isPrimary=true` 的主参考图必须存在且排在最前。PromptVersion 中的身份、服装、风格等素材作为补充材料，不能替代 active ArtVersion 的参考图集合。
-3. 若不存在 active ArtVersion，才走纯文生图。
-4. 每个任务可以产生多个候选，候选不是 ArtVersion。
-5. 用户采纳候选时，系统校验尺寸、内容安全、文件完整性和 active 版本并发状态。
-6. 采纳后创建新 ArtVersion，并把 active 指针原子移动。
-7. 回退不删除新版本；只把 active 指针移向旧版本，并写 `rolled_back` 审计事件。下一次生成使用这个“当前 active”版本保存的完整参考图集合，而不是项目最新上传的图片。
+1. 客户端提交 `promptVersionId`、Provider/model、数量、尺寸和可选 seed；服务端从该 PromptVersion 读取 PromptSpec 与有序 references。
+2. 空 references 走纯文生图；非空 references 按数组顺序依次发送。不定义主参考图。
+3. `baseArtVersionId` 可省略；省略时使用项目当前 active ArtVersion。显式值与当前 active 不一致时返回 `ART_ACTIVE_VERSION_CHANGED`。
+4. `includeBaseArtworkReference` 默认 `false`，base ArtVersion 只记录继续创作来源。设为 `true` 时，服务端把当前立绘追加到 references 末尾（相同 asset 不重复），并受 14 张契约上限与 Provider 能力上限约束。
+5. GenerationJob 固定 PromptVersion、base ArtVersion、模型选择、编译 Prompt、参考图排序与 hash、尺寸、数量和 seed。
+6. 每个任务可以产生多个候选，候选不是 ArtVersion。
+7. 用户采纳候选时，系统校验尺寸、内容安全、文件完整性和 active 版本并发状态。
+8. 采纳后创建新 ArtVersion，写入候选 `assetId` 为 `artworkAssetId`、生成任务与 PromptVersion 来源，并把 active 指针原子移动。
+9. 激活历史 ArtVersion 不删除任何版本，也不修改 PromptVersion；只移动 active 指针并写审计事件。
 
 Provider 对多图输入的能力由 Capability Profile 决定：
 
-- 支持足够多图：按版本内的排序、角色和权重发送全部 active 参考图。
-- 支持多图但数量不足：先保留主参考图，再按 `sortOrder` 选择其余参考图；被省略的参考图写入编译报告并标记 `reference_budget_exceeded`，不得静默假装已发送。
-- 只支持单图：默认使用 active 主参考图，其余参考图在发送前由多模态预处理器转成文字描述，并明确标记 `auxiliary_images_folded`。
-- 不支持图生图：只能文生图，保留完整素材快照但提示用户结果一致性会下降。
+- 支持足够多图：按 PromptVersion references 数组顺序发送全部参考图。
+- 支持数量不足：发送数组前缀，剩余参考图写入编译报告并标记 `reference_budget_exceeded`，不得静默假装已发送。
+- 不支持图生图 `maxReferenceImages=0`：保留完整 references 快照，但实际忽略全部图片并标记 `references_ignored_no_image_input`。
+- Provider 只支持单图时，按顺序发送第一张；这只是能力降级，不是业务主图。
 
 ### 5.5 AI 微调与锁定
 
@@ -1004,10 +1007,10 @@ AI 只能返回建议，不直接修改 draft。用户点击采纳后可选择�
 
 `/characters/:id/art`
 
-- 左侧：版本树。节点显示缩略图、版本号、active、分支和回退事件。
-- 中间：当前版本的可管理参考图集合与候选图对比，支持增加、移除、排序、修改角色/备注/权重和切换主参考图；并提供原图、差异、并排三种查看方式。
-- 右侧：颗粒化提示词 Inspector。
-- 底部：生成参数、Provider、尺寸和任务进度。
+- 版本栏分别展示 PromptVersion 和 ArtVersion：PromptVersion 管理完整提示词与有序参考图，ArtVersion 展示最终立绘缩略图。
+- Prompt 工作区同时编辑 `fullPrompt`、颗粒块和有序参考图；参考图支持上传、删除、排序、角色、备注、权重和锁定，不存在“设为主图”。
+- ArtVersion 工作区只展示最终立绘、历史激活、候选对比和手工上传。
+- GenerationDialog 选择已提交 PromptVersion，并可选择是否把当前 active 立绘追加为参考图。
 
 核心组件：
 
@@ -1024,7 +1027,7 @@ AI 只能返回建议，不直接修改 draft。用户点击采纳后可选择�
 - `ConfidenceBadge`
 - `SuggestionDiff`
 - `CandidateCompareView`
-- `ReferenceChainBar`
+- `PromptReferenceEditor`
 - `GenerationControls`
 - `TaskProgress`
 
@@ -1038,7 +1041,7 @@ AI 只能返回建议，不直接修改 draft。用户点击采纳后可选择�
 
 - 子项目必须与原项目属于同一个 Character。
 - 一个父版本可以创建多个互不影响的子项目。
-- Fork 时创建本地 seed `PromptVersion`；如果源是 ArtVersion，还创建本地 seed `ArtVersion`，完整复制有序参考图关联和主图标记。所有引用复用同一个内容寻址 Blob，不复制图片字节。
+- Fork 时创建本地 seed `PromptVersion`，完整复制 PromptSpec 与有序参考图；如果源是 ArtVersion，还创建 seed `ArtVersion`，复用其 `artworkAssetId`。所有引用复用同一个内容寻址 Blob，不复制图片字节。
 - Blob GC 同时统计父版本、子版本和 Fork seed 的引用；删除父项目不能回收仍被子项目引用的素材。
 - 子项目的 active 指针从 seed 开始，之后只修改自己项目内的版本，不修改父项目。
 - Live2DProject、RigPlan、ModelBuild 默认不复制；它们可以从子项目新的 active ArtVersion 重新创建。
@@ -1161,7 +1164,7 @@ psd_imported
 可选输入 PSD 不是唯一入口。没有 PSD 时，从当前 active ArtVersion 进入自动分层：
 
 ```text
-ArtVersion 中 isPrimary=true 的参考图
+ArtVersion.artworkAssetId 指向的最终立绘
   → 图像规范化
   → SeeThroughDecomposer
   → SemanticAudit
@@ -1255,7 +1258,7 @@ SVG 处理流程：
 1. 删除 `<script>`、`foreignObject`、事件属性和外部引用。
 2. 禁止字体、远程图片和滤镜网络请求。
 3. 用固定 viewBox 栅格化到目标 PSD 坐标。
-4. 检查 bbox、透明边界和主图对齐。
+4. 检查 bbox、透明边界和最终立绘对齐。
 5. 形成 `raster_patch` 候选并等待用户采纳。
 
 候选不会直接写入正式 PSD。用户采纳后，composer 幂等生成 BindingReadyPsd 和 compose report；全部成功后才原子创建新的 `LayerSpecVersion` 并移动 active 指针。合成失败只保留上一版。
@@ -2639,41 +2642,42 @@ telemetry-audit
 
 #### 角色与提示词
 
-| 方法     | 路径                                | 说明                                                           |
-| -------- | ----------------------------------- | -------------------------------------------------------------- |
-| `POST`   | `/characters`                       | 创建角色                                                       |
-| `GET`    | `/characters`                       | 角色列表与当前阶段摘要                                         |
-| `GET`    | `/characters/:id`                   | 获取驾驶舱摘要                                                 |
-| `PATCH`  | `/characters/:id`                   | 修改角色基本信息                                               |
-| `GET`    | `/characters/:id/brief-versions`    | 获取角色设定版本                                               |
-| `POST`   | `/characters/:id/brief-versions`    | 创建角色设定版本并切换 active                                  |
-| `DELETE` | `/characters/:id`                   | 软删除角色                                                     |
-| `POST`   | `/characters/:id/art-projects`      | 创建独立立绘项目                                               |
-| `POST`   | `/assets`                           | 上传立绘、PSD、参考图或素材                                    |
-| `POST`   | `/art-projects/:id/prompt-inputs`   | 原子提交角色设定或参考图（至少一种）、可选创作要求和素材元数据 |
-| `POST`   | `/art-projects/:id/prompt:reverse`  | 从角色设定、参考图或二者组合生成提示词候选                     |
-| `PUT`    | `/art-projects/:id/prompt-draft`    | 保存草稿，必须带 `If-Match`                                    |
-| `POST`   | `/art-projects/:id/prompt-versions` | 将草稿提交为不可变版本                                         |
-| `POST`   | `/prompt-versions/:id/suggestions`  | 请求 AI 微调建议                                               |
-| `POST`   | `/prompt-suggestions/:id/accept`    | 采纳建议到新 draft revision                                    |
-| `GET`    | `/art-projects/:id/versions`        | 获取版本 DAG、active 指针和回退记录                            |
-| `POST`   | `/prompt-versions/:id/forks`        | 从指定提示词版本创建子项目                                     |
-| `POST`   | `/art-versions/:id/forks`           | 从指定立绘版本创建子项目                                       |
-| `GET`    | `/art-projects/tree?characterId=`   | 获取项目谱系树和分支摘要                                       |
-| `PATCH`  | `/art-projects/:id/fork-link`       | 修改分支标签或脱离谱系                                         |
+| 方法     | 路径                                              | 说明                                                           |
+| -------- | ------------------------------------------------- | -------------------------------------------------------------- |
+| `POST`   | `/characters`                                     | 创建角色                                                       |
+| `GET`    | `/characters`                                     | 角色列表与当前阶段摘要                                         |
+| `GET`    | `/characters/:id`                                 | 获取驾驶舱摘要                                                 |
+| `PATCH`  | `/characters/:id`                                 | 修改角色基本信息                                               |
+| `GET`    | `/characters/:id/brief-versions`                  | 获取角色设定版本                                               |
+| `POST`   | `/characters/:id/brief-versions`                  | 创建角色设定版本并切换 active                                  |
+| `DELETE` | `/characters/:id`                                 | 软删除角色                                                     |
+| `POST`   | `/characters/:id/art-projects`                    | 创建独立立绘项目                                               |
+| `POST`   | `/assets`                                         | 上传立绘、PSD、参考图或素材                                    |
+| `POST`   | `/art-projects/:id/prompt-inputs`                 | 原子提交角色设定或参考图（至少一种）、可选创作要求和素材元数据 |
+| `POST`   | `/art-projects/:id/prompt-reverse`                | 从当前 Draft references 生成提示词候选                         |
+| `POST`   | `/art-projects/:id/prompt-drafts`                 | 从空输入、当前/指定 PromptVersion 创建 Draft                   |
+| `PATCH`  | `/art-projects/:id/prompt-drafts/:draftId`        | 保存 Draft，必须带 `If-Match`                                  |
+| `POST`   | `/art-projects/:id/prompt-drafts/:draftId/commit` | 将 PromptSpec 与有序 references 一起固化为 PromptVersion       |
+| `GET`    | `/art-projects/:id/prompt`                        | 获取 active Draft、active PromptVersion 和版本摘要             |
+| `GET`    | `/art-projects/:id/prompt-versions`               | 获取 PromptVersion 列表                                        |
+| `GET`    | `/art-projects/:id/prompt-versions/:versionId`    | 获取 PromptSpec 与有序 references                              |
+| `POST`   | `/prompt-versions/:id/suggestions`                | 请求 AI 微调建议                                               |
+| `POST`   | `/prompt-suggestions/:id/accept`                  | 采纳建议到新 draft revision                                    |
+| `POST`   | `/prompt-versions/:id/forks`                      | 从指定提示词版本创建子项目                                     |
+| `POST`   | `/art-versions/:id/forks`                         | 从指定立绘版本创建子项目                                       |
+| `GET`    | `/art-projects/tree?characterId=`                 | 获取项目谱系树和分支摘要                                       |
+| `PATCH`  | `/art-projects/:id/fork-link`                     | 修改分支标签或脱离谱系                                         |
 
 #### 生图
 
-| 方法   | 路径                                    | 说明                                               |
-| ------ | --------------------------------------- | -------------------------------------------------- |
-| `POST` | `/art-projects/:id/generations`         | 创建生成任务                                       |
-| `GET`  | `/generations/:id`                      | 查询候选和状态                                     |
-| `POST` | `/generation-candidates/:id/accept`     | 以候选图为主参考图创建 ArtVersion                  |
-| `GET`  | `/art-versions/:id/references`          | 获取该版本有序、受管的参考图集合                   |
-| `POST` | `/art-versions/:id/reference-revisions` | 增删、排序或修改参考图属性；创建新的不可变版本快照 |
-| `POST` | `/art-versions/:id/activate`            | 切换 active，body 含 `reason: switch \| rollback`  |
-
-`reference-revisions` 接收完整的目标参考图数组和 `If-Match`，而不是逐项修改已提交版本的关联。服务端校验至少一张图、唯一主图、主图 `sortOrder=0`、其余排序连续且无重复、assetId 无重复、权重与角色合法后，在一个事务中创建新 ArtVersion、完整 asset_links 快照和审计记录；若源版本是 active，新快照同时成为 active。
+| 方法   | 路径                                                 | 说明                                                 |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------- |
+| `POST` | `/art-projects/:id/generations`                      | 创建生成任务                                         |
+| `GET`  | `/generations/:generationId`                         | 查询生成任务、候选、编译警告和请求快照               |
+| `POST` | `/generations/:generationId/discard`                 | 放弃生成任务                                         |
+| `POST` | `/generation-candidates/:id/accept`                  | 以候选图片创建 ArtVersion，写入 artwork asset 与来源 |
+| `POST` | `/art-projects/:id/art-versions/manual`              | 手工上传最终立绘并创建 ArtVersion                    |
+| `POST` | `/art-projects/:id/art-versions/:versionId/activate` | 切换 active，body 含 `reason: switch \| rollback`    |
 
 #### Live2D
 
@@ -3418,9 +3422,9 @@ Forward 出站规则：
 2. 输入设定，生成颗粒提示词。
 3. 锁定身份块，AI 尝试修改时被拒绝。
 4. 使用 mock 生图 Provider 生成候选并采纳为 ArtVersion v1。
-5. 为 v1 增加两个受管参考图，创建新的 ArtVersion 引用集快照，验证旧 v1 的引用集合和 hash 不变。
-6. 再生成 v2，验证服务端按顺序使用 v1 引用集快照中的全部可用参考图，而不是任意单图。
-7. 重排参考图并切换主参考图，验证创建新快照；回退到旧版本时整套参考图和主图一起恢复。
+5. 更新 PromptVersion，增加两个参考图并保存，验证只新增生成输入版本，旧 PromptVersion 与 ArtVersion 均不变。
+6. 再生成 v2，验证服务端按顺序使用所选 PromptVersion 的 references，并正确记录 `includeBaseArtworkReference` 行为。
+7. 重排参考图并提交新 PromptVersion，验证不创建 ArtVersion；激活历史 ArtVersion 不改变当前 PromptVersion。
 8. 导入 PSD，采纳闭眼/张嘴候选，生成正式 PSD。
 9. 运行 mock Binder 走完状态机，并用预置的合法黄金模型包作为 fixtures。
 10. Studio 和 Pet Renderer 分别加载黄金模型，验证渲染、参数和动作。
@@ -3432,25 +3436,25 @@ mock 链路证明业务流程和 renderer 正确，不证明 PSD2Live 的真实�
 
 ### 14.2 确定性评分
 
-| 领域     | 指标                                           | 发布门禁      | 数据来源                        |
-| -------- | ---------------------------------------------- | ------------- | ------------------------------- |
-| Prompt   | Schema valid rate                              | 100%          | 契约测试                        |
-| Prompt   | 锁定块修改数                                   | 0             | 属性测试 + 服务集成测试         |
-| Prompt   | 关键字段覆盖                                   | 每条案例 100% | 黄金数据集                      |
-| Art      | 生成使用的参考图集合与 active 版本完整快照一致 | 100%          | 状态机/属性测试                 |
-| Art      | 每个 ArtVersion 恰有一个主参考图               | 100%          | 数据库约束 + 集成测试           |
-| PSD      | 图层坐标、差分对齐、原子写入                   | 100%          | PSD fixtures                    |
-| Model    | 固定 PSD 的 QC 阻塞项通过率                    | 100%          | 真实 Binder E2E                 |
-| Model    | Studio/Pet 加载率                              | 100%          | 真实模型渲染测试                |
-| Memory   | 跨空间泄漏                                     | 0             | 策略集成测试                    |
-| Forward  | 消息/记忆写库数                                | 0             | 数据库计数断言                  |
-| Agent    | 未授权工具调用、跨作用域审批                   | 0             | Agent fixture + 轨迹评测        |
-| Tools    | 当前时间/时区正确性、未授权调用                | 100% / 0      | Context + Tool Gateway 集成测试 |
-| Skills   | 未授权脚本执行、越界文件读取                   | 0             | Skill fixtures                  |
-| Rig UX   | 未预览即采用、回退失败                         | 0             | 浏览器 E2E                      |
-| Security | 路径穿越、SSRF、zip bomb、权限提升             | 100%          | 安全回归集                      |
-| Errors   | 未分类异常、错误响应不符合 Schema              | 0             | 契约测试                        |
-| Logs     | 敏感字段泄漏、缺少 trace 关联                  | 0             | 脱敏 fixture + 集成测试         |
+| 领域     | 指标                                            | 发布门禁      | 数据来源                        |
+| -------- | ----------------------------------------------- | ------------- | ------------------------------- |
+| Prompt   | Schema valid rate                               | 100%          | 契约测试                        |
+| Prompt   | 锁定块修改数                                    | 0             | 属性测试 + 服务集成测试         |
+| Prompt   | 关键字段覆盖                                    | 每条案例 100% | 黄金数据集                      |
+| Art      | 生成使用的参考图集合与 active 版本完整快照一致  | 100%          | 状态机/属性测试                 |
+| Art      | ArtVersion 只有一个最终 artwork，且不保存参考图 | 100%          | 数据库约束 + 集成测试           |
+| PSD      | 图层坐标、差分对齐、原子写入                    | 100%          | PSD fixtures                    |
+| Model    | 固定 PSD 的 QC 阻塞项通过率                     | 100%          | 真实 Binder E2E                 |
+| Model    | Studio/Pet 加载率                               | 100%          | 真实模型渲染测试                |
+| Memory   | 跨空间泄漏                                      | 0             | 策略集成测试                    |
+| Forward  | 消息/记忆写库数                                 | 0             | 数据库计数断言                  |
+| Agent    | 未授权工具调用、跨作用域审批                    | 0             | Agent fixture + 轨迹评测        |
+| Tools    | 当前时间/时区正确性、未授权调用                 | 100% / 0      | Context + Tool Gateway 集成测试 |
+| Skills   | 未授权脚本执行、越界文件读取                    | 0             | Skill fixtures                  |
+| Rig UX   | 未预览即采用、回退失败                          | 0             | 浏览器 E2E                      |
+| Security | 路径穿越、SSRF、zip bomb、权限提升              | 100%          | 安全回归集                      |
+| Errors   | 未分类异常、错误响应不符合 Schema               | 0             | 契约测试                        |
+| Logs     | 敏感字段泄漏、缺少 trace 关联                   | 0             | 脱敏 fixture + 集成测试         |
 
 ### 14.3 测试层次
 
@@ -3467,7 +3471,7 @@ mock 链路证明业务流程和 renderer 正确，不证明 PSD2Live 的真实�
 - 日志脱敏测试：token、密钥、正文、路径、命令和 diff fixture 不得出现在落盘日志中。
 - 日志故障测试：队列满、磁盘不足、单行超大和 ANSI/换行注入不会阻塞主业务流程。
 - 单元测试：版本图、锁策略、状态机、记忆过滤。
-- 属性测试：版本链任意回退与分支仍保证参考图集合来自 active；增删、重排、切换主图和 Provider 数量降级都不会篡改旧版本。
+- 属性测试：PromptVersion references 顺序稳定；增删、重排和 Provider 数量降级不会篡改已提交 PromptVersion，ArtVersion 激活不改变 PromptVersion。
 - 集成测试：SQLite + Blob + Job + SSE 重放。
 - 浏览器视觉测试：Prompt 面板、候选对比、Rig 预览。
 - Agent fixture：伪 Codex app-server、伪 Claude message stream、真实 hooks 事件回放。
@@ -3539,7 +3543,7 @@ Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契�
 
 - 角色、Prompt Draft/Version、锁定、AI 建议、生图候选、采纳、回退。
 - 初始化允许“角色设定或参考图至少一种”，创作要求保持选填。
-- ArtVersion 多参考图集合的查看、增删、排序、角色/备注/权重修改、主图切换和不可变快照。
+- PromptVersion 提示词与参考图的联合编辑、排序、角色/备注/权重修改和不可变输入快照。
 - 角色设定或参考图、选填创作要求和素材元数据原子写入 input snapshot，PromptVersion 固化该快照。
 - 从 PromptVersion/ArtVersion Fork 子项目，项目列表按谱系树展示。
 - 一个 React 工作台和完整 SSE。
@@ -3600,7 +3604,7 @@ Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契�
 11. Direct AI 能准确获得当前日期/时区，并可通过内置 clock、用户 MCP 和 Skills 获取所需外部信息。
 12. 用户可以从设置页添加 MCP 与 Skill；工具升级导致 Schema/manifest 变化时必须重新授权。
 13. 绑定 AI 必须先展示可交互效果预览，用户采用后才提交，且可一键回退到修改前版本。
-14. 每个 ArtVersion 可以管理多个参考图并指定唯一主参考图；修改参考集合创建新快照，回退时完整恢复旧集合。
+14. 提示词与有序参考图共用一个 PromptVersion；ArtVersion 只保存最终立绘和生成来源，激活历史立绘不修改 PromptVersion。
 15. 任意 ModelBuild 都能追溯到明确的 ArtVersion、LayerSpecVersion、BindingReadyPsd、RigPlanVersion、CanvasTransform、Binder 和目标 Cubism 版本。
 
 ## 16. 主要风险与应对

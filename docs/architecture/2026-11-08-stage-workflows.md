@@ -14,7 +14,7 @@ flowchart LR
   Character --> Intake["角色设定或素材<br/>+ 可选创作要求<br/>PromptInputSubmission"]
   Intake --> Prompt["颗粒化提示词<br/>Prompt Draft / Version"]
   Prompt --> Generate["生图任务与候选"]
-  Generate --> Art["ArtVersion<br/>主参考图 + 受管参考集"]
+  Generate --> Art["ArtVersion<br/>最终立绘 + 生成来源"]
   Prompt --> Fork["从不可变版本 Fork"]
   Art --> Fork
   Fork --> Child["子 ArtProject<br/>谱系树分组"]
@@ -74,7 +74,7 @@ flowchart TD
   J -->|有问题| K["展示缺失、冲突、低置信度块"]
   K --> C
   J -->|通过| L["PromptDraft<br/>绑定 inputSubmissionId"]
-  L --> M["提交 PromptVersion<br/>固化角色设定、素材和要求快照"]
+  L --> M["提交 PromptVersion<br/>固化 PromptSpec、有序 references 和要求快照"]
 
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
@@ -128,20 +128,20 @@ flowchart TD
 
 ## 3. 生图、候选采纳、回退
 
-| 项目       | 定义                                                                               |
-| ---------- | ---------------------------------------------------------------------------------- |
-| 输入       | `PromptVersion`、ArtProject 当前 active ArtVersion                                 |
-| 持久输出   | `GenerationCandidate`；采纳后生成不可变 `ArtVersion` 和有序参考图集合              |
-| 人工门禁   | 用户必须采纳候选，AI 不自动成为当前版本                                            |
-| 核心不变量 | active ArtVersion 保存完整、可管理的多参考图集合；生成只使用服务端解析出的版本快照 |
+| 项目       | 定义                                                                           |
+| ---------- | ------------------------------------------------------------------------------ |
+| 输入       | `PromptVersion`、可选 base ArtVersion；PromptVersion 内含有序 references       |
+| 持久输出   | `GenerationCandidate`；采纳后生成只含最终图片的不可变 `ArtVersion`             |
+| 人工门禁   | 用户必须采纳候选，AI 不自动成为当前版本                                        |
+| 核心不变量 | PromptVersion 保存完整 PromptSpec 与 references；ArtVersion 只保存最终 artwork |
 
 ```mermaid
 flowchart TD
   A["选择 PromptVersion"] --> B["创建 Generation Job"]
-  B --> C{"ArtProject 有 active ArtVersion？"}
-  C -->|是| D["服务端解析 active ArtVersion<br/>完整参考图集合"]
-  C -->|否| E["纯文生图"]
-  D --> D2["按顺序合并版本参考图<br/>与 PromptVersion 补充素材"]
+  B --> C["读取 PromptVersion<br/>PromptSpec + 有序 references"]
+  C --> D{"includeBaseArtworkReference？"}
+  D -->|是，且当前立绘尚未在 refs 中| D2["追加 active 立绘<br/>作为最后一张参考"]
+  D -->|否| E["保持 PromptVersion references"]
   D2 --> F["Compile Prompt + Capability Profile"]
   E --> F
   F --> G["Provider Adapter"]
@@ -157,13 +157,13 @@ flowchart TD
   J -->|采纳| L{"If-Match activeVersionId"}
   L -->|冲突| L1["ART_ACTIVE_VERSION_CHANGED"]
   L1 --> J
-  L -->|成功| M["创建不可变 ArtVersion<br/>+ 有序参考图快照"]
+  L -->|成功| M["创建不可变 ArtVersion<br/>artwork asset + 生成来源"]
   M --> N["原子移动 active 指针"]
   N --> O["已有 Live2DProject 标记 stale"]
 
-  P["历史版本"] --> Q{"用户切换 active"}
+  P["历史 ArtVersion"] --> Q{"用户切换 active"}
   Q -->|回退| R["移动 active 指针<br/>记录 rolled_back"]
-  R --> S["下一次生成使用当前 active"]
+  R --> S["不修改当前 PromptVersion"]
 
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
@@ -171,18 +171,18 @@ flowchart TD
   class M artifact;
 ```
 
-### 3.1 参考图集合管理
+### 3.1 PromptVersion 参考图管理
 
-| 项目          | 定义                                                                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------- |
-| 集合结构      | 1..N 个参考图；每项含 assetId、role、note、weight、sortOrder、isPrimary                               |
-| 主图约束      | 每个 ArtVersion 恰有一个 `isPrimary=true`，用于主画布、平图分层和 Live2D 构建                         |
-| 用户操作      | 增加、移除、排序、修改角色/备注/权重、切换主参考图                                                    |
-| 版本约束      | ArtVersion 不可变；编辑已提交版本的参考集时创建新快照，旧快照 hash 和 links 不变                      |
-| active 规则   | 修改 active 版本时新快照在同一事务中成为 active；回退时完整恢复旧版本参考集                           |
-| Provider 规则 | 多图能力足够时发送全集；数量不足时先保留主图再按 `sortOrder` 选择，并记录 `reference_budget_exceeded` |
+| 项目          | 定义                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------ |
+| 集合结构      | 0..14 个参考图；API 每项含 assetId、role、note、weight、locked，数组顺序即优先级     |
+| 主图          | 不定义业务主图；Provider 只支持单图时发送数组第一张并记录能力降级                    |
+| 用户操作      | 增加、移除、排序、修改角色/备注/权重和锁定                                           |
+| 版本约束      | PromptVersion 不可变；提示词或 references 任一变化都会创建新 PromptVersion           |
+| ArtVersion    | 只保存 `artworkAssetId`，不复制或持有参考图                                          |
+| Provider 规则 | 多图能力足够时发送全集；数量不足时发送数组前缀，其余记录 `reference_budget_exceeded` |
 
-参考图关联同时进入引用计数。移除某个版本中的参考图不立即删除 Blob；其他版本、候选或分层记录仍可能引用同一个内容 hash。
+参考图关联同时进入引用计数。移除某个 PromptVersion 中的参考图不立即删除 Blob；其他版本、候选或分层记录仍可能引用同一个内容 hash。
 
 ### 3.2 从版本 Fork 子项目
 
@@ -206,8 +206,8 @@ flowchart TD
   G --> H{"Idempotency-Key 去重"}
   H -->|重复| I["返回已创建的子项目"]
   H -->|新请求| J["事务创建 child ArtProject"]
-  J --> K["复制 seed PromptVersion"]
-  D --> L["复制 seed ArtVersion<br/>+ 完整参考图 links<br/>复用同一个 Blob hash"]
+  J --> K["复制 seed PromptVersion<br/>+ 完整有序 references"]
+  D --> L["复制 seed ArtVersion<br/>复用 artworkAssetId<br/>generationJobId=null"]
   K --> M["写入 ProjectFork<br/>root/parent/source"]
   L --> M
   M --> N["写 art_project.forked 审计"]
@@ -238,7 +238,7 @@ flowchart TD
 
 | 项目     | 定义                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------ |
-| 输入     | 当前 ArtVersion 中 `isPrimary=true` 的参考图，或用户直接提供分层 PSD                       |
+| 输入     | 当前 ArtVersion 的 `artworkAssetId`，或用户直接提供分层 PSD                                |
 | 持久输出 | `LayerSpecCandidate`；采纳后原子形成 `LayerSpecVersion`、BindingReadyPsd 和 compose report |
 | 默认实现 | See-through 本地 worker                                                                    |
 | 质量门   | 合成 alpha IoU ≥ 0.995；必需语义层存在；坐标与透明度合法                                   |
@@ -802,9 +802,9 @@ flowchart TD
 
 | 阶段             | 必须持久化                                                                                                        |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 想法与提示词     | PromptInputSubmission、素材角色/权重、CharacterBriefVersion（如有）、PromptVersion、锁定状态、AI 建议             |
+| 想法与提示词     | PromptInputSubmission、PromptSpec、PromptVersion references、锁定状态、CharacterBriefVersion（如有）、AI 建议     |
 | Fork             | child/parent/root project、source version + hash、branchLabel、seed Prompt/ArtVersion、审计事件                   |
-| 生图             | 编译 Prompt、有序参考图集合及 hash、Provider 请求摘要、候选、采纳结果、active 指针                                |
+| 生图             | PromptVersion、可选 base ArtVersion、编译 Prompt、references hash、Provider 请求摘要、候选、active 指针           |
 | 分层             | 输入 ArtVersion、See-through 版本/权重、quality report、LayerSpecVersion、source/binding-ready PSD 引用           |
 | PSD              | 输入图层、补丁来源、compose-report、BindingReadyPsd assetId/hash                                                  |
 | 自动绑定         | ArtVersion、LayerSpecVersion、BindingReadyPsd、RigPlanVersion、CanvasTransform、Binder 版本、工程快照、ModelBuild |

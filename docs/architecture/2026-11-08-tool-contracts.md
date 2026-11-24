@@ -141,20 +141,20 @@ admin:extensions
 
 ## 4. 项目、输入与 Prompt 工具
 
-| 工具                           | 类别          | 主要输入                                  | 输出                                    | 副作用         | 审批 |
-| ------------------------------ | ------------- | ----------------------------------------- | --------------------------------------- | -------------- | ---- |
-| `project.get_context@1.0`      | query         | `characterId/artProjectId`                | 项目阶段、active versions、分支摘要     | 无             | A0   |
-| `project.get_lineage@1.0`      | query         | `rootProjectId`                           | 谱系节点和来源版本                      | 无             | A0   |
-| `project.propose_fork@1.0`     | proposal      | `sourceVersionId`, `title`, `branchLabel` | Fork 预览和冲突项                       | 无             | A1   |
-| `project.fork@1.0`             | commit        | proposalId, Idempotency-Key               | childProject、seed versions             | 新建项目/关系  | A3   |
-| `prompt.get_input@1.0`         | query         | `inputSubmissionId`                       | 要求、素材角色与 hash                   | 无             | A0   |
-| `prompt.analyze_input@1.0`     | compute       | inputSubmissionId                         | 素材用途、要求冲突、缺失项              | 无             | A1   |
-| `prompt.reverse@1.0`           | artifact      | inputSubmissionId, providerPolicy         | PromptDraft candidate + coverage report | Job/候选       | A2   |
-| `prompt.suggest_changes@1.0`   | proposal      | basePromptVersionId, intent               | operations、locked 命中、风险           | 无             | A1   |
-| `prompt.accept_suggestion@1.0` | commit        | suggestionId, baseHash                    | 新 DraftRevision                        | 修改草稿       | A3   |
-| `prompt.save_version@1.0`      | commit        | draftId, rowVersion                       | PromptVersion                           | 新增不可变版本 | A3   |
-| `prompt.compile@1.0`           | compute       | promptVersionId, providerConnectionId     | CompiledGenerationRequest + hash        | 无             | A1   |
-| `prompt.explain_block@1.0`     | query/compute | blockId, context                          | 解释、证据、建议                        | 无             | A0   |
+| 工具                           | 类别          | 主要输入                                  | 输出                                | 副作用         | 审批 |
+| ------------------------------ | ------------- | ----------------------------------------- | ----------------------------------- | -------------- | ---- |
+| `project.get_context@1.0`      | query         | `characterId/artProjectId`                | 项目阶段、active versions、分支摘要 | 无             | A0   |
+| `project.get_lineage@1.0`      | query         | `rootProjectId`                           | 谱系节点和来源版本                  | 无             | A0   |
+| `project.propose_fork@1.0`     | proposal      | `sourceVersionId`, `title`, `branchLabel` | Fork 预览和冲突项                   | 无             | A1   |
+| `project.fork@1.0`             | commit        | proposalId, Idempotency-Key               | childProject、seed versions         | 新建项目/关系  | A3   |
+| `prompt.get_input@1.0`         | query         | `inputSubmissionId`                       | 要求、素材角色与 hash               | 无             | A0   |
+| `prompt.analyze_input@1.0`     | compute       | inputSubmissionId                         | 素材用途、要求冲突、缺失项          | 无             | A1   |
+| `prompt.reverse@1.0`           | artifact      | draftId, provider/model, providerPolicy   | PromptReverseResult + state         | Job/候选       | A2   |
+| `prompt.suggest_changes@1.0`   | proposal      | basePromptVersionId, intent               | operations、locked 命中、风险       | 无             | A1   |
+| `prompt.accept_suggestion@1.0` | commit        | suggestionId, baseHash                    | 新 DraftRevision                    | 修改草稿       | A3   |
+| `prompt.save_version@1.0`      | commit        | draftId, rowVersion                       | PromptVersion + 有序 references     | 新增不可变版本 | A3   |
+| `prompt.compile@1.0`           | compute       | promptVersionId, providerConnectionId     | CompiledGenerationRequest + hash    | 无             | A1   |
+| `prompt.explain_block@1.0`     | query/compute | blockId, context                          | 解释、证据、建议                    | 无             | A0   |
 
 ### 4.1 `prompt.reverse@1.0`
 
@@ -162,11 +162,11 @@ admin:extensions
 
 ```json
 {
+  "draftId": "pd_01J...",
   "inputSubmissionId": "inp_01J...",
   "providerPolicy": {
-    "visionConnectionId": "conn_vision",
-    "textConnectionId": "conn_text",
-    "allowAuxiliaryImageCaption": true
+    "providerConnectionId": "conn_vision",
+    "modelId": "vision-model"
   },
   "outputLocale": "zh-CN"
 }
@@ -176,17 +176,28 @@ admin:extensions
 
 ```json
 {
-  "draftCandidateId": "pdc_01J...",
-  "requirementCoverage": {
-    "req_01": ["identity.mole"],
-    "req_02": ["negative.realism"]
-  },
-  "uncoveredRequirementIds": [],
-  "conflictWarnings": []
+  "resultId": "prr_01J...",
+  "status": "ready",
+  "baseDraftId": "pd_01J...",
+  "baseDraftRevision": 4,
+  "state": {
+    "schemaVersion": "prompt-spec/2",
+    "fullPrompt": "反推后的连续提示词",
+    "lockAll": false,
+    "sourceRequirements": [],
+    "materialRefs": [],
+    "blocks": [],
+    "negativeBlocks": [],
+    "constraints": {
+      "canvas": { "width": 1024, "height": 1792 },
+      "background": "transparent",
+      "aspect": "portrait"
+    }
+  }
 }
 ```
 
-错误：`PROMPT_INPUT_INVALID`、`PROMPT_INPUT_STALE`、`PROVIDER_BAD_RESPONSE`。
+错误：`PROMPT_INPUT_INVALID`、`PROMPT_REVERSE_STALE`、`PROVIDER_BAD_RESPONSE`。
 
 ### 4.2 `project.fork@1.0`
 
@@ -214,39 +225,37 @@ admin:extensions
 
 ## 5. Art / Generation 工具
 
-| 工具                          | 类别              | 主要输入                                      | 输出                                   | 副作用        | 审批 |
-| ----------------------------- | ----------------- | --------------------------------------------- | -------------------------------------- | ------------- | ---- |
-| `art.get_versions@1.0`        | query             | artProjectId                                  | 版本 DAG、active                       | 无            | A0   |
-| `art.generate_candidates@1.0` | external/artifact | promptVersionId, connectionId, count          | Job + candidate refs                   | 生成费用/Blob | A2   |
-| `art.validate_candidate@1.0`  | compute           | candidateId                                   | 构图、尺寸、安全、hash                 | 无            | A1   |
-| `art.compare_candidates@1.0`  | compute           | candidateIds                                  | 感知差异和指标                         | 无            | A1   |
-| `art.accept_candidate@1.0`    | commit            | candidateId, expectedActiveVersionId          | ArtVersion + 主参考图 + active pointer | 版本切换      | A3   |
-| `art.get_references@1.0`      | query             | artVersionId                                  | 有序参考图集合及 hash                  | 无            | A0   |
-| `art.revise_references@1.0`   | commit            | artVersionId, expectedVersionId, references[] | 新 ArtVersion 参考集快照               | 版本切换      | A3   |
-| `art.activate_version@1.0`    | commit            | artVersionId, reason                          | active pointer + audit                 | 版本切换      | A3   |
-| `art.get_reference_chain@1.0` | query             | artVersionId                                  | 父链、完整参考图集合和素材引用         | 无            | A0   |
+| 工具                          | 类别              | 主要输入                                                                     | 输出                                       | 副作用        | 审批 |
+| ----------------------------- | ----------------- | ---------------------------------------------------------------------------- | ------------------------------------------ | ------------- | ---- |
+| `art.get_versions@1.0`        | query             | artProjectId                                                                 | 版本 DAG、active                           | 无            | A0   |
+| `art.generate_candidates@1.0` | external/artifact | promptVersionId, provider/model, count, size, seed, optional base ArtVersion | Generation + candidates                    | 生成费用/Blob | A2   |
+| `art.validate_candidate@1.0`  | compute           | candidateId                                                                  | 构图、尺寸、安全、hash                     | 无            | A1   |
+| `art.compare_candidates@1.0`  | compute           | candidateIds                                                                 | 感知差异和指标                             | 无            | A1   |
+| `art.accept_candidate@1.0`    | commit            | candidateId, expectedActiveVersionId                                         | ArtVersion(artwork asset) + active pointer | 版本切换      | A3   |
+| `art.activate_version@1.0`    | commit            | artVersionId, reason                                                         | active pointer + audit                     | 版本切换      | A3   |
 
 约束：
 
 - `art.generate_candidates` 只能产生候选，不能改 active。
-- 生成时若存在 active ArtVersion，服务端自动使用其完整、有序参考图集合；调用方不能传任意旧 assetId。
-- 每个 ArtVersion 有 1..N 个参考图且恰有一个主参考图。增删、排序、修改 role/note/weight 或切换主图必须创建新快照，不能原地修改已提交版本。
+- 生成时服务端从 PromptVersion 读取 PromptSpec 与有序 references；调用方不能传任意旧 assetId。
+- `baseArtVersionId` 省略时使用当前 active；只有 `includeBaseArtworkReference=true` 才把当前立绘追加到 references 末尾。
+- ArtVersion 只保存 `artworkAssetId`、PromptVersion 和生成来源，不保存 references，也不定义主图。
 - `art.accept_candidate` 必须校验 activeVersionId；冲突返回 `ART_ACTIVE_VERSION_CHANGED`。
 
 ## 6. 资产与分层工具
 
-| 工具                      | 类别              | 主要输入                          | 输出                                                | 副作用       | 审批 |
-| ------------------------- | ----------------- | --------------------------------- | --------------------------------------------------- | ------------ | ---- |
-| `asset.inspect@1.0`       | query             | assetId                           | MIME、尺寸、hash、provenance                        | 无           | A0   |
-| `asset.link@1.0`          | commit            | assetId, owner, role, weight      | asset link                                          | 关联资产     | A3   |
-| `l2d.decompose_image@1.0` | external/artifact | artVersionId, qualityProfile      | LayerSpec candidate + PSD preview                   | GPU/外部任务 | A2   |
-| `l2d.audit_layers@1.0`    | compute           | layerSpecCandidateId              | 必需角色、误差、坐标问题                            | 无           | A1   |
-| `l2d.propose_patch@1.0`   | proposal          | layerSpecVersionId, role, intent  | patch candidate                                     | 生成候选     | A2   |
-| `l2d.accept_patch@1.0`    | commit            | patchCandidateId, baseLayerSpecId | 新 LayerSpecVersion                                 | 正式补层     | A3   |
-| `l2d.compose_psd@1.0`     | artifact          | layerSpecVersionId, variants      | BindingReadyPsd + compose report + LayerSpecVersion | 新图层版本   | A2   |
-| `l2d.inspect_psd@1.0`     | compute           | psdAssetId                        | 图层树、不支持特性、bbox                            | 无           | A0   |
+| 工具                      | 类别              | 主要输入                                                                   | 输出                                                | 副作用       | 审批 |
+| ------------------------- | ----------------- | -------------------------------------------------------------------------- | --------------------------------------------------- | ------------ | ---- |
+| `asset.inspect@1.0`       | query             | assetId                                                                    | MIME、尺寸、hash、provenance                        | 无           | A0   |
+| `asset.link@1.0`          | commit            | assetId, owner(prompt_input/prompt_version/layer_spec/model), role, weight | asset link                                          | 关联资产     | A3   |
+| `l2d.decompose_image@1.0` | external/artifact | artVersionId, qualityProfile                                               | LayerSpec candidate + PSD preview                   | GPU/外部任务 | A2   |
+| `l2d.audit_layers@1.0`    | compute           | layerSpecCandidateId                                                       | 必需角色、误差、坐标问题                            | 无           | A1   |
+| `l2d.propose_patch@1.0`   | proposal          | layerSpecVersionId, role, intent                                           | patch candidate                                     | 生成候选     | A2   |
+| `l2d.accept_patch@1.0`    | commit            | patchCandidateId, baseLayerSpecId                                          | 新 LayerSpecVersion                                 | 正式补层     | A3   |
+| `l2d.compose_psd@1.0`     | artifact          | layerSpecVersionId, variants                                               | BindingReadyPsd + compose report + LayerSpecVersion | 新图层版本   | A2   |
+| `l2d.inspect_psd@1.0`     | compute           | psdAssetId                                                                 | 图层树、不支持特性、bbox                            | 无           | A0   |
 
-`asset.link` 不能直接修改已提交 ArtVersion 的参考图集合；ArtVersion 的变更必须通过 `art.revise_references` 创建完整快照。`l2d.decompose_image` 使用该版本 `isPrimary=true` 的主参考图，其他参考图不会自动并入 See-through 输入。
+`asset.link` 不能修改已提交 PromptVersion 或 ArtVersion。提示词或参考图变化必须提交新的 PromptVersion；`l2d.decompose_image` 使用 ArtVersion 的 `artworkAssetId`，不会把 PromptVersion references 自动并入 See-through 输入。
 
 ### 6.1 `l2d.propose_patch@1.0`
 
