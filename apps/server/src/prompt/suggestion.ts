@@ -80,7 +80,6 @@ export function parseSuggestionOutput(text: string): PromptSuggestionOutput {
 }
 
 export function validateSuggestionOutput(base: PromptSpecV2, output: PromptSuggestionOutput): PromptSpecV2 {
-  if (output.operations.length === 0) throw invalidOutput()
   if (
     output.operations.some(
       (operation) => operation.op === 'add' && operation.block.id.startsWith(BRIEF_BLOCK_PREFIX)
@@ -131,6 +130,7 @@ export function buildSuggestionPrompt(
     'Propose a minimal set of PromptSpec operations for the user intent.',
     'Return ONLY JSON: {"operations":[...],"warnings":[...]}.',
     'Allowed operations: replace {op,blockId,before,after}, setWeight {op,blockId,before,after}, add {op,block}, remove {op,blockId,before}.',
+    'If the current prompt already satisfies the intent, return {"operations":[],"warnings":["<short reason>"]}.',
     'Never touch a block with locked true or any block when lockAll is true. "before" must exactly match the current text or weight. Added blocks must include id, label, category, text, weight, locked false, source "ai-suggestion", confidence, priority, requirementRefs, materialRefs and evidence; use empty arrays when not needed.',
     'The character brief is authoritative and every block with source "character-brief" is locked. Never modify, remove, or duplicate those blocks and never invent visual facts that contradict the brief.',
     `Pinned character brief version: ${brief?.id ?? '(none)'}`,

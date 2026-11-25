@@ -495,6 +495,9 @@ export const AiRewriteDialog: React.FC<AiRewriteDialogProps> = ({
                 tone={proposalReady ? 'accent' : 'success'}
               />
             </header>
+            {suggestion.warnings.length > 0 ? (
+              <InlineNotice tone="info">{suggestion.warnings.join(' ')}</InlineNotice>
+            ) : null}
             {suggestion.operations.length === 0 ? (
               <EmptyState compact title="没有可应用的改动" description="换一句更具体的说法再试。" />
             ) : (

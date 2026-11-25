@@ -88,10 +88,12 @@ describe('prompt suggestion output', () => {
     ).toThrow(expect.objectContaining({ code: 'PROMPT_SUGGESTION_INVALID_OUTPUT' }))
   })
 
-  it('rejects empty operations and additions in the brief namespace', () => {
-    expect(() =>
-      validateSuggestionOutput(base, parseSuggestionOutput(JSON.stringify({ operations: [] })))
-    ).toThrow(expect.objectContaining({ code: 'PROMPT_SUGGESTION_INVALID_OUTPUT' }))
+  it('accepts an empty operation set as a no-op suggestion', () => {
+    const output = parseSuggestionOutput(JSON.stringify({ operations: [], warnings: ['当前描述已符合要求'] }))
+    expect(validateSuggestionOutput(base, output).blocks).toEqual(base.blocks)
+  })
+
+  it('rejects additions in the brief namespace', () => {
     const reserved = structuredClone(addOperation) as { block: { id: string } }
     reserved.block.id = 'brief.appearance.hair'
     expect(() =>
