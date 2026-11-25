@@ -8,9 +8,19 @@
   cursor: pointer;
   flex-direction: column;
 }
+.wb3-candidate-card[data-layout='strip'] {
+  border: 0;
+  border-inline-start: var(--a2l-border-width) solid var(--a2l-color-border);
+  border-radius: 0;
+  background: transparent;
+}
 .wb3-candidate-card[data-state='selected'] {
   border-color: var(--a2l-color-accent);
   box-shadow: 0 0 0 2px var(--a2l-color-accent-soft);
+}
+.wb3-candidate-card[data-layout='strip'][data-state='selected'] {
+  border-inline-start-color: var(--a2l-color-accent);
+  box-shadow: inset 0 0 0 2px var(--a2l-color-accent-soft);
 }
 .wb3-candidate-head {
   display: flex;
@@ -30,7 +40,7 @@
   display: grid;
   flex: 0 0 auto;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  block-size: var(--wb3-candidate-media-height, 380px);
   padding: 0;
   overflow: hidden;
   color: var(--a2l-color-text-muted);

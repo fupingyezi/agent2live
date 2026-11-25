@@ -9,6 +9,7 @@ export interface CandidateGridProps {
   selectedId: string | null
   savingId: string | null
   seconds: number | null
+  layout?: 'card' | 'strip'
   onSelect(candidateId: string): void
   onSave(candidateId: string): void
   onViewArtVersion(versionId: string): void
@@ -21,6 +22,7 @@ export const CandidateGrid: React.FC<CandidateGridProps> = ({
   selectedId,
   savingId,
   seconds,
+  layout = 'card',
   onSelect,
   onSave,
   onViewArtVersion,
@@ -30,7 +32,7 @@ export const CandidateGrid: React.FC<CandidateGridProps> = ({
     return candidates[index] ?? null
   })
   return (
-    <div className={styles['wb3-candidate-grid']!}>
+    <div className={styles['wb3-candidate-grid']!} data-layout={layout}>
       {slots.map((candidate, index) => (
         <CandidateCard
           key={candidate?.id ?? `failed-${index}`}
@@ -39,6 +41,7 @@ export const CandidateGrid: React.FC<CandidateGridProps> = ({
           selected={candidate !== null && candidate.id === selectedId}
           accepted={candidate?.status === 'accepted'}
           saving={candidate !== null && savingId === candidate.id}
+          layout={layout}
           seconds={seconds}
           onSelect={() => {
             if (candidate) onSelect(candidate.id)

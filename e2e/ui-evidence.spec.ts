@@ -211,7 +211,14 @@ test('captures axe, token lint, and 1440x900 visual baselines', async () => {
     await expect(page.locator('[data-testid="wb3-generation-params"]')).toContainText('张数 4 张')
     await expect(page.locator('[data-testid="wb3-candidate-card"]')).toHaveCount(4)
     await expect(page.locator('[data-testid="wb3-candidate-card"]').first()).toContainText('候选 1')
-    await expect(page.locator('[data-testid="wb3-candidate-card"]').first()).toHaveCSS('width', '318.75px')
+    const candidateWidths = await page
+      .locator('[data-testid="wb3-candidate-card"]')
+      .evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().width)))
+    expect(new Set(candidateWidths).size).toBe(1)
+    const baselineWidth = await page
+      .locator('[data-testid="wb3-candidate-baseline"]')
+      .evaluate((baseline) => Math.round(baseline.getBoundingClientRect().width))
+    expect(Math.abs(baselineWidth - candidateWidths[0]!)).toBeLessThanOrEqual(1)
     await capture('workbench-candidates')
 
     await page.evaluate(

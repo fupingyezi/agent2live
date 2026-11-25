@@ -10,6 +10,7 @@ export interface CandidateCardProps {
   selected: boolean
   accepted: boolean
   saving: boolean
+  layout?: 'card' | 'strip'
   onSelect(): void
   onSave(): void
   onView(): void
@@ -23,6 +24,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({
   selected,
   accepted,
   saving,
+  layout = 'card',
   onSelect,
   onSave,
   onView,
@@ -36,6 +38,7 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({
     <article
       className={styles['wb3-candidate-card']!}
       data-testid="wb3-candidate-card"
+      data-layout={layout}
       data-state={candidate ? (selected ? 'selected' : candidate.status) : 'failed'}
       aria-label={`候选 ${index + 1}`}
     >

@@ -20,13 +20,16 @@
   gap: var(--a2l-space-3);
 }
 .wb3-candidate-compare {
+  --wb3-candidate-media-height: clamp(320px, 46dvh, 400px);
   display: grid;
-  align-items: start;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 3.2fr);
-  gap: var(--a2l-space-4);
+  align-items: stretch;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
 }
-.wb3-candidate-compare .wb3-candidate-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.wb3-candidate-compare .wb3-candidate-baseline {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .wb3-candidate-baseline {
   display: flex;
@@ -40,9 +43,14 @@
 .wb3-candidate-baseline header,
 .wb3-candidate-baseline footer {
   display: flex;
-  padding: var(--a2l-space-3);
-  flex-direction: column;
-  gap: var(--a2l-space-1);
+  height: 40px;
+  padding: 0 var(--a2l-space-3);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--a2l-space-2);
+}
+.wb3-candidate-baseline footer {
+  height: 32px;
 }
 .wb3-candidate-baseline header strong,
 .wb3-candidate-baseline footer strong {
@@ -54,18 +62,22 @@
 .wb3-candidate-baseline footer span {
   color: var(--a2l-color-text-muted);
   font-size: var(--a2l-text-caption-size);
+  white-space: nowrap;
 }
 .wb3-candidate-baseline-image {
   position: relative;
   display: grid;
-  min-height: 420px;
-  flex: 1 1 auto;
-  padding: var(--a2l-space-3);
+  block-size: var(--wb3-candidate-media-height, 380px);
+  flex: 0 0 auto;
+  padding: 0;
   color: var(--a2l-color-text-muted);
   background: var(--a2l-color-surface-subtle);
   font-size: var(--a2l-text-meta-size);
   text-align: center;
   place-items: center;
+}
+.wb3-candidate-baseline-image > span {
+  padding: var(--a2l-space-3);
 }
 .wb3-candidate-baseline-image img {
   position: absolute;

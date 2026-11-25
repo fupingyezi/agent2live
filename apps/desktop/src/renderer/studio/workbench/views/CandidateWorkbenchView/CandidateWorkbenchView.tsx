@@ -154,7 +154,6 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
             <aside className={styles['wb3-candidate-baseline']!} data-testid="wb3-candidate-baseline">
               <header>
                 <strong>{baseVersion ? '当前立绘（本次基线）' : hasBase ? '本次基线' : '首次立绘'}</strong>
-                <span>{hasBase ? '旧图只用于本次对比' : '没有旧图可对比'}</span>
               </header>
               <div className={styles['wb3-candidate-baseline-image']!}>
                 {!hasBase ? (
@@ -188,6 +187,7 @@ export const CandidateWorkbenchView: React.FC<CandidateWorkbenchViewProps> = ({
               selectedId={selectedCandidateId}
               savingId={savingCandidateId}
               seconds={seconds}
+              layout="strip"
               onSelect={onSelectCandidate}
               onSave={onSaveCandidate}
               onViewArtVersion={onViewArtVersion}

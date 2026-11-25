@@ -3,3 +3,8 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--a2l-space-3);
 }
+.wb3-candidate-grid[data-layout='strip'] {
+  grid-column: 2 / -1;
+  grid-template-columns: subgrid;
+  gap: 0;
+}
