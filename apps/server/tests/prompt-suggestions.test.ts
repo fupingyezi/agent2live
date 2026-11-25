@@ -218,6 +218,47 @@ describe('prompt suggestions', () => {
     }
   })
 
+  it('refreshes the full prompt when an accepted suggestion rewrites block text', async () => {
+    const ctx = await createTestApp()
+    try {
+      const prepared = await prepareDraft(ctx)
+      const connection = await createMockChat(ctx)
+      const created = await enqueueDraftSuggestion(
+        ctx,
+        prepared.project.id,
+        prepared.draft.id,
+        connection.id,
+        'suggest-key-full-prompt'
+      )
+      expect(created.statusCode).toBe(202)
+      const jobId = created.json<{ jobId: string }>().jobId
+      await ctx.services.jobs.tick()
+      const job = await suggestionFromJob(ctx, jobId)
+      expect(job.status).toBe('succeeded')
+      setSuggestionOperations(ctx, job.result.suggestionId, [
+        {
+          op: 'replace',
+          blockId: 'background.simple',
+          before: '淡蓝色渐变背景',
+          after: '纯白背景'
+        }
+      ])
+
+      const accepted = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/v1/prompt-suggestions/${job.result.suggestionId}/accept`,
+        headers: ctx.auth,
+        payload: { expectedDraftRowVersion: prepared.saved.rowVersion }
+      })
+      expect(accepted.statusCode).toBe(200)
+      const body = accepted.json<{ draft: { state: { fullPrompt: string } } }>()
+      expect(body.draft.state.fullPrompt).toContain('纯白背景')
+      expect(body.draft.state.fullPrompt).not.toContain('淡蓝色渐变背景')
+    } finally {
+      await ctx.close()
+    }
+  })
+
   it('creates a fresh draft when accepting a suggestion based on an immutable version', async () => {
     const ctx = await createTestApp()
     try {

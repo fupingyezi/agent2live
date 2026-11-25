@@ -341,6 +341,11 @@ export class PromptSuggestionService {
       throw error
     }
 
+    if (selectedOperations.some((operation) => operation.op !== 'setWeight')) {
+      // Accepted suggestions change block text without going through the AI prompt sync.
+      // Derive fullPrompt from the accepted blocks so the two representations cannot drift apart.
+      next = { ...next, fullPrompt: '' }
+    }
     const submissionId = version ? version.inputSubmissionId : draft!.input_submission_id
     if (!submissionId) {
       throw new AppError('PROMPT_INPUT_REQUIRED', { artProjectId: suggestion.artProjectId })
