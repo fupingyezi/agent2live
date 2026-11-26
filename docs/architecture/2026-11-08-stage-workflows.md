@@ -1,7 +1,8 @@
 # agent2live 各阶段完整工作流
 
-> 日期：2026-11-12  
-> 对应架构：[agent2live 技术方案 v1.4](./2026-11-06-idea-to-desktop-pet.md)  
+> 日期：2026-11-26
+> 对应架构：[agent2live 技术方案 v1.7](./2026-11-06-idea-to-desktop-pet.md)
+> Live2D 主规格：[四段工作台架构](./2026-11-26-live2d-four-stage-workbench.md)
 > 约定：实线是正常流程，虚线是失败、回退或旁路；黄色节点表示人工确认或人工兜底。
 
 首版流程运行在一个本地单用户工作区内。流程中的“用户”指当前 OS 用户/本地操作者，不是账号、组织成员或 RBAC 角色；不存在登录、切换用户、共享或跨设备同步步骤。未来新增账号系统时，应在其外层增加工作区/账号适配，不改变本文的版本链和人工门禁。
@@ -19,14 +20,12 @@ flowchart LR
   Art --> Fork
   Fork --> Child["子 ArtProject<br/>谱系树分组"]
   Child --> Prompt
-  Art --> Decompose["平图 → 分层 PSD"]
-  Decompose --> Compose["语义补层与 PSD 合成"]
-  Compose --> Rig["绑定计划与 Binder"]
-  Rig --> Copilot["AI 协作修绑"]
-  Copilot --> Build["ModelBuild"]
-  Build --> QC["出厂 QC"]
-  QC --> Publish["ModelArtifact<br/>发布"]
-  Publish --> Pet["桌宠形象"]
+  Art --> Prepare["Live2D 立绘准备<br/>适用性检查 + 提示词优化"]
+  Prepare --> Decompose["See-through 分层"]
+  Decompose --> Psd["Live2D PSD 图层工作台"]
+  Psd --> Rig["Live2D 绑定与交付"]
+  Rig --> Build["ModelBuild + 本页验收"]
+  Build --> Pet["交给桌宠系统"]
   Pet --> Direct["Direct LLM"]
   Direct --> Tools["MCP / Skills /<br/>时间与搜索工具"]
   Pet --> Forward["Forward App"]
@@ -35,9 +34,9 @@ flowchart LR
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
   classDef external fill:#5d6268,color:#fff,stroke:#42474c;
-  class Prompt,Generate,Rig,Copilot gate;
-  class Art,Build,QC,Publish artifact;
-  class Decompose,Direct,Forward,Agent external;
+  class Prompt,Generate,Rig gate;
+  class Art,Prepare,Build artifact;
+  class Decompose,Psd,Direct,Forward,Agent external;
 ```
 
 所有阶段共享三条横切规则：
@@ -234,130 +233,117 @@ flowchart TD
 
 根项目卡片显示分支数；子项目卡显示来源版本、分支标签、当前 active 和模型状态。搜索命中子项目时自动展开其祖先；父项目删除后子项目保留，并显示来源已删除。
 
-## 4. 平图到分层 PSD
+## 4. Live2D 立绘准备
 
-| 项目     | 定义                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------ |
-| 输入     | 当前 ArtVersion 的 `artworkAssetId`，或用户直接提供分层 PSD                                |
-| 持久输出 | `LayerSpecCandidate`；采纳后原子形成 `LayerSpecVersion`、BindingReadyPsd 和 compose report |
-| 默认实现 | See-through 本地 worker                                                                    |
-| 质量门   | 合成 alpha IoU ≥ 0.995；必需语义层存在；坐标与透明度合法                                   |
+| 项目     | 定义                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------- |
+| 输入     | 用户在立绘工作台最终确认的 ArtVersion、原始 PromptVersion、角色设定、目标身体范围和动作能力 |
+| 持久输出 | `Live2DPreparationPromptVersion`、`Live2DReadyArtVersion`、主立绘和可选角色设定板           |
+| 人工门禁 | 来源 ArtVersion 必须已确认；用户接受制作立绘候选后才能进入分层                              |
+| 失败出口 | 背景、相近色或身体范围不合格时留在本页；允许上传已有分层用立绘                              |
 
 ```mermaid
 flowchart TD
-  A["当前 ArtVersion"] --> B{"用户已有分层 PSD？"}
-  B -->|是| C["导入 PSD"]
-  B -->|否| D["图像规范化"]
-  D --> E["See-through Worker"]
-  E -->|GPU/权重/运行时失败| E1{"可换执行环境？"}
-  E1 -->|是| E2["外部 Worker 重试"]
-  E2 --> E
-  E1 -->|否| E3["导入人工/外部 PSD"]
-  E3 --> C
-  E --> F["See-through 自动输出<br/>最多 23 个语义组，仅限分解器"]
-  F --> G["SemanticAudit"]
-  C --> G
-  G --> H{"合成误差 / 必需层 / 坐标检查"}
-  H -->|失败| I["Layer Review<br/>补层、改名、左右拆分"]
-  I --> G
-  H -->|通过| J["LayerSpecCandidate"]
-  J --> K["用户全选或逐项采纳"]
-  K --> M["Compose + PSD Audit"]
-  M --> L["原子创建 LayerSpecVersion<br/>+ BindingReadyPsd + report"]
-  L --> N["更新 active_layer_spec_version_id"]
+  A["用户最终确认的 ArtVersion"] --> B["展示来源版本和确认信息"]
+  B --> C["适用性检查<br/>背景 / 相近色 / 姿态 / 手脚 / 画布"]
+  C --> D["生成 Live2DPreparationPromptVersion"]
+  D --> E["生成分层用立绘候选和可选角色设定板"]
+  E --> F{"身份 / 背景 / 主体完整度验收"}
+  F -->|不通过| D
+  F -->|通过| G["用户接受"]
+  G --> H["Live2DReadyArtVersion"]
+  H --> I["解锁 Live2D 分层"]
 
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
-  class B,H,K gate;
-  class L,M artifact;
+  class B,C,F,G gate;
+  class H artifact;
 ```
 
-`23` 是 See-through 默认分解器预定义输出组的数量限制，只约束自动分层结果，不约束后续 PSD、用户补层、差分层或绑定流程。用户导入 PSD 或在候选上继续增加图层时，系统按实际图层进入审计和绑定，不执行 23 层截断或合并。具体资源上限应由文件大小、像素总量、内存和 Binder 能力单独决定。
+See-through 只读取 `Live2DReadyArtVersion.layerReadyArt`。Provider 顺序为生产默认的
+`private_worker`、用户自带额度的 `hf_space`、以及无 GPU/无额度时的 `manual_psd`。公共 HF Space
+的 ZeroGPU 配额错误必须停止重试，不能通过 Playwright 反复打开浏览器绕过。
 
-## 5. 语义补层、差分与 PSD 合成
+## 5. Live2D 分层
 
-| 项目     | 定义                                                                         |
-| -------- | ---------------------------------------------------------------------------- |
-| 输入     | `LayerSpecVersion`、ArtVersion、闭眼/张嘴素材                                |
-| 可选 AI  | 闭眼/张嘴 PNG、SVG 重绘、局部补层                                            |
-| 持久输出 | `LayerSpecVersion`、`compose-report.json`、`layer-map.json`、BindingReadyPsd |
-| 人工门禁 | AI 补层只进入候选，不直接覆盖正式 PSD                                        |
+| 项目     | 定义                                                          |
+| -------- | ------------------------------------------------------------- |
+| 输入     | `Live2DReadyArtVersion`，或用户直接提供 PSD                   |
+| 持久输出 | `LayerSpecCandidate`；采纳后形成初始 `LayerSpecVersion`       |
+| 默认实现 | See-through 私有 worker；可选 HF Space adapter；PSD 导入旁路  |
+| 本页验收 | 单主体、必需语义、坐标、alpha、合成误差和 provider 结果一致性 |
 
 ```mermaid
 flowchart TD
-  A["LayerSpecVersion + ArtVersion"] --> B{"缺失差分/语义层？"}
-  B -->|否| H["PSD Composer"]
-  B -->|是| C{"生成方式"}
-  C -->|图像编辑| D["闭眼/张嘴候选"]
-  C -->|SVG 重绘| E["SVG 生成"]
-  E --> F["Sanitize SVG"]
-  F --> G["Rasterize + 对齐校验"]
-  D --> I["Patch Candidate Review"]
+  A["Live2DReadyArtVersion"] --> B{"用户已有 PSD？"}
+  B -->|是| C["PSD 导入与安全检查"]
+  B -->|否| D{"选择 See-through Provider"}
+  D -->|private_worker| E["异步 worker"]
+  D -->|hf_space| F["Gradio queue"]
+  D -->|manual_psd| C
+  E --> G["PSD + manifest 规范化"]
+  F --> G
+  F -->|quota / schema / timeout| H["保留当前版本<br/>提供 worker / PSD 回退"]
+  C --> I["图层树与合成预检"]
   G --> I
-  I -->|不采纳| J["保留原 LayerSpec"]
-  J --> K["人工上传或继续生成"]
-  K --> I
-  I -->|采纳| H
+  I --> J{"本页验收"}
+  J -->|不通过| K["留在 Live2D 分层<br/>重分层或返回立绘准备"]
+  J -->|通过| L["用户采用初始 LayerSpecVersion"]
+  L --> M["进入 PSD 图层工作台"]
 
-  H --> M{"PSD 特性支持？"}
-  M -->|不支持| M1["展示不支持图层<br/>要求栅格化/人工处理"]
-  M1 --> H
-  M -->|支持| N["合成、裁切、平移图层坐标"]
-  N --> O["原子写临时 PSD"]
-  O -->|失败| P["ComposeError<br/>保留上一版"]
-  O -->|成功| Q["BindingReadyPsd + reports"]
-  Q --> L["原子创建新 LayerSpecVersion<br/>绑定 PSD/report"]
-  L --> R["CanvasTransformV1"]
-  R --> S["Studio Preview"]
 
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
-  class I,M gate;
-  class Q,R artifact;
+  class B,D,J gate;
+  class G,L artifact;
 ```
 
-## 6. 自动绑定
+## 6. Live2D PSD 图层工作台
 
-| 项目        | 定义                                                         |
-| ----------- | ------------------------------------------------------------ |
-| 输入        | BindingReadyPsd、`RigPlanVersion`、目标 Cubism 版本          |
-| 默认 Binder | PSD2Live，独立进程/MCP                                       |
-| 持久输出    | Binder 工程快照、模型文件族、固定全部输入引用的 `ModelBuild` |
-| 失败恢复    | 新临时目录重试；有副作用失联则 `unknown_outcome`             |
+| 项目     | 定义                                                              |
+| -------- | ----------------------------------------------------------------- |
+| 输入     | 当前 `LayerSpecVersion`、PSD、图层栈、像素选区、可选 AI 会话      |
+| 人工能力 | 套索、魔棒、选区布尔、图层导入/替换/排序、合成与差异预览          |
+| AI 能力  | 选区上下文 + 一次性脚本 + 沙箱执行 + OCR/视觉/像素断言 + 候选预览 |
+| 持久输出 | 新 `LayerSpecVersion`、PSD、图层映射和本页验收结果                |
+| 本页验收 | 像素/图层合法、pinned 未变、合成预演通过、PSD 可被 Binder 读取    |
 
 ```mermaid
 flowchart TD
-  A["ArtVersion + LayerSpecVersion<br/>+ BindingReadyPsd + RigPlanVersion<br/>+ CanvasTransform"] --> B["BinderAdapter.inspect"]
-  B -->|环境缺失| B1["BINDER_UNAVAILABLE<br/>安装/路径引导"]
-  B -->|通过| C["创建 ModelBuild Job"]
-  C --> D["创建固定输入的 ModelBuild<br/>启动隔离 PSD2Live 进程"]
-  D --> E["导入 PSD"]
-  E --> F["应用 RigPlan / 参数 / 物理预设"]
-  F --> G["生成 mesh、deformer、parameter、physics"]
-  G --> H["导出 moc3 + model3 文件族"]
-  H --> I{"统一产物校验"}
-  I -->|失败| I1["BINDER_OUTPUT_INVALID"]
-  I1 --> J{"进程仍健康？"}
-  J -->|是| K["保存诊断并停止"]
-  J -->|否/副作用未知| L["unknown_outcome"]
-  I -->|通过| M["保存 Binder 工程快照"]
-  M --> N["ModelBuild = qc_pending"]
-  N --> O["进入出厂 QC"]
+  A["当前 PSD 和 LayerSpecVersion"] --> B["用户在画布选区或调整图层"]
+  B --> C{"需要 AI？"}
+  C -->|否| D["本地 PSD 操作与撤销"]
+  C -->|是| E["携带选区、图层、pinned 和对话"]
+  E --> F["OCR / 视觉分析"]
+  F --> G["任务临时区生成一次性脚本"]
+  G --> H["隔离沙箱执行"]
+  H --> I["OCR / 像素 / 合成断言"]
+  I -->|失败一次| G
+  I -->|通过| J["前后预览和修改卡片"]
+  D --> K["本页验收"]
+  J -->|用户接受| K
+  K -->|不通过| B
+  K -->|通过| L["新 LayerSpecVersion"]
+  L --> M["Live2D 绑定与交付"]
 
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
-  class I,J gate;
-  class M,N artifact;
+  class C,I,K gate;
+  class L artifact;
 ```
 
-## 7. AI 协作修绑
+AI 脚本只存在应用任务临时目录。仓库、LayerSpecVersion 和桌宠交付包只保存结构化 manifest、
+输入 hash 与验收证据。
 
-| 项目     | 定义                                                     |
-| -------- | -------------------------------------------------------- |
-| 输入     | 当前 Binder state、Canvas 选区、参数/动作、用户自然语言  |
-| 持久输出 | `RigEditProposal`、预览图、申请版本、新 `RigPlanVersion` |
-| 默认模式 | `co-drive`：AI 先做可见效果预览，用户采用后才提交        |
-| 安全边界 | 受控 `rig.*` 工具、32 个语义操作、approval proof、CAS    |
+## 7. Live2D 绑定与交付
+
+| 项目        | 定义                                                           |
+| ----------- | -------------------------------------------------------------- |
+| 输入        | `LayerSpecVersion`、BindingReadyPsd、RigPlan、目标 Cubism 版本 |
+| 默认 Binder | PSD2Live，应用管理的隔离进程/MCP                               |
+| 持久输出    | Binder 工程快照、模型文件族、新 `RigPlanVersion`、预览验收     |
+| 默认模式    | `co-drive`：AI 先做可见效果预览，用户采用后才提交              |
+| 安全边界    | 受控 `rig.*` 工具、approval proof、CAS                         |
 
 ```mermaid
 sequenceDiagram
@@ -366,7 +352,7 @@ sequenceDiagram
   participant API as RigCopilotService
   participant AI as Studio Agent
   participant MCP as PSD2Live MCP
-  participant QA as Verifier / QC
+  participant QA as 本页验收
 
   U->>UI: 选中图层/参数并输入“闭眼穿模，帮我修”
   UI->>API: 创建 copilot session + selection
@@ -390,7 +376,7 @@ sequenceDiagram
     API->>MCP: CAS apply atomic edits
     MCP-->>API: new state + history node
     API->>API: 保存 Binder snapshot + RigPlanVersion
-    API->>QA: rebuild + QC
+    API->>QA: rebuild + 本页验收
     QA-->>API: pass / fail
     API-->>UI: applied + “撤销这次修改”
   else 用户拒绝
@@ -407,46 +393,41 @@ AI 预览失败最多自动修正 3 次；应用阶段不允许模型自行追�
 ```text
 新 RigPlanVersion
   → 重建 ModelBuild
-  → QC
+  → 本页验收
   → 用户点击“撤销这次 AI 修改”
   → active RigPlan/ModelArtifact 指回上一个版本
   → 旧版本仍可查看和再次采用
 ```
 
-## 8. 出厂 QC 与模型发布
+## 8. 阶段验收与桌宠交付
 
-| 项目     | 定义                                  |
-| -------- | ------------------------------------- |
-| 输入     | `ModelBuild`、模型文件族、Binder 版本 |
-| 持久输出 | `QcReport`、可发布 `ModelArtifact`    |
-| 阻塞规则 | `QC-B01` 至 `QC-B08` 全部通过         |
-| 发布规则 | 只有 `qc_passed` 的产物可以绑定 Pet   |
+| 项目     | 定义                                                               |
+| -------- | ------------------------------------------------------------------ |
+| 输入     | 当前阶段候选、本页验收结果、来源版本和用户确认                     |
+| 持久输出 | 阶段验收记录、新版本、最终 `ModelArtifact`                         |
+| 阻塞规则 | 当前页阻塞项未清空时禁止进入下一步                                 |
+| 交付规则 | 只有 `handoff_ready` 的绑定产物可以交给桌宠，状态转为 `handed_off` |
 
 ```mermaid
 flowchart TD
-  A["ModelBuild 完成"] --> B["静态 QC"]
-  B --> C{"B01-B04<br/>入口/moc/ref/path"}
-  C -->|失败| C1["Build = qc_failed"]
-  C -->|通过| D["纹理解码"]
-  D --> E{"B06 通过？"}
-  E -->|否| C1
-  E -->|是| F["Studio Runtime 加载"]
-  F --> G{"B07 参数/动作/idle"}
-  G -->|失败| C1
-  G -->|通过| H["Pet Runtime 加载"]
-  H --> I{"B08 Core/runtime 兼容？"}
-  I -->|否| C1
-  I -->|是| J["生成 QC 报告<br/>阻塞/警告/诊断"]
-  J --> K{"用户点击发布"}
-  K -->|否| L["保留未发布 artifact"]
-  K -->|是| M["事务绑定 Pet.active_model_id"]
-  M --> N["ModelArtifact published"]
-  N --> O["Pet 热加载 / 提示重启"]
+  A["当前工作台候选"] --> B["本页验收"]
+  B --> C{"阻塞项已清空？"}
+  C -->|否| D["留在当前页<br/>定位图层/参数/选区"]
+  D --> A
+  C -->|通过立绘准备| E["创建 Live2DReadyArtVersion"]
+  C -->|通过分层| F["创建初始 LayerSpecVersion"]
+  C -->|通过 PSD 图层| G["进入 Live2D 绑定与交付"]
+  C -->|通过绑定| H["ModelBuild + handoff_ready"]
+  H --> I{"用户点击“交给桌宠”"}
+  I -->|否| J["保留当前版本，不上报全局返工"]
+  I -->|是| K["事务绑定 Pet.active_model_id"]
+  K --> L["handed_off"]
+  L --> M["桌宠热加载 / 提示重启"]
 
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
-  class C,E,G,I,K gate;
-  class J,N artifact;
+  class C,B,I gate;
+  class H,L artifact;
 ```
 
 ## 9. 外部模型导入与桌宠启动
@@ -778,15 +759,15 @@ flowchart TD
   A["想法/设定"] --> B["PromptVersion"]
   B --> C["生成候选"]
   C --> D["用户采纳 ArtVersion v1"]
-  D --> E["平图分层"]
-  E --> F["语义补层"]
-  F --> G["BindingReadyPsd"]
-  G --> H["PSD2Live 自动绑定"]
+  D --> E["Live2D 立绘准备"]
+  E --> F["See-through 分层"]
+  F --> G["PSD 图层工作台<br/>局部修复与合成预演"]
+  G --> H["PSD2Live 绑定"]
   H --> I["AI 对话修绑"]
   I --> J["用户预览并应用"]
   J --> K["重建 ModelBuild"]
-  K --> L["QC-B01…B08"]
-  L --> M["发布 ModelArtifact"]
+  K --> L["Live2D 绑定页验收"]
+  L --> M["交给桌宠<br/>ModelArtifact + handoff_ready"]
   M --> N["Pet 绑定 Persona"]
   N --> O["Direct / Forward / Agent"]
   O --> P["任务摘要 / 记忆按模式处理"]
@@ -795,7 +776,7 @@ flowchart TD
   classDef gate fill:#8d6a36,color:#fff,stroke:#6d4f24;
   classDef artifact fill:#286a63,color:#fff,stroke:#1d514b;
   class D,I,J,L,M,Q gate;
-  class B,G,K,N artifact;
+  class E,G,K,N artifact;
 ```
 
 ## 16. 各阶段必须留下的可审计产物
@@ -805,11 +786,12 @@ flowchart TD
 | 想法与提示词     | PromptInputSubmission、PromptSpec、PromptVersion references、锁定状态、CharacterBriefVersion（如有）、AI 建议     |
 | Fork             | child/parent/root project、source version + hash、branchLabel、seed Prompt/ArtVersion、审计事件                   |
 | 生图             | PromptVersion、可选 base ArtVersion、编译 Prompt、references hash、Provider 请求摘要、候选、active 指针           |
-| 分层             | 输入 ArtVersion、See-through 版本/权重、quality report、LayerSpecVersion、source/binding-ready PSD 引用           |
-| PSD              | 输入图层、补丁来源、compose-report、BindingReadyPsd assetId/hash                                                  |
-| 自动绑定         | ArtVersion、LayerSpecVersion、BindingReadyPsd、RigPlanVersion、CanvasTransform、Binder 版本、工程快照、ModelBuild |
+| 立绘准备         | 已确认 ArtVersion、Live2DPreparationPromptVersion、主立绘、角色设定板、适用性检查和验收                           |
+| 分层             | Live2DReadyArtVersion、See-through provider/版本/参数、PSD/manifest、LayerSpecVersion、本页验收                   |
+| PSD 图层         | 输入图层、选区、pinned、AI manifest、前后预览、BindingReadyPsd assetId/hash、本页验收                             |
+| 绑定             | ArtVersion、LayerSpecVersion、BindingReadyPsd、RigPlanVersion、CanvasTransform、Binder 版本、工程快照、ModelBuild |
 | AI 修绑          | 选区、proposal、baseStateHash、preview、approval proof、apply 结果                                                |
-| QC/发布          | QC report、Core/runtime 版本、ModelArtifact、发布审计                                                             |
+| 桌宠交付         | Core/runtime 版本、ModelArtifact、`handed_off_at`、`handoff_target=pet`、交付审计                                 |
 | Direct           | Messages、记忆抽取状态、MemoryItem                                                                                |
 | Forward          | 仅 transport metrics 和错误码；不保存正文                                                                         |
 | Agent            | native session ref、状态、任务投影摘要、审批审计                                                                  |

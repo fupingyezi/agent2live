@@ -1,7 +1,7 @@
 # agent2live 技术方案
 
-> 状态：架构基线 v1.6（单用户本地工作区）
-> 日期：2026-11-15
+> 状态：架构基线 v1.7（单用户本地工作区）
+> 日期：2026-11-26
 > 前提：完全从 0 开始设计，产品以开源方式发布。已有项目只作为可行性证据与风险清单参考，不构成目录、技术栈或产品边界的依赖。
 > 阶段流程图：[2026-11-08-stage-workflows.md](./2026-11-08-stage-workflows.md)
 > 数据模型：[2026-11-08-data-model.md](./2026-11-08-data-model.md)  
@@ -19,11 +19,11 @@
   → 颗粒化提示词草稿
   → 图片候选
   → 用户采纳的不可变立绘版本
-  → 分层与差分素材
-  → PSD
-  → 自动绑定计划
+  → Live2D 立绘准备与 See-through 分层
+  → 可编辑 PSD
+  → 绑定计划与实时预体验
   → Live2D 模型构建
-  → 桌宠形象
+  → 交给桌宠
   → 人格、聊天、记忆与 Agent 接入
 ```
 
@@ -44,23 +44,24 @@
 
 ### 1.2 推荐技术底座
 
-| 层          | 选择                                                 | 原因                                                                                                                                                                            |
-| ----------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 桌面壳      | Electron + React + TypeScript                        | Chromium 版本可控，WebGL、透明窗口、置顶、点击穿透和多窗口行为一致；适合同时承载制作工作台与长期运行的桌宠窗口                                                                  |
-| 前端构建    | Vite + React Router + TanStack Query + Zustand       | 服务端状态、局部编辑状态、实时任务状态分开管理                                                                                                                                  |
-| 本地后端    | Node.js + Fastify，作为独立 sidecar                  | 与 Agent SDK、PSD 库、任务编排共享 TypeScript；不阻塞 Electron 主进程                                                                                                           |
-| 跨端契约    | TypeScript 类型 + Zod Schema + JSON Schema 导出      | Web、后端、插件和 Agent Tool 共用同一份契约                                                                                                                                     |
-| 本地数据库  | SQLite WAL + Drizzle ORM                             | 零部署、事务可靠、便于备份；元数据不与大文件混存                                                                                                                                |
-| 文件资产    | 内容寻址 Blob Store，`sha256` 为键                   | 版本不可变、天然去重、可校验、可迁移到 S3/OSS                                                                                                                                   |
-| 向量检索    | `sqlite-vec`，后续可替换 pgvector                    | 先在目标硬件上验证 10k / 50k 条记忆的 P95 延迟，再决定容量上限；超限时归档或迁移 pgvector                                                                                       |
-| Live2D 渲染 | Cubism Web SDK，封装统一 Runtime                     | Studio 预览与桌宠使用同一核心版本，避免“预览能播、桌宠不能播”                                                                                                                   |
-| PSD 处理    | `ag-psd` + `sharp`                                   | PSD 图层坐标、合成、裁切和缩略图处理可在 Node worker 内完成                                                                                                                     |
-| 后台任务    | SQLite `jobs` 表 + 进程内持久任务调度器              | 首版无需 Redis 或独立 MQ；任务状态可恢复、可重试                                                                                                                                |
-| 实时通道    | SSE + HTTP 命令                                      | 进度、聊天、Agent 事件本质上是服务端推流；审批和用户操作走普通 POST                                                                                                             |
-| Agent 接入  | Codex App Server over stdio；Claude Agent SDK        | 使用官方控制面，不解析非稳定 transcript，不做 GUI 自动化                                                                                                                        |
-| 桌宠工具    | Tool Gateway + 内置工具 + MCP Client + Skill Runtime | 每轮注入当前时间；搜索、MCP 和 Skills 按 Pet 授权，Schema 变化重新审批                                                                                                          |
-| 平图分层    | See-through 本地推理适配器                           | Apache-2.0，可对单张动漫角色图输出最多 23 个预定义语义组的 PSD；“23”只是默认自动分解器的输出通道数量，不是系统 PSD 或 Live2D 层数上限；GPU 不可用时降级到外部执行或用户提供 PSD |
-| 自动绑定    | PSD2Live GPL-3.0 默认 Binder                         | 可从 PSD 自动生成网格、变形器、参数、物理并导出 `.moc3` / `.cmo3`；通过独立进程/MCP 接入                                                                                        |
+| 层          | 选择                                                 | 原因                                                                                                           |
+| ----------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 桌面壳      | Electron + React + TypeScript                        | Chromium 版本可控，WebGL、透明窗口、置顶、点击穿透和多窗口行为一致；适合同时承载制作工作台与长期运行的桌宠窗口 |
+| 前端构建    | Vite + React Router + TanStack Query + Zustand       | 服务端状态、局部编辑状态、实时任务状态分开管理                                                                 |
+| 本地后端    | Node.js + Fastify，作为独立 sidecar                  | 与 Agent SDK、PSD 库、任务编排共享 TypeScript；不阻塞 Electron 主进程                                          |
+| 跨端契约    | TypeScript 类型 + Zod Schema + JSON Schema 导出      | Web、后端、插件和 Agent Tool 共用同一份契约                                                                    |
+| 本地数据库  | SQLite WAL + Drizzle ORM                             | 零部署、事务可靠、便于备份；元数据不与大文件混存                                                               |
+| 文件资产    | 内容寻址 Blob Store，`sha256` 为键                   | 版本不可变、天然去重、可校验、可迁移到 S3/OSS                                                                  |
+| 向量检索    | `sqlite-vec`，后续可替换 pgvector                    | 先在目标硬件上验证 10k / 50k 条记忆的 P95 延迟，再决定容量上限；超限时归档或迁移 pgvector                      |
+| Live2D 渲染 | Cubism Web SDK，封装统一 Runtime                     | Studio 预览与桌宠使用同一核心版本，避免“预览能播、桌宠不能播”                                                  |
+| PSD 处理    | `ag-psd` + `sharp`                                   | PSD 图层坐标、合成、裁切和缩略图处理可在 Node worker 内完成                                                    |
+| 后台任务    | SQLite `jobs` 表 + 进程内持久任务调度器              | 首版无需 Redis 或独立 MQ；任务状态可恢复、可重试                                                               |
+| 实时通道    | SSE + HTTP 命令                                      | 进度、聊天、Agent 事件本质上是服务端推流；审批和用户操作走普通 POST                                            |
+| Agent 接入  | Codex App Server over stdio；Claude Agent SDK        | 使用官方控制面，不解析非稳定 transcript，不做 GUI 自动化                                                       |
+| 桌宠工具    | Tool Gateway + 内置工具 + MCP Client + Skill Runtime | 每轮注入当前时间；搜索、MCP 和 Skills 按 Pet 授权，Schema 变化重新审批                                         |
+| 立绘准备    | 结构化 Prompt + 生图 Provider                        | 把用户最终确认 ArtVersion 转为身份锁定的分层用立绘；角色设定板只作参考                                         |
+| 平图分层    | See-through provider 适配器                          | 生产默认私有 worker；可选用户 HF Space + token；无额度时导入 PSD；不等同浏览器自动化                           |
+| 自动绑定    | PSD2Live GPL-3.0 默认 Binder                         | 可从 PSD 自动生成网格、变形器、参数、物理并导出 `.moc3` / `.cmo3`；通过独立进程/MCP 接入                       |
 
 不建议在首版使用 Tauri 作为唯一桌面壳。Tauri 的体积优势明显，但 macOS WKWebView 与 Windows WebView2 的图形能力、透明窗口和合成行为存在更多平台差异。这个产品的主要风险是 Live2D 视觉一致性和长链路可靠性，Chromium 一致性带来的收益大于安装包体积收益。
 
@@ -70,16 +71,16 @@
 
 “完全走通”不等于“每个生成步骤都全自动”。本方案将能力分成三档，并保证每一档都有明确出口：
 
-| 能力             | 自动                       | AI 辅助                      | 人工兜底                      |
-| ---------------- | -------------------------- | ---------------------------- | ----------------------------- |
-| 参考图逆向提示词 | 结构化提取                 | 视觉模型分析 + 置信度        | 用户直接填写各颗粒块          |
-| 立绘生成         | 生图 API                   | 候选图人工采纳               | 用户上传自己的立绘            |
-| 分层与差分       | See-through 本地分层       | AI 层语义、闭眼/张嘴候选     | 用户上传 PSD 与闭眼、张嘴素材 |
-| PSD 规整         | 自动裁切、对齐、合成       | 建议语义层名与补丁           | 工作台逐项修改                |
-| Live2D 绑定      | PSD2Live 自动生成          | 参数、物理、动作和对话式修绑 | 导入外部模型或专业工具产物    |
-| 动作与质检       | 自动校验、预览             | AI 给出动作建议              | 人工修正动作组和参数          |
-| 桌宠             | 自动发布与加载             | 动作映射建议                 | 导入外部标准 Live2D 包        |
-| 聊天             | 原生模型、HTTP 转发、Agent | 提示词和动作意图建议         | 仅显示状态或关闭聊天          |
+| 能力             | 自动                       | AI 辅助                      | 人工兜底                   |
+| ---------------- | -------------------------- | ---------------------------- | -------------------------- |
+| 参考图逆向提示词 | 结构化提取                 | 视觉模型分析 + 置信度        | 用户直接填写各颗粒块       |
+| 立绘生成         | 生图 API                   | 候选图人工采纳               | 用户上传自己的立绘         |
+| 立绘准备         | 适用性检查、背景清理       | 提示词优化、主立绘候选       | 用户上传分层用立绘         |
+| 分层             | See-through 私有 worker    | HF Space 或 PSD 候选审查     | 用户上传 PSD               |
+| PSD 图层         | 自动合成预演               | 选区、局部修复和前后候选     | 画布手工修层               |
+| Live2D 绑定      | PSD2Live 实时预览          | 参数、物理、动作和对话式修绑 | 导入外部模型或专业工具产物 |
+| 交付             | 本页验收、桌宠热加载       | 动作映射建议                 | 修正后再次交给桌宠         |
+| 聊天             | 原生模型、HTTP 转发、Agent | 提示词和动作意图建议         | 仅显示状态或关闭聊天       |
 
 必须守住两条底线：
 
@@ -88,7 +89,7 @@
 
 ### 1.4 必须接受的第三方边界
 
-1. Cubism 模型本体 `moc3` 不是普通开放格式。首个 Binder 明确选择 PSD2Live；它作为 GPL-3.0 独立进程构建和分发，仍须对产物做运行时 QC。
+1. Cubism 模型本体 `moc3` 不是普通开放格式。首个 Binder 明确选择 PSD2Live；它作为 GPL-3.0 独立进程构建和分发，仍须在绑定页对产物做运行时验收。
 2. 截至本文日期，不把 Cubism Editor 的无人值守 CLI 当作可依赖的稳定接口。自动绑定采用独立 Binder；需要专业级网格、变形器微调时，提供 Cubism Editor 往返入口，而不承诺“完全无人工的专业绑定”。
 3. See-through 源码为 Apache-2.0，但其模型权重仍需按权重发布页许可单独处理；安装器不默认静默下载未知版本权重。
 4. Cubism Core 不进入 Git 仓库和发行包。开发安装脚本只检测官方 Core 是否存在，或在用户明确确认后打开官方下载页，不代为重新分发。
@@ -120,7 +121,7 @@
 2. PromptVersion 是提示词与有序参考图的完整生成输入；服务端只从明确 PromptVersion 读取 references，不接受客户端传入任意旧 assetId 绕过版本链。
 3. AI 建议不得修改锁定块；检查发生在服务端领域层，而非只做 UI 禁用。
 4. 模型构建必须绑定明确的 ArtVersion、LayerSpecVersion、BindingReadyPsd、RigPlanVersion 和 CanvasTransform，不能使用“当前项目最新文件”这种漂移引用。
-5. 只有通过 QC 的 ModelArtifact 才能发布给桌宠。
+5. 只有 Live2D 绑定与交付页验收通过、状态为 `handoff_ready` 的 ModelArtifact 才能交给桌宠。
 6. Forward 模式不得写入消息历史、语义记忆或摘要记忆。
 7. Agent 模式只持久化任务投影摘要、状态和完成度；原始工作轨迹由 Codex/Claude 自身管理。
 8. 外部模型、PSD、SVG、Hook 内容和 Agent 输出都按不可信输入处理。
@@ -552,7 +553,7 @@ If-Match: currentActiveVersionId
   "id": "build_01J...",
   "label": "首版完整绑定",
   "changeSummary": "导入闭眼与张嘴层后重新构建",
-  "status": "qc_passed",
+  "status": "handoff_ready",
   "baseArtVersionId": "art_01J...",
   "layerSpecVersionId": "lsp_01J...",
   "bindingReadyPsdAssetId": "sha256:binding-ready-psd...",
@@ -590,48 +591,52 @@ If-Match: currentActiveVersionId
 
 ### 4.6 数据库表
 
-| 表                          | 关键字段                                                                                                                                                                                                                                                                 | 说明                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| `characters`                | id, title, summary, active_brief_version_id, row_version                                                                                                                                                                                                                 | 角色聚合根；保存角色设定 active 指针，不保存立绘 active 指针  |
-| `assets`                    | id, sha256, media_type, byte_size, storage_key, width, height                                                                                                                                                                                                            | 元数据；大文件在 Blob Store                                   |
-| `asset_provenance`          | asset_id, source_kind, source_ref, license, consent, model_ref                                                                                                                                                                                                           | 用户素材、AI 产物和第三方素材的来源链                         |
-| `art_projects`              | id, character_id, title, active_version_id, active_prompt_version_id, stage, row_version                                                                                                                                                                                 | 立绘与提示词聚合根；active 指针的唯一来源                     |
-| `character_brief_versions`  | id, character_id, parent_version_id, content_json, source_kind, content_hash                                                                                                                                                                                             | 不可变角色设定快照                                            |
-| `project_forks`             | id, child_project_id, parent_project_id, root_project_id, source_kind, source_version_id, source_hash, branch_label, status                                                                                                                                              | 跨 ArtProject 的分支谱系；不拥有版本 active 指针              |
-| `prompt_input_submissions`  | id, art_project_id, draft_id, revision, character_brief_version_id, global_notes, requirements_json, created_at, row_version                                                                                                                                             | 不可变初始化输入；角色设定版本或参考图至少有一种              |
-| `asset_links`               | asset_id, owner_type, owner_id, role, note, weight, sort_order, locked                                                                                                                                                                                                   | PromptInput/PromptVersion/LayerSpec/Model 的角色化素材关联    |
-| `prompt_drafts`             | id, art_project_id, revision, status, state_json, input_submission_id, row_version                                                                                                                                                                                       | 可编辑草稿及其当前输入快照                                    |
-| `prompt_versions`           | id, art_project_id, parent_version_id, input_submission_id, content_json, content_hash, version_number                                                                                                                                                                   | 不可变生成输入版本；PromptSpec + 有序参考图                   |
-| `prompt_suggestions`        | id, job_id, base_kind, base_version_id, base_draft_id, operations_json, status, provider_invocation_id                                                                                                                                                                   | AI 建议及精确基线                                             |
-| `art_versions`              | id, art_project_id, parent_version_id, origin_version_id, prompt_version_id, artwork_asset_id, generation_job_id, source_kind, source_json, validation_json, canvas_transform_json, content_hash, version_number                                                         | 不可变最终立绘；只保存 artwork asset 与来源                   |
-| `generation_jobs`           | id, art_project_id, prompt_version_id, base_art_version_id, provider_connection_id, request_json, request_hash, job_id                                                                                                                                                   | 固定 PromptVersion、可选 base ArtVersion 与实际 Provider 请求 |
-| `generation_candidates`     | id, generation_job_id, asset_id, validation_json, status, accepted_art_version_id                                                                                                                                                                                        | 候选图                                                        |
-| `live2d_projects`           | id, art_project_id, base_art_version_id, active_layer_spec_version_id, active_rig_plan_version_id, stage, row_version                                                                                                                                                    | Live2D 项目及其当前图层/绑定版本指针                          |
-| `layer_spec_versions`       | id, live2d_project_id, parent_version_id, source_art_version_id, label, change_summary, source_kind, source_psd_asset_id, binding_ready_psd_asset_id, compose_report_asset_id, layers_json, decomposer_json, qc_json, content_hash                                       | 不可变图层方案、PSD 输入输出及合成报告                        |
-| `semantic_patch_candidates` | id, live2d_project_id, layer_spec_version_id, role, asset_id, confidence, status, accepted_layer_spec_version_id                                                                                                                                                         | 闭眼、张嘴、SVG/栅格补层候选及采纳结果                        |
-| `rig_plan_versions`         | id, live2d_project_id, parent_version_id, label, change_summary, source_layer_spec_version_id, binding_ready_psd_asset_id, plan_json, binder_state_asset_id, base_state_hash, edit_log_json, content_hash                                                                | 固定输入 PSD 的可重放绑定方案                                 |
-| `rig_copilot_sessions`      | id, project_id, model_build_id, selection_json, status                                                                                                                                                                                                                   | 绑定协作会话，不进入桌宠记忆                                  |
-| `rig_copilot_messages`      | id, session_id, role, content_json, created_at                                                                                                                                                                                                                           | 用户与 AI 的绑定协作记录，可单独清理                          |
-| `rig_edit_proposals`        | id, session_id, base_state_hash, intent, edits_json, preview_json, verification_json, status                                                                                                                                                                             | 不可变修改提案                                                |
-| `rig_preview_renders`       | id, proposal_id, probe_id, before_asset_id, after_asset_id, metrics_json                                                                                                                                                                                                 | 参数/动作采样预览                                             |
-| `model_builds`              | id, live2d_project_id, art_version_id, layer_spec_version_id, binding_ready_psd_asset_id, rig_plan_version_id, label, change_summary, canvas_transform_json, target_cubism_version, required_capabilities_json, binder_connection_id, binder_version, input_hash, status | 固定全部输入的一次构建                                        |
-| `model_artifacts`           | id, build_id, entry, content_digest, capabilities_json, qc_report_id                                                                                                                                                                                                     | 可发布模型                                                    |
-| `pets`                      | id, name, character_id, active_model_id, window_config_json                                                                                                                                                                                                              | 桌宠实例；唯一 active model 指针                              |
-| `persona_versions`          | id, pet_id, model_artifact_id, character_brief_version_id, overrides_json, persona_json, prompt_hash                                                                                                                                                                     | 从 CharacterBriefVersion 与运行时覆盖生成的人格投影           |
-| `runtime_bindings`          | id, pet_id, model_artifact_id, motion_map_json, provider_connection_id                                                                                                                                                                                                   | 运行时绑定                                                    |
-| `provider_connections`      | id, kind, label, config_json, secret_ref, capabilities_json                                                                                                                                                                                                              | 不含明文密钥                                                  |
-| `conversations`             | id, pet_id, mode, external_session_ref, status                                                                                                                                                                                                                           | 仅 Direct 持久化；Forward 不创建                              |
-| `messages`                  | id, conversation_id, role, content_json, created_at                                                                                                                                                                                                                      | 仅 Direct 的聊天内容                                          |
-| `memory_spaces`             | id, pet_id, model_artifact_id, namespace                                                                                                                                                                                                                                 | 隔离空间                                                      |
-| `memory_items`              | id, space_id, kind, content, importance, source, status, expires_at                                                                                                                                                                                                      | 可检索长期记忆                                                |
-| `memory_vectors`            | memory_id, embedding_model, embedding_revision, dimensions, embedding                                                                                                                                                                                                    | 向量必须与模型、版本和维度绑定                                |
-| `agent_tasks`               | id, pet_id, provider, native_session_ref, objective, status                                                                                                                                                                                                              | Agent 任务元数据                                              |
-| `agent_task_projections`    | agent_task_id, completion, summary, blockers_json, revision                                                                                                                                                                                                              | 唯一允许进入桌宠记忆的 Agent 投影                             |
-| `agent_approvals`           | id, agent_task_id, native_turn_ref, native_tool_request_ref, payload_hash, permission_mode, normalized_cwd, scope_hash, kind, status, expires_at                                                                                                                         | 审批状态机；scope_hash 的组成字段同时持久化                   |
-| `jobs`                      | id, type, payload_json, status, attempts, lease_until                                                                                                                                                                                                                    | 持久任务                                                      |
-| `job_events`                | id, job_id, seq, type, payload_json, created_at                                                                                                                                                                                                                          | SSE 可重放事件                                                |
-| `outbox`                    | id, topic, payload_json, published_at                                                                                                                                                                                                                                    | 跨模块可靠通知                                                |
-| `audit_events`              | seq, at, actor_json, action, target_json, outcome, request_id, trace_id, before_hash, after_hash, metadata_json                                                                                                                                                          | 追加式安全与业务审计，不是调试日志                            |
+| 表                                   | 关键字段                                                                                                                                                                                                                                                                 | 说明                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `characters`                         | id, title, summary, active_brief_version_id, row_version                                                                                                                                                                                                                 | 角色聚合根；保存角色设定 active 指针，不保存立绘 active 指针  |
+| `assets`                             | id, sha256, media_type, byte_size, storage_key, width, height                                                                                                                                                                                                            | 元数据；大文件在 Blob Store                                   |
+| `asset_provenance`                   | asset_id, source_kind, source_ref, license, consent, model_ref                                                                                                                                                                                                           | 用户素材、AI 产物和第三方素材的来源链                         |
+| `art_projects`                       | id, character_id, title, active_version_id, active_prompt_version_id, stage, row_version                                                                                                                                                                                 | 立绘与提示词聚合根；active 指针的唯一来源                     |
+| `character_brief_versions`           | id, character_id, parent_version_id, content_json, source_kind, content_hash                                                                                                                                                                                             | 不可变角色设定快照                                            |
+| `project_forks`                      | id, child_project_id, parent_project_id, root_project_id, source_kind, source_version_id, source_hash, branch_label, status                                                                                                                                              | 跨 ArtProject 的分支谱系；不拥有版本 active 指针              |
+| `prompt_input_submissions`           | id, art_project_id, draft_id, revision, character_brief_version_id, global_notes, requirements_json, created_at, row_version                                                                                                                                             | 不可变初始化输入；角色设定版本或参考图至少有一种              |
+| `asset_links`                        | asset_id, owner_type, owner_id, role, note, weight, sort_order, locked                                                                                                                                                                                                   | PromptInput/PromptVersion/LayerSpec/Model 的角色化素材关联    |
+| `prompt_drafts`                      | id, art_project_id, revision, status, state_json, input_submission_id, row_version                                                                                                                                                                                       | 可编辑草稿及其当前输入快照                                    |
+| `prompt_versions`                    | id, art_project_id, parent_version_id, input_submission_id, content_json, content_hash, version_number                                                                                                                                                                   | 不可变生成输入版本；PromptSpec + 有序参考图                   |
+| `prompt_suggestions`                 | id, job_id, base_kind, base_version_id, base_draft_id, operations_json, status, provider_invocation_id                                                                                                                                                                   | AI 建议及精确基线                                             |
+| `art_versions`                       | id, art_project_id, parent_version_id, origin_version_id, prompt_version_id, artwork_asset_id, generation_job_id, source_kind, source_json, validation_json, canvas_transform_json, content_hash, version_number                                                         | 不可变最终立绘；只保存 artwork asset 与来源                   |
+| `generation_jobs`                    | id, art_project_id, prompt_version_id, base_art_version_id, provider_connection_id, request_json, request_hash, job_id                                                                                                                                                   | 固定 PromptVersion、可选 base ArtVersion 与实际 Provider 请求 |
+| `generation_candidates`              | id, generation_job_id, asset_id, validation_json, status, accepted_art_version_id                                                                                                                                                                                        | 候选图                                                        |
+| `live2d_projects`                    | id, art_project_id, base_art_version_id, active_preparation_prompt_version_id, active_live2d_ready_art_version_id, active_layer_spec_version_id, active_rig_plan_version_id, stage, row_version                                                                          | Live2D 项目及当前准备/图层/绑定版本指针                       |
+| `live2d_preparation_prompt_versions` | id, source_art_version_id, source_prompt_version_id, spec_json, production_requirements_json, audit_json, content_hash                                                                                                                                                   | 用户确认立绘转化为分层用立绘的结构化提示词                    |
+| `live2d_ready_art_versions`          | id, source_art_version_id, live2d_preparation_prompt_version_id, layer_ready_art_asset_id, character_reference_asset_id, manifest_json, stage_validation_json, content_hash                                                                                              | 唯一允许送入 See-through 的分层用立绘                         |
+| `layer_spec_versions`                | id, live2d_project_id, parent_version_id, source_art_version_id, source_live2d_ready_art_version_id, source_kind, source_psd_asset_id, binding_ready_psd_asset_id, compose_report_asset_id, layers_json, decomposer_json, stage_validation_json, content_hash            | 不可变图层方案、PSD 输入输出及本页验收                        |
+| `layer_canvas_sessions`              | id, live2d_project_id, base_layer_spec_version_id, selection_json, status                                                                                                                                                                                                | PSD 画布选区、锁定和 AI 会话                                  |
+| `layer_edit_runs`                    | id, session_id, base_layer_spec_version_id, skill_id, skill_hash, input_hash, manifest_asset_id, evidence_json, status, accepted_layer_spec_version_id                                                                                                                   | 一次性沙箱运行与候选                                          |
+| `semantic_patch_candidates`          | id, live2d_project_id, layer_spec_version_id, role, asset_id, confidence, status, accepted_layer_spec_version_id                                                                                                                                                         | 迁移期差分候选；不再作为独立页面                              |
+| `rig_plan_versions`                  | id, live2d_project_id, parent_version_id, label, change_summary, source_layer_spec_version_id, binding_ready_psd_asset_id, plan_json, binder_state_asset_id, base_state_hash, edit_log_json, content_hash                                                                | 固定输入 PSD 的可重放绑定方案                                 |
+| `rig_copilot_sessions`               | id, project_id, model_build_id, selection_json, status                                                                                                                                                                                                                   | 绑定协作会话，不进入桌宠记忆                                  |
+| `rig_copilot_messages`               | id, session_id, role, content_json, created_at                                                                                                                                                                                                                           | 用户与 AI 的绑定协作记录，可单独清理                          |
+| `rig_edit_proposals`                 | id, session_id, base_state_hash, intent, edits_json, preview_json, verification_json, status                                                                                                                                                                             | 不可变修改提案                                                |
+| `rig_preview_renders`                | id, proposal_id, probe_id, before_asset_id, after_asset_id, metrics_json                                                                                                                                                                                                 | 参数/动作采样预览                                             |
+| `model_builds`                       | id, live2d_project_id, art_version_id, layer_spec_version_id, binding_ready_psd_asset_id, rig_plan_version_id, label, change_summary, canvas_transform_json, target_cubism_version, required_capabilities_json, binder_connection_id, binder_version, input_hash, status | 固定全部输入的一次构建                                        |
+| `model_artifacts`                    | id, build_id, entry, content_digest, capabilities_json, handed_off_at, handoff_target                                                                                                                                                                                    | 可交给桌宠的模型                                              |
+| `pets`                               | id, name, character_id, active_model_id, window_config_json                                                                                                                                                                                                              | 桌宠实例；唯一 active model 指针                              |
+| `persona_versions`                   | id, pet_id, model_artifact_id, character_brief_version_id, overrides_json, persona_json, prompt_hash                                                                                                                                                                     | 从 CharacterBriefVersion 与运行时覆盖生成的人格投影           |
+| `runtime_bindings`                   | id, pet_id, model_artifact_id, motion_map_json, provider_connection_id                                                                                                                                                                                                   | 运行时绑定                                                    |
+| `provider_connections`               | id, kind, label, config_json, secret_ref, capabilities_json                                                                                                                                                                                                              | 不含明文密钥                                                  |
+| `conversations`                      | id, pet_id, mode, external_session_ref, status                                                                                                                                                                                                                           | 仅 Direct 持久化；Forward 不创建                              |
+| `messages`                           | id, conversation_id, role, content_json, created_at                                                                                                                                                                                                                      | 仅 Direct 的聊天内容                                          |
+| `memory_spaces`                      | id, pet_id, model_artifact_id, namespace                                                                                                                                                                                                                                 | 隔离空间                                                      |
+| `memory_items`                       | id, space_id, kind, content, importance, source, status, expires_at                                                                                                                                                                                                      | 可检索长期记忆                                                |
+| `memory_vectors`                     | memory_id, embedding_model, embedding_revision, dimensions, embedding                                                                                                                                                                                                    | 向量必须与模型、版本和维度绑定                                |
+| `agent_tasks`                        | id, pet_id, provider, native_session_ref, objective, status                                                                                                                                                                                                              | Agent 任务元数据                                              |
+| `agent_task_projections`             | agent_task_id, completion, summary, blockers_json, revision                                                                                                                                                                                                              | 唯一允许进入桌宠记忆的 Agent 投影                             |
+| `agent_approvals`                    | id, agent_task_id, native_turn_ref, native_tool_request_ref, payload_hash, permission_mode, normalized_cwd, scope_hash, kind, status, expires_at                                                                                                                         | 审批状态机；scope_hash 的组成字段同时持久化                   |
+| `jobs`                               | id, type, payload_json, status, attempts, lease_until                                                                                                                                                                                                                    | 持久任务                                                      |
+| `job_events`                         | id, job_id, seq, type, payload_json, created_at                                                                                                                                                                                                                          | SSE 可重放事件                                                |
+| `outbox`                             | id, topic, payload_json, published_at                                                                                                                                                                                                                                    | 跨模块可靠通知                                                |
+| `audit_events`                       | seq, at, actor_json, action, target_json, outcome, request_id, trace_id, before_hash, after_hash, metadata_json                                                                                                                                                          | 追加式安全与业务审计，不是调试日志                            |
 
 关键索引：
 
@@ -699,13 +704,13 @@ character-export.zip
 
 ### 4.9 状态归属
 
-| 状态                                | 承载实体                | 推进者                                | 说明                                                            |
-| ----------------------------------- | ----------------------- | ------------------------------------- | --------------------------------------------------------------- |
-| `idea_draft` … `art_version_active` | `art_projects.stage`    | Prompt/Generation Application Service | active 版本切换不重置 stage                                     |
-| Live2D 产线状态                     | `live2d_projects.stage` | ModelBuild/PSD Application Service    | 独立于 ArtProject                                               |
-| `queued` … `unknown_outcome`        | `jobs.status`           | Job Engine                            | 单个异步任务，不表达业务完成度                                  |
-| `qc_passed` / `qc_failed`           | `model_builds.status`   | ModelBuild Service                    | 构建结果                                                        |
-| Character 总览状态                  | API 派生只读 View       | Query Service                         | 由 active ArtVersion、Live2DProject 和 Pet binding 聚合，不落库 |
+| 状态                                | 承载实体                         | 推进者                                | 说明                                                            |
+| ----------------------------------- | -------------------------------- | ------------------------------------- | --------------------------------------------------------------- |
+| `idea_draft` … `art_version_active` | `art_projects.stage`             | Prompt/Generation Application Service | active 版本切换不重置 stage                                     |
+| Live2D 产线状态                     | `live2d_projects.stage`          | ModelBuild/PSD Application Service    | 独立于 ArtProject                                               |
+| `queued` … `unknown_outcome`        | `jobs.status`                    | Job Engine                            | 单个异步任务，不表达业务完成度                                  |
+| `handoff_ready` / `handed_off`      | `model_builds.status` / artifact | ModelBuild / Handoff Service          | 本页验收通过与桌宠交付                                          |
+| Character 总览状态                  | API 派生只读 View                | Query Service                         | 由 active ArtVersion、Live2DProject 和 Pet binding 聚合，不落库 |
 
 禁止把多个聚合的阶段写进同一个 `characters.status` 字段。UI 的总进度是派生值，不是事务写入值。
 
@@ -1136,44 +1141,51 @@ Fork 响应包含 `childProject`、`seedPromptVersion`、可选 `seedArtVersion`
 ```text
 created
   → image_ready
+  → live2d_preparation_prompting
+  → live2d_ready_art_generating
+  → live2d_preparation_review
+  → live2d_ready_art_ready
   → decomposing
   → layer_review
   → psd_composed
+  → psd_editing
   → rig_planning
   → rigging
   → rig_review
   → motion_review
-  → qc
-  → published
-
-外部已绑定模型可旁路进入：
-
-psd_imported
-  → analyzing
-  → patch_review
-  → psd_composed
-  → externally_edited
-  → qc
-  → published
+  → handoff_ready
+  → handed_off
 ```
 
-失败状态为 `failed`，允许从最近成功 checkpoint 重试。任何上游 ArtVersion 变化都只把项目标记为 `stale`，不能自动覆盖已发布模型。`externally_edited` 表示用户从 PSD2Live 或 Cubism Editor 导入了外部修改产物，必须重新运行统一 QC 后才能发布；该状态不能自动回到内部的 `rigging`。
+失败状态为 `failed`，允许从最近成功 checkpoint 重试。任何上游 ArtVersion 变化都只把项目标记为
+`stale`，不能自动覆盖已交付给桌宠的模型。`externally_edited` 表示用户从 PSD2Live 或 Cubism
+Editor 导入了外部修改产物，必须重新运行 Live2D 绑定页验收后才能交付；该状态不能自动回到内部
+的 `rigging`。旧 `qc` / `published` 只作为迁移别名。
 
-### 6.2 平图到分层 PSD
+### 6.2 分层用立绘与 See-through
 
-可选输入 PSD 不是唯一入口。没有 PSD 时，从当前 active ArtVersion 进入自动分层：
+See-through 不直接消费普通 ArtVersion。用户最终确认的 ArtVersion 先经过 Live2D 立绘准备：
 
 ```text
-ArtVersion.artworkAssetId 指向的最终立绘
-  → 图像规范化
-  → SeeThroughDecomposer
-  → SemanticAudit
-  → OptionalLeftRightAndDepthSplit
-  → NormalizedPsdBuilder
-  → BindingReadyPsd
+已确认 ArtVersion + 原始 PromptVersion + CharacterBrief
+  → 适用性检查
+  → Live2DPreparationPromptVersion
+  → 分层用立绘 + 可选角色设定板
+  → 用户接受 Live2DReadyArtVersion
+  → See-through provider
+  → PSD + layer manifest
+  → Live2D 分层页验收
+  → 初始 LayerSpecVersion
 ```
 
-默认实现采用 See-through。它是 Apache-2.0 的开源项目，提供 `inference/scripts/inference_psd.py`，可从单张动漫角色图生成最多 23 个预定义语义组的 PSD。应用只通过独立的 Python worker 调用固定版本和固定参数，不把模型推理写进 Electron renderer。
+See-through provider 顺序为：
+
+1. `private_worker`：生产默认，使用独立 NVIDIA worker 和固定 v1 协议。
+2. `hf_space`：用户提供 HF Space URL 和可选 token，走 Gradio `/inference`。
+3. `manual_psd`：无 GPU、额度耗尽或远程服务不可用时，用户上传已有 PSD。
+
+HF Space 实测可用，但匿名与免费账号受 ZeroGPU 日配额限制；额度耗尽后必须停止重试，不得用
+Playwright 反复自动化页面。公共 Space 不是生产默认值。
 
 “最多 23 个语义层”只是 See-through 当前默认权重和输出分类 Schema 的限制，仅适用于“单图自动分层”适配器。它不是 `LayerSpecVersion`、PSD 合成器、PSD2Live 或 Live2D 系统的层数上限，也不进入后续绑定契约。用户导入自己的 PSD、在现有 PSD 上继续补层、增加差分图，或把同一语义组拆成多个实际图层时，后续流程直接对这些图层做语义审计、合成和绑定，不得为了满足 23 层限制而合并、丢弃图层。
 
@@ -1181,13 +1193,13 @@ ArtVersion.artworkAssetId 指向的最终立绘
 
 运行档位：
 
-| 档位          | 条件                          | 策略                                                                     |
-| ------------- | ----------------------------- | ------------------------------------------------------------------------ |
-| GPU 完整      | NVIDIA CUDA，≥12GB VRAM       | 1280 长边，group offload，完整质量                                       |
-| GPU 低显存    | NVIDIA CUDA，8GB VRAM         | 量化或 block-swap；报告质量降级                                          |
-| CPU           | 无兼容 GPU                    | 不作为交互默认；提示使用外部 worker 或人工 PSD                           |
-| Apple Silicon | 首版未验证 See-through 全链路 | 使用外部 NVIDIA worker 或人工 PSD；MPS 通过 Phase 0 前不承诺本地自动分层 |
-| 外部执行      | 无本地兼容 GPU                | 用户自行在本地/远程运行 See-through，导入 PSD                            |
+| 档位          | 条件                    | 策略                                                             |
+| ------------- | ----------------------- | ---------------------------------------------------------------- |
+| GPU 完整      | NVIDIA CUDA，≥12GB VRAM | 1280 长边，group offload，完整质量                               |
+| GPU 低显存    | NVIDIA CUDA，8GB VRAM   | 量化或 block-swap；报告质量降级                                  |
+| CPU           | 无兼容 GPU              | 使用用户 HF Space token、外部 worker 或人工 PSD                  |
+| Apple Silicon | 无 CUDA 本地路径        | 使用外部 NVIDIA worker、用户 HF Space 或人工 PSD；不承诺本地 MPS |
+| 外部执行      | 无本地兼容 GPU          | 私有 worker、用户 HF Space，或导入 PSD                           |
 
 模型权重不随源码仓库提交。应用记录 See-through 版本、权重 ID、推理参数、深度图和分割 mask，任何结果都能追溯。
 
@@ -1199,7 +1211,8 @@ ArtVersion.artworkAssetId 指向的最终立绘
 - 自动左右拆分只在置信度和像素证据同时达标时执行；否则留给 patch review。
 - 自动分层永远先成为 `LayerSpecCandidate`，用户可全选采纳，但不能直接覆盖已有正式 PSD。
 
-无 GPU 或者分层门失败时，系统必须给出三条可执行路径：降低分辨率重试、导入第三方工具产出的 PSD、在已有图层上手工修正。产品不得表现为“点击自动分层后永远转圈”。
+无 GPU、额度耗尽或者分层门失败时，系统必须给出三条可执行路径：切换私有 worker、导入第三方
+工具产出的 PSD、在 PSD 图层工作台手工修正。产品不得表现为“点击自动分层后永远转圈”。
 
 ### 6.3 输入
 
@@ -1298,11 +1311,13 @@ builds/<buildId>/
 
 - `full` 包：内置固定版本 PSD2Live 与所需运行时，附带完整 Corresponding Source、NOTICE 和构建脚本。
 - `lite` 包：不内置 PSD2Live，首次运行检测用户安装的路径；适合包体积敏感用户。
-- 两者使用相同 BinderAdapter 和产物 QC，不允许行为漂移。
+- 两者使用相同 BinderAdapter 和绑定页验收，不允许行为漂移。
 
 每个构建任务启动一个独立 PSD2Live 进程，通过临时 store、随机 localhost token 和受控工作目录通信。优先使用其 MCP/结构化接口，不解析 GUI 文本输出。超时或进程崩溃时先终止整个进程树，再把任务标为 `failed` 或 `unknown_outcome`。
 
-Phase 0 的平台范围固定为 macOS arm64：固定 PSD 在干净的 macOS 环境产出至少一个 `.moc3` 模型包，Studio 和 Pet Runtime 均能加载，idle 可播放，必需参数可读取，全部阻塞 QC 通过。Windows x64 在 Phase 2 夜构建验证；没有 Windows 证据前不得标记 Windows 支持。
+Phase 0 的平台范围固定为 macOS arm64：固定 PSD 在干净的 macOS 环境产出至少一个 `.moc3`
+模型包，Studio 和 Pet Runtime 均能加载，idle 可播放，必需参数可读取，绑定页验收通过并达到
+`handoff_ready`。Windows x64 在 Phase 2 夜构建验证；没有 Windows 证据前不得标记 Windows 支持。
 
 立绘画布与模型画布不要求像素尺寸相同。构建时记录 `CanvasTransformV1`：
 
@@ -1318,7 +1333,7 @@ Phase 0 的平台范围固定为 macOS arm64：固定 PSD 在干净的 macOS 环
 }
 ```
 
-首版只允许等比例缩放，沿目标画布居中并贴底；禁止把非等比例缩放默默写进纹理。QC 以 `CanvasTransformV1` 重新合成 10 个采样点，检查角色边界、眼睛和嘴部定位，偏差超过 2 个模型像素即阻塞发布。
+首版只允许等比例缩放，沿目标画布居中并贴底；禁止把非等比例缩放默默写进纹理。绑定页验收以 `CanvasTransformV1` 重新合成 10 个采样点，检查角色边界、眼睛和嘴部定位，偏差超过 2 个模型像素即阻止交付。
 
 绑定通过版本化 Binder 接口：
 
@@ -1326,7 +1341,7 @@ Phase 0 的平台范围固定为 macOS arm64：固定 PSD 在干净的 macOS 环
 interface Binder {
   inspect(input: BinderInspectInput): Promise<BinderCapabilities>
   build(input: BinderBuildInput, ctx: JobContext): Promise<BinderBuildOutput>
-  validate(output: BinderBuildOutput): Promise<QCFinding[]>
+  validate(output: BinderBuildOutput): Promise<StageFinding[]>
 }
 ```
 
@@ -1342,7 +1357,7 @@ Binder 输入只有 PSD 路径、目标版本、RigPlan 和临时输出目录。
 - 导出可交换工程或 PSD 与当前绑定说明。
 - 用户在 Cubism Editor 中完成。
 - 导入其导出的标准模型包。
-- 系统重新执行统一 QC，状态标记为 `externally_edited`。
+- 系统重新执行绑定页验收，状态标记为 `externally_edited`。
 
 这条路径是有意保留的人工出口，不能被宣传成完全自动。
 
@@ -1372,9 +1387,10 @@ interface Live2DRuntime {
 - 物理开关。
 - 运行期参数与纹理诊断。
 
-运行时绑定固定使用 `cubismCoreVersion` 和 `runtimeVersion`，QC 报告记录两者。构建与运行时版本不匹配时阻止发布，不只在控制台告警。
+运行时绑定固定使用 `cubismCoreVersion` 和 `runtimeVersion`，绑定页验收记录两者。构建与运行时
+版本不匹配时阻止交给桌宠，不只在控制台告警。
 
-### 6.8 出厂 QC
+### 6.8 绑定页验收与桌宠交付
 
 阻塞项：
 
@@ -1396,19 +1412,21 @@ interface Live2DRuntime {
 - `QC-W05`：可选动作组缺失。
 - `QC-W06`：纹理尺寸过大或纹理数量超过性能预算。
 
-发布动作只接受 `qc_passed` 的 ModelArtifact。
+验收结果属于当前 ModelBuild，不形成独立 QC 页面。只有状态为 `handoff_ready` 的 ModelArtifact
+可以交给桌宠；交付后写 `handed_off_at` 和 `handoff_target=pet`，不使用发布概念。
 
 ### 6.9 Live2D 工作台组件
 
-- `StageRail`：完整产线状态和当前阻塞项。
+- `StageRail`：Live2D 立绘准备、分层、PSD 图层、绑定与交付四页状态。
+- `StageGateSummary`：当前页验收、阻塞项和放行条件。
+- `HandoffPanel`：交给桌宠、版本、运行能力和交付结果。
 - `PsdLayerTree`：层级、语义角色、置信度和“不支持特性”标记。
 - `LayerOverlayCanvas`：原图与补层叠加，显示 bbox 和透明度。
-- `VariantCompareSlider`：闭眼、张嘴候选与基准图联动缩放。
-- `ComposeReport`：逐项说明自动修复、跳过和需人工处理的内容。
+- `VariantCompareSlider`：选区修复、闭眼和张嘴候选与基准图联动缩放。
+- `LayerPatchReport`：逐项说明 AI 修复、跳过和需人工处理的内容。
 - `RigViewport`：模型实时预览、参数滑杆和窗口裁剪框。
 - `DeformerInspector`：绑定计划中的父子关系、网格密度和连接点。
 - `MotionLibrary`：动作组、表情、物理预设与意图映射。
-- `ModelQcPanel`：阻塞项、警告项、运行时诊断和发布按钮。
 
 长任务期间这些组件保持挂载，通过 `disabled` 和遮罩层表达忙碌状态，避免候选选择、未保存参数或图层展开状态因任务开始而丢失。
 
@@ -1423,7 +1441,9 @@ interface Live2DRuntime {
 
 对话输入框提供快捷意图：修复穿模、限制参数、重铺网格、调整父子层级、软化物理、检查极值、对比修复。快捷意图只负责填充上下文和自然语言，不会绕过提案与预览。
 
-默认模式为“共驾”：AI 可以读取当前绑定、生成结构化修改提案、试运行和渲染预览，但不能直接发布或静默修改正式工程。用户先查看效果，再点击“采用这个效果”，系统以同一 base state 原子提交。
+默认模式为“共驾”：AI 可以读取当前绑定、生成结构化修改提案、试运行和渲染预览，但不能直接
+交给桌宠或静默修改正式工程。用户先查看效果，再点击“采用这个效果”，系统以同一 base state
+原子提交。
 
 对非专业用户采用“视觉优先”的交互顺序：
 
@@ -1441,10 +1461,11 @@ interface Live2DRuntime {
 | 模式               | AI 可做                        | 仍需人工                  |
 | ------------------ | ------------------------------ | ------------------------- |
 | `explain`          | 读取、解释、定位问题           | 修改由用户完成            |
-| `co-drive`（默认） | 提案、试运行、生成前后预览     | 点击“采用”与发布          |
-| `sandbox-auto`     | 在隔离工程分支自动修到 QC 通过 | 合并到正式 RigPlan 和发布 |
+| `co-drive`（默认） | 提案、试运行、生成前后预览     | 点击“采用”与交给桌宠      |
+| `sandbox-auto`     | 在隔离工程分支自动完成本页验收 | 合并到正式 RigPlan 与交付 |
 
-`sandbox-auto` 不允许接触正式工程，也不能越过最终人工发布；它适合“我先去修，修完给我看”的场景。
+`sandbox-auto` 不允许接触正式工程，也不能越过用户最终交付确认；它适合“我先去修，修完给我看”
+的场景。
 
 #### 目标和边界
 
@@ -1458,7 +1479,7 @@ AI 可做：
 
 AI 不可做：
 
-- 绕过用户确认直接发布模型。
+- 绕过用户确认直接把模型交给桌宠。
 - 写入任意文件路径、执行 shell 或访问项目外数据。
 - 直接修改 `.moc3` 内部表示。
 - 跨项目读取另一个角色的绑定工程。
@@ -1477,7 +1498,7 @@ user request + current selection
   → present human-readable outcome + interactive before/after
   → user adopts / rejects / asks for another preview
   → CAS apply as one atomic edit batch
-  → regenerate + render + deterministic QC
+  → regenerate + render + deterministic stage validation
   → save new RigPlanVersion
 ```
 
@@ -1601,8 +1622,8 @@ AI 在 `preview` 失败时应读取结构化诊断并自行修正提案，最多
 3. 把全部编辑作为一个原子批次提交。
 4. 最多允许一个提案包含 32 个语义操作；超过时要求拆分。
 5. CAS 失败返回 `409 RIG_STATE_CHANGED`，旧预览立即失效。
-6. 提交成功后把 Binder 工程快照写入 Blob Store，并生成新的 RigPlanVersion；随后重新运行构建和 QC。
-7. 任何 post-apply QC 失败可一键撤销到上一个版本，不覆盖旧 artifact。
+6. 提交成功后把 Binder 工程快照写入 Blob Store，并生成新的 RigPlanVersion；随后重新运行构建和绑定页验收。
+7. 任何 post-apply 验收失败可一键撤销到上一个版本，不覆盖旧 artifact。
 
 #### 预览探针
 
@@ -1715,7 +1736,7 @@ rig.undo
 - 目标对象越界与禁止操作数 0。
 - 试运行失败后最多 3 次自修正。
 - CAS 冲突全部返回 stale 且不写入。
-- 应用后的模型 100% 通过 QC。
+- 应用后的模型 100% 通过绑定页验收。
 - 人工评分记录“明显改善 / 无变化 / 更差”，不得只用模型自评。
 
 ## 7. 桌宠运行时
@@ -1990,7 +2011,7 @@ score = vectorSimilarity
 
 ### 9.1 两类 Agent 必须分开
 
-1. **Studio Project Agent**：理解用户创作意图，调用图片分析、提示词、分层、绑定、QC 等业务工具，提出下一步建议。
+1. **Studio Project Agent**：理解用户创作意图，调用图片分析、提示词、分层、绑定和阶段验收等业务工具，提出下一步建议。
 2. **External Coding Agent**：Codex/Claude，在用户工作目录中读写代码、运行命令，解决用户交给桌宠的工作任务。
 
 Studio Agent 不应获得任意 shell。External Agent 不应直接修改提示词数据库或模型资产。
@@ -2068,13 +2089,16 @@ art.propose_prompt_blocks
 art.suggest_prompt_changes
 art.compile_prompt
 art.generate_candidates
+l2d.prepare_prompt
+l2d.generate_ready_art
+l2d.accept_ready_art
 l2d.inspect_layers
-l2d.propose_semantic_patches
-l2d.compose_psd
+l2d.propose_layer_patch
+l2d.accept_layer_patch
 l2d.plan_rig
 l2d.build_model
 l2d.inspect_model
-l2d.run_qc
+l2d.validate_stage
 rig.get_context
 rig.inspect_objects
 rig.sample_preview
@@ -2083,7 +2107,7 @@ rig.preview_proposal
 rig.compare_render
 rig.apply_proposal
 rig.undo
-pet.publish_model
+pet.handoff_model
 memory.propose_update
 ```
 
@@ -2092,14 +2116,14 @@ memory.propose_update
 - 每个工具输入输出都版本化。
 - 写操作必须接收预期 base hash。
 - 任何业务工具都不能接收任意绝对路径；只能接收 AssetId 或服务端解析的 ProjectId。
-- 生成类工具只产生候选，不直接发布。
+- 生成类工具只产生候选，不直接交给桌宠。
 - 工具结果写 Blob 或事件，不把大对象塞回对话上下文。
 
 ### 9.5 编排方式
 
 采用“确定性 Workflow + 局部 Agent”：
 
-- 版本推进、锁定、发布、QC 是代码状态机。
+- 版本推进、锁定、阶段验收和桌宠交付是代码状态机。
 - Planner 负责在阶段内选择建议动作。
 - 每个 Specialist 有独立输入输出 Schema。
 - 只有验证器通过才进入下一阶段。
@@ -2287,7 +2311,7 @@ SDK 不返回可直接执行的 shell 字符串，也不允许业务模块把模
 | 规划绑定      | `RigPlanningService`      | 是，保存 RigPlan | RigPlanVersion                   |
 | 对话修正绑定  | `RigCopilotService`       | 是，预览后应用   | RigEditProposal + RigPlanVersion |
 | 构建模型      | `ModelBuildService`       | 是，启动任务     | ModelBuild                       |
-| 发布模型      | `ModelPublishService`     | 是，最终发布     | ModelArtifact binding            |
+| 交付桌宠      | `ModelHandoffService`     | 是，最终交付     | ModelArtifact + pet binding      |
 | 记录任务摘要  | `AgentProjectionService`  | 否               | AgentTaskProjection              |
 
 事件到桌宠动作的固定映射：
@@ -2445,7 +2469,7 @@ allow_for_session    本次对话允许
 allow_always         该 Pet + 该模型 + schemaHash 永久允许
 ```
 
-`allow_always` 不能用于授予任意 shell、任意文件写入或发布权限。
+`allow_always` 不能用于授予任意 shell、任意文件写入或桌宠交付权限。
 
 直接聊天的单轮限制：
 
@@ -2512,26 +2536,28 @@ SKILL_BUDGET_EXCEEDED
 
 ### 10.1 页面
 
-| 路由                     | 页面           | 关键内容                                                  |
-| ------------------------ | -------------- | --------------------------------------------------------- |
-| `/`                      | 角色总览       | 角色卡、ArtProject 谱系树、当前阶段、最近模型、继续创作   |
-| `/characters/new`        | 新角色向导     | 文字设定、参考图、素材、基础风格                          |
-| `/characters/:id`        | 角色驾驶舱     | 三阶段状态、项目谱系、当前版本、下一步                    |
-| `/characters/:id/art`    | 立绘工作台     | 素材+要求输入、Prompt Inspector、候选、版本树、Fork、回退 |
-| `/characters/:id/live2d` | Live2D 产线    | PSD、语义层、差分、合成、状态机                           |
-| `/characters/:id/rig`    | 绑定工作台     | 视觉预览优先、AI 修绑、采用/回退、高级参数与 QC           |
-| `/characters/:id/models` | 模型版本库     | 构建历史、ArtVersion 绑定、发布和回退                     |
-| `/pets`                  | 桌宠列表       | 绑定模型、运行状态、启动/关闭                             |
-| `/pets/:id`              | 桌宠设置       | 窗口、动作、人格、聊天模式                                |
-| `/pets/:id/tools`        | 桌宠工具权限   | 内置工具、MCP、Skills、按模型授权                         |
-| `/pets/:id/chat`         | 聊天与 Agent   | 气泡、任务、审批、模式切换                                |
-| `/pets/:id/memory`       | 记忆管理       | 搜索、固定、编辑、删除、来源                              |
-| `/agent-runs`            | Agent 任务中心 | 运行中、待审批、已结束、恢复入口                          |
-| `/settings/providers`    | Provider 设置  | LLM、生图、Forward、密钥状态                              |
-| `/settings/tools`        | 内置工具       | 时间、计算、搜索、联网开关                                |
-| `/settings/mcp`          | MCP 管理       | stdio/HTTP 配置、发现、测试、版本变化                     |
-| `/settings/skills`       | Skills 管理    | 导入、预览、版本、权限和启用范围                          |
-| `/settings/extensions`   | 扩展管理       | Binder、Provider Adapter、权限与健康检查                  |
+| 路由                                   | 页面              | 关键内容                                                  |
+| -------------------------------------- | ----------------- | --------------------------------------------------------- |
+| `/`                                    | 角色总览          | 角色卡、ArtProject 谱系树、当前阶段、最近模型、继续创作   |
+| `/characters/new`                      | 新角色向导        | 文字设定、参考图、素材、基础风格                          |
+| `/characters/:id`                      | 角色驾驶舱        | 三阶段状态、项目谱系、当前版本、下一步                    |
+| `/characters/:id/art`                  | 立绘工作台        | 素材+要求输入、Prompt Inspector、候选、版本树、Fork、回退 |
+| `/characters/:id/live2d?stage=prepare` | Live2D 立绘准备   | 来源立绘、提示词优化、分层用立绘和角色设定板              |
+| `/characters/:id/live2d?stage=layers`  | Live2D 分层       | See-through provider、PSD/manifest 导入和本页验收         |
+| `/characters/:id/live2d?stage=psd`     | Live2D PSD 图层   | 像素画布、图层栈、选区 AI 和合成预演                      |
+| `/characters/:id/live2d?stage=rig`     | Live2D 绑定与交付 | 实时预览、AI 修绑、本页验收、交给桌宠                     |
+| `/characters/:id/models`               | 模型版本库        | 构建历史、来源版本、桌宠交付与回退                        |
+| `/pets`                                | 桌宠列表          | 绑定模型、运行状态、启动/关闭                             |
+| `/pets/:id`                            | 桌宠设置          | 窗口、动作、人格、聊天模式                                |
+| `/pets/:id/tools`                      | 桌宠工具权限      | 内置工具、MCP、Skills、按模型授权                         |
+| `/pets/:id/chat`                       | 聊天与 Agent      | 气泡、任务、审批、模式切换                                |
+| `/pets/:id/memory`                     | 记忆管理          | 搜索、固定、编辑、删除、来源                              |
+| `/agent-runs`                          | Agent 任务中心    | 运行中、待审批、已结束、恢复入口                          |
+| `/settings/providers`                  | Provider 设置     | LLM、生图、Forward、密钥状态                              |
+| `/settings/tools`                      | 内置工具          | 时间、计算、搜索、联网开关                                |
+| `/settings/mcp`                        | MCP 管理          | stdio/HTTP 配置、发现、测试、版本变化                     |
+| `/settings/skills`                     | Skills 管理       | 导入、预览、版本、权限和启用范围                          |
+| `/settings/extensions`                 | 扩展管理          | Binder、Provider Adapter、权限与健康检查                  |
 
 ### 10.2 Studio 通用布局
 
@@ -2573,7 +2599,7 @@ SKILL_BUDGET_EXCEEDED
 - Primitives：`Button`、`AsyncButton`、`TextField`、`Select`、`StatusPill`、`ProgressBar`、`Dialog`、`Drawer`、`Tabs`、`TreeView` 等无业务语义组件。
 - Patterns：`WorkbenchLayout`、`StageRail`、`InspectorSection`、`ReviewFooter`、`TechnicalDetailsDisclosure` 等只接收通用步骤、状态和插槽的组合模式。
 
-`packages/design-system` 不依赖路由、TanStack Query、Zustand、Electron API、API client 或领域模型，也不能直接发起业务请求。`PromptBlockCard`、`CandidateCompareView`、`PsdLayerTree`、`RigViewport`、`ModelQcPanel`、`AgentTaskCard` 等继续放在应用层，通过组合通用组件实现。Studio 与 Pet 共用 token 和基础组件；Pet 的透明背景、点击穿透和气泡容器由 Pet 层扩展。
+`packages/design-system` 不依赖路由、TanStack Query、Zustand、Electron API、API client 或领域模型，也不能直接发起业务请求。`PromptBlockCard`、`CandidateCompareView`、`PsdLayerTree`、`RigViewport`、`StageGateSummary`、`HandoffPanel`、`AgentTaskCard` 等继续放在应用层，通过组合通用组件实现。Studio 与 Pet 共用 token 和基础组件；Pet 的透明背景、点击穿透和气泡容器由 Pet 层扩展。
 
 组件包采用单一公共入口导出稳定 API，并把 Storybook 或等价组件画廊作为视觉验收页。组件必须覆盖键盘操作、焦点恢复、禁用/加载/错误态和 1x/2x 视觉快照。设计图变化时先更新 token、画廊和状态矩阵，再迁移业务页面；不允许页面绕过组件包复制同功能控件。
 
@@ -2701,10 +2727,10 @@ telemetry-audit
 | `POST`  | `/rig-edit-proposals/:id/apply`            | 用户确认后带一次性 approval proof 原子应用                                       |
 | `POST`  | `/rig-edit-proposals/:id/reject`           | 拒绝提案并保留审计                                                               |
 | `POST`  | `/live2d-projects/:id/builds`              | 固定 ArtVersion、LayerSpecVersion、PSD、RigPlan 与 CanvasTransform 后启动 Binder |
-| `GET`   | `/live2d-projects/:id/builds`              | 获取构建历史、输入引用、QC 和产物摘要                                            |
-| `GET`   | `/model-builds/:id`                        | 查询构建与 QC                                                                    |
+| `GET`   | `/live2d-projects/:id/builds`              | 获取构建历史、输入引用、本页验收和产物摘要                                       |
+| `GET`   | `/model-builds/:id`                        | 查询构建与绑定页验收                                                             |
 | `PATCH` | `/model-builds/:id`                        | 修改 label/changeSummary 注记并写审计                                            |
-| `POST`  | `/model-artifacts/:id/publish`             | 发布给桌宠                                                                       |
+| `POST`  | `/model-artifacts/:id/handoff`             | 将 `handoff_ready` 产物交给桌宠                                                  |
 
 `active-versions` 使用 `If-Match` 原子切换两个项目指针，并校验 RigPlanVersion 的来源 LayerSpecVersion 与目标 active LayerSpecVersion 一致。三个版本的 `PATCH` 只允许修改 `label` 和 `changeSummary`，不能修改 PSD、图层、绑定或构建输入引用。
 
@@ -2838,7 +2864,7 @@ HTTP 错误统一使用 `application/problem+json`，并扩展稳定业务码。
 
 - 创建生成、绑定、Agent turn 都要求客户端提供 `Idempotency-Key`。
 - 保存草稿和采纳候选使用 `If-Match` / `row_version`。
-- 发布模型使用事务同时更新 Pet binding 和 publish 记录。
+- 交给桌宠使用事务同时更新 Pet binding、artifact `handed_off_at` 和审计。
 - Binder 输出目录使用 buildId，成功后才登记 artifact。
 - 同名任务重复提交返回同一 job，而不是重复计费。
 
@@ -2859,16 +2885,16 @@ DomainError / ValidationError / ConflictError / SecurityError
 
 错误来源：
 
-| 层            | 示例                                 | 处理                                        |
-| ------------- | ------------------------------------ | ------------------------------------------- |
-| Renderer 校验 | 空名称、非法尺寸、未选择模型         | 阻止请求，显示字段错误                      |
-| Transport     | token 错误、超时、sidecar 不可用     | 统一 API client 转为 `ApiError`             |
-| Domain        | 锁定块、active 版本冲突、QC 失败     | 抛 typed DomainError                        |
-| Job           | Binder 崩溃、任务取消、租约丢失      | `JobError` + checkpoint + partial artifacts |
-| Provider      | 401、429、非法响应、超时             | Adapter 归一化为 Provider 错误              |
-| Agent         | 未安装、登录失效、审批过期、进程退出 | Agent Adapter 归一化                        |
-| Security      | 路径逃逸、SSRF、插件越权             | 拒绝操作、记录安全审计，不返回敏感原文      |
-| 未知异常      | bug、OOM、解析器崩溃                 | `SYS_INTERNAL` + 内部 causeId               |
+| 层            | 示例                                  | 处理                                        |
+| ------------- | ------------------------------------- | ------------------------------------------- |
+| Renderer 校验 | 空名称、非法尺寸、未选择模型          | 阻止请求，显示字段错误                      |
+| Transport     | token 错误、超时、sidecar 不可用      | 统一 API client 转为 `ApiError`             |
+| Domain        | 锁定块、active 版本冲突、阶段验收失败 | 抛 typed DomainError                        |
+| Job           | Binder 崩溃、任务取消、租约丢失       | `JobError` + checkpoint + partial artifacts |
+| Provider      | 401、429、非法响应、超时              | Adapter 归一化为 Provider 错误              |
+| Agent         | 未安装、登录失效、审批过期、进程退出  | Agent Adapter 归一化                        |
+| Security      | 路径逃逸、SSRF、插件越权              | 拒绝操作、记录安全审计，不返回敏感原文      |
+| 未知异常      | bug、OOM、解析器崩溃                  | `SYS_INTERNAL` + 内部 causeId               |
 
 原则：
 
@@ -2930,7 +2956,7 @@ interface ErrorDefinition {
 | `410` | 一次性审批、临时提案或上传已经过期            | `AGENT_APPROVAL_EXPIRED`, `PROPOSAL_EXPIRED`                    |
 | `413` | 请求体、资产或压缩包超过上限                  | `PAYLOAD_TOO_LARGE`, `ARCHIVE_LIMIT_EXCEEDED`                   |
 | `415` | MIME 或文件类型不支持                         | `MEDIA_UNSUPPORTED`                                             |
-| `422` | 语义合法的请求无法被业务规则处理              | `MODEL_QC_FAILED`, `RIG_PROPOSAL_INVALID`                       |
+| `422` | 语义合法的请求无法被业务规则处理              | `MODEL_VALIDATION_FAILED`, `RIG_PROPOSAL_INVALID`               |
 | `423` | 明确锁定，不同于一般并发冲突                  | `PROMPT_BLOCK_LOCKED`, `RESOURCE_LOCKED`                        |
 | `429` | 本地或上游限流                                | `RATE_LIMITED`, `PROVIDER_RATE_LIMITED`                         |
 | `500` | 未预期内部错误                                | `SYS_INTERNAL`                                                  |
@@ -2977,7 +3003,7 @@ interface ErrorDefinition {
 | 分层        | `LAYER_REQUIRED_ROLE_MISSING`   | 422      | 否     | 手工补层          |
 | Live2D      | `MODEL_ENTRY_NOT_FOUND`         | 422      | 否     | 重新导入          |
 | Live2D      | `MODEL_REFERENCE_INVALID`       | 422      | 否     | 修复模型包        |
-| Live2D      | `MODEL_QC_FAILED`               | 422      | 否     | 查看 QC           |
+| Live2D      | `MODEL_VALIDATION_FAILED`       | 422      | 否     | 查看当前页验收    |
 | Live2D      | `MODEL_RUNTIME_INCOMPATIBLE`    | 422      | 否     | 调整目标版本      |
 | Binder      | `BINDER_UNAVAILABLE`            | 503      | 是     | 检查安装          |
 | Binder      | `BINDER_TIMEOUT`                | 504      | 是     | 重试或增加超时    |
@@ -3173,9 +3199,9 @@ requestId 由 API 网关生成；traceId 由 renderer 发起操作时生成，�
 | 级别    | 用途                   | 示例                                  |
 | ------- | ---------------------- | ------------------------------------- |
 | `fatal` | 进程无法继续           | SQLite 无法打开、主进程初始化失败     |
-| `error` | 用户操作失败或安全拒绝 | QC 失败、审批 scope 不匹配            |
+| `error` | 用户操作失败或安全拒绝 | 阶段验收失败、审批 scope 不匹配       |
 | `warn`  | 降级、重试、可恢复异常 | Provider 429、Binder 超时             |
-| `info`  | 业务生命周期           | 项目创建、构建开始/完成、版本发布     |
+| `info`  | 业务生命周期           | 项目创建、构建开始/完成、版本交付     |
 | `debug` | 定位内部状态           | 状态转移、adapter 选择、tool 结果摘要 |
 | `trace` | 高频细节               | 动画帧、逐项网格进度；生产默认关闭    |
 
@@ -3250,7 +3276,7 @@ logs/
 
 必须审计：
 
-- active ArtVersion/RigPlan/ModelArtifact 切换与发布。
+- active ArtVersion/RigPlan/ModelArtifact 切换与桌宠交付。
 - Agent approval 发起、批准、拒绝、过期。
 - 删除角色、记忆、模型或导出数据。
 - 修改 Provider、代理、sandbox 或扩展权限。
@@ -3389,7 +3415,7 @@ Forward 出站规则：
 - 新增 shell、文件系统、网络或凭据访问能力。
 - 新增 Agent Tool、Binder、模型解析器或 Provider Adapter。
 - 修改审批策略、沙箱模式、CSP 或本地 API 鉴权。
-- 修改版本指针、发布事务或记忆空间过滤。
+- 修改版本指针、桌宠交付事务或记忆空间过滤。
 - 引入新的原生依赖或捆绑二进制。
 
 合并门槛：
@@ -3428,7 +3454,7 @@ Forward 出站规则：
 8. 导入 PSD，采纳闭眼/张嘴候选，生成正式 PSD。
 9. 运行 mock Binder 走完状态机，并用预置的合法黄金模型包作为 fixtures。
 10. Studio 和 Pet Renderer 分别加载黄金模型，验证渲染、参数和动作。
-11. 发布为桌宠，播放 idle、眨眼和 tap。
+11. 交给桌宠，播放 idle、眨眼和 tap。
 12. Direct、Forward、Agent 三种模式分别完成一轮。
 13. 检查 Forward 未产生消息/记忆记录，Agent 仅产生任务投影。
 
@@ -3444,7 +3470,7 @@ mock 链路证明业务流程和 renderer 正确，不证明 PSD2Live 的真实�
 | Art      | 生成使用的参考图集合与 active 版本完整快照一致  | 100%          | 状态机/属性测试                 |
 | Art      | ArtVersion 只有一个最终 artwork，且不保存参考图 | 100%          | 数据库约束 + 集成测试           |
 | PSD      | 图层坐标、差分对齐、原子写入                    | 100%          | PSD fixtures                    |
-| Model    | 固定 PSD 的 QC 阻塞项通过率                     | 100%          | 真实 Binder E2E                 |
+| Model    | 固定 PSD 的绑定页阻塞项通过率                   | 100%          | 真实 Binder E2E                 |
 | Model    | Studio/Pet 加载率                               | 100%          | 真实模型渲染测试                |
 | Memory   | 跨空间泄漏                                      | 0             | 策略集成测试                    |
 | Forward  | 消息/记忆写库数                                 | 0             | 数据库计数断言                  |
@@ -3475,7 +3501,7 @@ mock 链路证明业务流程和 renderer 正确，不证明 PSD2Live 的真实�
 - 集成测试：SQLite + Blob + Job + SSE 重放。
 - 浏览器视觉测试：Prompt 面板、候选对比、Rig 预览。
 - Agent fixture：伪 Codex app-server、伪 Claude message stream、真实 hooks 事件回放。
-- Rig Copilot fixture：伪 PSD2Live MCP，覆盖 inspect、preview、CAS 冲突、原子 apply 和 post-apply QC。
+- Rig Copilot fixture：伪 PSD2Live MCP，覆盖 inspect、preview、CAS 冲突、原子 apply 和 post-apply 本页验收。
 - Rig UX 测试：AI 必须先产生 preview presentation，再出现“采用”；技术细节默认折叠；采用后可一键回退。
 - Tool Gateway 测试：当前时间/时区、MCP handshake、schemaHash 变化重审、工具授权、超时和输出 Schema。
 - Tool injection 测试：搜索摘要、网页正文和工具说明中的恶意指令不能提升权限。
@@ -3525,7 +3551,8 @@ LLM-as-judge 只用于主观文案和视觉建议；锁、版本、文件、模�
 
 Phase 0 只有两种结果：
 
-- **通过**：在 macOS arm64 从平图或用户 PSD 开始，经过 See-through/PSD2Live，可在 Studio 与 Pet 加载并播放 idle；所有阻塞 QC 通过。
+- **通过**：在 macOS arm64 从分层用立绘或用户 PSD 开始，经过 See-through/PSD2Live，可在
+  Studio 与 Pet 加载并播放 idle；绑定页验收通过。
 - **不通过**：明确记录阻塞点，并把平图自动分层或自动绑定从 MVP 承诺中移除，转为外部工具/人工导入。Phase 1 只能在 ADR 0004 允许的 render/data/contracts/mock-provider 范围内启动，不能消费未验证的外部能力。
 
 ### Phase 0.5：工程质量收口
@@ -3553,7 +3580,7 @@ Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契�
 
 ### Phase 2：Live2D 纵向切片
 
-- PSD 导入、语义层、差分候选、合成、RigPlan、Binder、预览、QC、发布。
+- Live2D 立绘准备、PSD 导入、分层、图层画布、RigPlan、Binder、预览、本页验收和桌宠交付。
 - 外部模型导入。
 
 验收：默认 CI 用 mock Binder 和预置黄金模型验证状态机与 renderer；macOS 夜构建必须用真实 PSD2Live 从固定 PSD 产出模型，并证明 Studio 和 Pet renderer 都能加载。Windows 启用后再复用同一门禁，不作为当前 Phase 2 出口条件。
@@ -3564,7 +3591,7 @@ Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契�
 
 1. 只读副驾驶：解释参数、定位图层、读取诊断和建议操作，不产生可应用提案。
 2. 预演副驾驶：生成结构化提案，调用 PSD2Live dry-run 并显示前后渲染，但只能拒绝或继续修改。
-3. 共驾应用：用户先看交互预览，再点击“采用”后原子提交、重新构建、QC 和一键撤销。
+3. 共驾应用：用户先看交互预览，再点击“采用”后原子提交、重新构建、本页验收和一键撤销。
 
 验收：固定 20 个绑定问题集中，提案合法率 100%，禁止操作数 0；每个提案先显示可交互效果预览，再允许“采用”，技术细节默认折叠；采用后可一键回退，CAS 过期提案不得写入。
 
@@ -3591,14 +3618,14 @@ Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契�
 
 ### 15.1 MVP 完成标准
 
-1. 不依赖生成式 AI，也能通过“上传立绘 + PSD + Binder”发布可加载模型。
+1. 不依赖生成式 AI，也能通过“上传立绘 + PSD + Binder”交给桌宠一个可加载模型。
 2. Direct 模式能保持角色独立人格与长期记忆。
 3. Forward 模式重启后没有任何由桌宠持久化的聊天正文。
 4. Agent turn 完成后桌宠能显示任务摘要，但数据库中没有完整工作 transcript。
 5. 回退立绘版本不会删除历史，也不会错误使用非 active 参考图。
 6. AI 建议无法修改锁定块。
-7. 只有 QC 通过的模型能被桌宠加载。
-8. 任一 Provider 不可用都不影响本地项目浏览、版本管理和已发布模型运行。
+7. 只有绑定页验收通过且状态为 `handoff_ready` 的模型能交给桌宠。
+8. 任一 Provider 不可用都不影响本地项目浏览、版本管理和已交给桌宠的模型运行。
 9. 用户可仅凭角色设定或仅凭参考图完成初始化，创作要求与 must/prefer/avoid 均可为空；两种输入同时提供时按同一多模态上下文解析。
 10. 用户可从同一已提交版本 Fork 多个子项目，项目列表按父子谱系展示，父子 active 版本互不影响。
 11. Direct AI 能准确获得当前日期/时区，并可通过内置 clock、用户 MCP 和 Skills 获取所需外部信息。
@@ -3613,7 +3640,7 @@ Phase 0.5 不增加产品能力。它完成前，Phase 1 可以继续细化契�
 | ---------------------- | ----------------------- | -------------------------------------------------------------- |
 | 第三方 Binder 停止维护 | 无法生成新模型          | Binder 契约隔离；专业工具导入兜底；保留多 Provider             |
 | 第三方许可证变化       | 构建或分发不合规        | 主项目 GPL-3.0-only；锁依赖与源码；SBOM/NOTICE；升级前重新评审 |
-| Cubism Core 版本漂移   | Studio 能播、Pet 不能播 | 全链路钉版本；构建元数据记录；运行时 QC 阻塞发布               |
+| Cubism Core 版本漂移   | Studio 能播、Pet 不能播 | 全链路钉版本；构建元数据记录；运行时验收阻止交付               |
 | 自动分层质量差         | PSD 返工                | 候选机制、置信度、人工分层入口；不自动覆盖                     |
 | SVG/PSD 恶意输入       | 解析器崩溃/RCE          | 子进程、沙箱、大小限制、路径校验、安全测试                     |
 | Agent 越权             | 文件或系统损失          | 官方沙箱、审批、cwd 锁定、网络默认关闭                         |
@@ -3641,7 +3668,7 @@ packages/
   agent-runtime/           Agent loop、tools、adapters
   tool-runtime/            Tool Gateway、MCP client、Skill loader、permission
   prompt-engine/           逆向、归一化、编译、diff
-  live2d-runtime/          Cubism 封装与 QC
+  live2d-runtime/          Cubism 封装与绑定页探针
   design-system/           @agent2live/design-system
     src/tokens/            颜色、字体、间距、圆角、描边、动效
     src/styles/            reset、CSS variables、主题和全局样式

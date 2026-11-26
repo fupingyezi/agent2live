@@ -1,7 +1,7 @@
 # agent2live 工具初步定义 v1
 
-> 日期：2026-11-12  
-> 对应架构：[agent2live 技术方案 v1.4](./2026-11-06-idea-to-desktop-pet.md)  
+> 日期：2026-11-26
+> 对应架构：[agent2live 技术方案 v1.7](./2026-11-06-idea-to-desktop-pet.md)
 > 数据模型：[数据模型 v1](./2026-11-08-data-model.md)  
 > 阶段流程：[各阶段完整工作流](./2026-11-08-stage-workflows.md)
 
@@ -77,16 +77,16 @@
 
 ### 2.3 工具类别
 
-| 类别          | 行为                   | 是否可由 Agent 自动调用   |
-| ------------- | ---------------------- | ------------------------- |
-| `query`       | 只读查询               | 是                        |
-| `compute`     | 只算结果，不修改       | 是                        |
-| `proposal`    | 生成候选/提案          | 是                        |
-| `artifact`    | 写入 staging/Blob/Job  | 是，但产物不发布          |
-| `commit`      | 修改正式版本           | 需要确认或 approval proof |
-| `external`    | 调用付费/联网服务      | 取决于用户策略            |
-| `user-only`   | 删除、发布、最终审批等 | 否                        |
-| `system-only` | 调度器、迁移、恢复     | 否                        |
+| 类别          | 行为                       | 是否可由 Agent 自动调用   |
+| ------------- | -------------------------- | ------------------------- |
+| `query`       | 只读查询                   | 是                        |
+| `compute`     | 只算结果，不修改           | 是                        |
+| `proposal`    | 生成候选/提案              | 是                        |
+| `artifact`    | 写入 staging/Blob/Job      | 是，但产物不自动交付      |
+| `commit`      | 修改正式版本               | 需要确认或 approval proof |
+| `external`    | 调用付费/联网服务          | 取决于用户策略            |
+| `user-only`   | 删除、桌宠交付、最终审批等 | 否                        |
+| `system-only` | 调度器、迁移、恢复         | 否                        |
 
 ## 3. 权限与审批
 
@@ -244,56 +244,80 @@ admin:extensions
 
 ## 6. 资产与分层工具
 
-| 工具                      | 类别              | 主要输入                                                                   | 输出                                                | 副作用       | 审批 |
-| ------------------------- | ----------------- | -------------------------------------------------------------------------- | --------------------------------------------------- | ------------ | ---- |
-| `asset.inspect@1.0`       | query             | assetId                                                                    | MIME、尺寸、hash、provenance                        | 无           | A0   |
-| `asset.link@1.0`          | commit            | assetId, owner(prompt_input/prompt_version/layer_spec/model), role, weight | asset link                                          | 关联资产     | A3   |
-| `l2d.decompose_image@1.0` | external/artifact | artVersionId, qualityProfile                                               | LayerSpec candidate + PSD preview                   | GPU/外部任务 | A2   |
-| `l2d.audit_layers@1.0`    | compute           | layerSpecCandidateId                                                       | 必需角色、误差、坐标问题                            | 无           | A1   |
-| `l2d.propose_patch@1.0`   | proposal          | layerSpecVersionId, role, intent                                           | patch candidate                                     | 生成候选     | A2   |
-| `l2d.accept_patch@1.0`    | commit            | patchCandidateId, baseLayerSpecId                                          | 新 LayerSpecVersion                                 | 正式补层     | A3   |
-| `l2d.compose_psd@1.0`     | artifact          | layerSpecVersionId, variants                                               | BindingReadyPsd + compose report + LayerSpecVersion | 新图层版本   | A2   |
-| `l2d.inspect_psd@1.0`     | compute           | psdAssetId                                                                 | 图层树、不支持特性、bbox                            | 无           | A0   |
+| 工具                          | 类别              | 主要输入                                                                   | 输出                                                  | 副作用       | 审批 |
+| ----------------------------- | ----------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- | ------------ | ---- |
+| `asset.inspect@1.0`           | query             | assetId                                                                    | MIME、尺寸、hash、provenance                          | 无           | A0   |
+| `asset.link@1.0`              | commit            | assetId, owner(prompt_input/prompt_version/layer_spec/model), role, weight | asset link                                            | 关联资产     | A3   |
+| `l2d.prepare_prompt@1.0`      | proposal          | confirmedArtVersionId, characterBriefVersionId, targetCapabilities         | Live2DPreparationPromptVersion candidate              | 无           | A1   |
+| `l2d.generate_ready_art@1.0`  | external/artifact | live2dPreparationPromptVersionId, count, provider/model                    | Live2DReadyArt candidates + character reference board | 生成费用     | A2   |
+| `l2d.accept_ready_art@1.0`    | commit            | candidateId, expectedSourceArtVersionId                                    | Live2DReadyArtVersion + active pointer                | 版本切换     | A3   |
+| `l2d.decompose_image@1.0`     | external/artifact | live2dReadyArtVersionId, providerMode, qualityProfile                      | LayerSpec candidate + PSD preview                     | GPU/外部任务 | A2   |
+| `l2d.audit_layers@1.0`        | compute           | layerSpecCandidateId                                                       | 必需角色、误差、坐标问题                              | 无           | A1   |
+| `l2d.propose_layer_patch@1.0` | proposal          | layerSpecVersionId, layerIds, selectionMask, intent, pinned                | LayerPatchManifest + preview                          | 临时沙箱     | A2   |
+| `l2d.accept_layer_patch@1.0`  | commit            | layerPatchManifestId, baseLayerSpecId                                      | 新 LayerSpecVersion + BindingReadyPsd                 | 正式图层版本 | A3   |
+| `l2d.inspect_psd@1.0`         | compute           | psdAssetId                                                                 | 图层树、不支持特性、bbox                              | 无           | A0   |
 
-`asset.link` 不能修改已提交 PromptVersion 或 ArtVersion。提示词或参考图变化必须提交新的 PromptVersion；`l2d.decompose_image` 使用 ArtVersion 的 `artworkAssetId`，不会把 PromptVersion references 自动并入 See-through 输入。
+`asset.link` 不能修改已提交 PromptVersion 或 ArtVersion。`l2d.prepare_prompt` 只接受用户在立绘
+工作台最终确认的 ArtVersion，并生成新的提示词版本。`l2d.decompose_image` 只接受
+`live2dReadyArtVersionId`，不会直接读取原 ArtVersion，也不会把 PromptVersion references 自动
+并入 See-through 输入。
 
-### 6.1 `l2d.propose_patch@1.0`
+`providerMode` 允许：
 
-允许 `role`：
+- `private_worker`：生产默认，调用 worker v1。
+- `hf_space`：调用用户显式配置的 Hugging Face Gradio Space；调用前必须记录上传授权。
+- `manual_psd`：跳过自动分解，改为用户上传 PSD。
+
+`hf_space` 的 `ZeroGPU quota exceeded` 映射为稳定错误并停止重试。浏览器自动化不属于该工具契约。
+`LayerSpecVersion` 必须保留来源 `live2dReadyArtVersionId` 或导入 PSD 的 provenance；构建阶段从
+LayerSpec 解析冻结 PSD，不重新读取当前 active ArtVersion。
+
+### 6.1 `l2d.propose_layer_patch@1.0`
+
+输入的画布选区必须保留不规则轮廓和 holes。允许的 patch 类型：
 
 ```text
-eyes_closed, mouth_open, hair_patch, outfit_patch, svg_patch, other
+replace_layer_pixels, add_layer, remove_layer, rename_layer, reorder_layer, set_visibility
 ```
 
 输出必须包含：
 
 ```json
 {
-  "candidateId": "patch_01J...",
-  "assetId": "sha256:...",
-  "alignment": {
-    "canvasMatch": true,
-    "bboxDeltaPx": 0,
-    "maxEdgeDeltaPx": 1
+  "manifestId": "lpatch_01J...",
+  "targetLayerId": "layer-hand-skin",
+  "selectionAssetId": "sha256:...",
+  "changedPixels": 201,
+  "bbox": [637, 301, 698, 352],
+  "checks": {
+    "scopeRespected": "pass",
+    "pinnedUnchanged": "pass",
+    "compositePreview": "pass",
+    "ocrStable": "not_applicable"
   },
-  "confidence": 0.87,
   "requiresReview": true
 }
 ```
 
+一次性脚本在应用任务目录运行，不写入仓库或版本记录。HF Space 的图片分解与图层 AI 沙箱是两个
+独立 tool path，不能把远程 Space 的浏览器页面当作 PSD 编辑器。
+
 ## 7. Binding / Model 工具
 
-| 工具                     | 类别              | 主要输入                                                                                                                       | 输出                     | 副作用      | 审批 |
-| ------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------ | ----------- | ---- |
-| `l2d.plan_rig@1.0`       | proposal          | psdAssetId, template, rigOptions                                                                                               | RigPlan draft + risks    | 无          | A1   |
-| `l2d.save_rig_plan@1.0`  | commit            | plan, basePlanId, sourceLayerSpecVersionId                                                                                     | RigPlanVersion           | 新增版本    | A3   |
-| `l2d.build_model@1.0`    | artifact/external | baseArtVersionId, layerSpecVersionId, bindingReadyPsdAssetId, rigPlanVersionId, canvasTransform, targetCubismVersion, binderId | ModelBuild Job           | 启动 Binder | A2   |
-| `l2d.inspect_model@1.0`  | query/compute     | modelBuildId                                                                                                                   | 文件树、参数、动作、诊断 | 无          | A0   |
-| `l2d.run_qc@1.0`         | compute           | modelBuildId                                                                                                                   | QC report                | 无          | A1   |
-| `l2d.publish_model@1.0`  | commit            | artifactId, petId, personaVersionId                                                                                            | active model binding     | 发布        | A4   |
-| `l2d.compare_builds@1.0` | compute           | buildIds                                                                                                                       | 参数、动作、视觉差异     | 无          | A1   |
+| 工具                     | 类别              | 主要输入                                                                                                                       | 输出                                 | 副作用      | 审批 |
+| ------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ | ----------- | ---- |
+| `l2d.plan_rig@1.0`       | proposal          | psdAssetId, template, rigOptions                                                                                               | RigPlan draft + risks                | 无          | A1   |
+| `l2d.save_rig_plan@1.0`  | commit            | plan, basePlanId, sourceLayerSpecVersionId                                                                                     | RigPlanVersion                       | 新增版本    | A3   |
+| `l2d.build_model@1.0`    | artifact/external | baseArtVersionId, layerSpecVersionId, bindingReadyPsdAssetId, rigPlanVersionId, canvasTransform, targetCubismVersion, binderId | ModelBuild Job                       | 启动 Binder | A2   |
+| `l2d.inspect_model@1.0`  | query/compute     | modelBuildId                                                                                                                   | 文件树、参数、动作、诊断             | 无          | A0   |
+| `l2d.validate_stage@1.0` | compute           | stage, subjectVersionId                                                                                                        | StageValidationReport                | 无          | A1   |
+| `l2d.handoff_to_pet@1.0` | commit            | artifactId, petId, personaVersionId                                                                                            | active model binding + handed_off_at | 交付桌宠    | A4   |
+| `l2d.compare_builds@1.0` | compute           | buildIds                                                                                                                       | 参数、动作、视觉差异                 | 无          | A1   |
 
 绑定器内部操作不直接暴露给 Studio Agent。Agent 只调用 `l2d.*` 语义工具，由 `BinderAdapter` 映射到当前 PSD2Live 版本的具体操作。
+
+`l2d.validate_stage` 只验证一个具体页面和版本，不产生独立 QC 页面或全局通过标志。`handoff_to_pet`
+要求 `ModelBuild.status=handoff_ready`，成功后写 `handed_off`；不使用发布语义。
 
 ## 8. Rig Copilot 工具
 

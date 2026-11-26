@@ -1,0 +1,3 @@
+interface:
+  display_name: 'PSD 图层画布助手'
+  short_description: '在画布选区与隔离沙箱中修复 PSD 图层'

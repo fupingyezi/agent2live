@@ -1,8 +1,8 @@
 # agent2live 数据模型 v1
 
-> 状态：单用户本地工作区基线  
-> 日期：2026-11-12  
-> 对应架构：[agent2live 技术方案 v1.4](./2026-11-06-idea-to-desktop-pet.md)  
+> 状态：单用户本地工作区基线，已对齐四段 Live2D 工作台
+> 日期：2026-11-26
+> 对应架构：[agent2live 技术方案 v1.7](./2026-11-06-idea-to-desktop-pet.md)
 > 阶段流程：[各阶段完整工作流](./2026-11-08-stage-workflows.md)
 
 ## 1. 建模约定
@@ -37,7 +37,7 @@
 - 默认 `ON DELETE RESTRICT`，避免误级联删除创作历史。
 - 纯组成数据可 `ON DELETE CASCADE`，例如 `memory_vectors → memory_items`。
 - `project_forks` 不随父项目级联删除；父子关系保留 provenance。
-- `art_versions`、`prompt_versions`、`layer_spec_versions`、`rig_plan_versions`、`model_builds`、`model_artifacts` 的内容都是不可变快照；`label/change_summary` 只作为可修订注记。
+- `art_versions`、`prompt_versions`、`live2d_preparation_prompt_versions`、`live2d_ready_art_versions`、`layer_spec_versions`、`rig_plan_versions`、`model_builds`、`model_artifacts` 的内容都是不可变快照；`label/change_summary` 只作为可修订注记。
 - Blob GC 根据 `assets`、`asset_links`、版本快照和模型 artifact 的总引用决定，不按单个项目目录删除。
 
 ### 1.3 通用审计字段
@@ -74,13 +74,16 @@ erDiagram
   PROMPT_VERSIONS ||--o{ ASSET_LINKS : "保存有序参考图"
   ASSETS ||--o{ ART_VERSIONS : "提供最终立绘"
   GENERATION_CANDIDATES }o--o| ART_VERSIONS : "被采纳为"
+  ART_VERSIONS ||--o{ LIVE2D_PREPARATION_PROMPT_VERSIONS : "作为准备来源"
+  LIVE2D_PREPARATION_PROMPT_VERSIONS ||--o{ LIVE2D_READY_ART_VERSIONS : "生成"
+  LIVE2D_PROJECTS ||--o{ LIVE2D_READY_ART_VERSIONS : "包含分层用立绘"
+  LIVE2D_READY_ART_VERSIONS ||--o{ LAYER_SPEC_VERSIONS : "送入分层"
   LIVE2D_PROJECTS ||--o{ LAYER_SPEC_VERSIONS : "包含图层方案"
   LIVE2D_PROJECTS ||--o{ RIG_PLAN_VERSIONS : "包含绑定方案"
   LAYER_SPEC_VERSIONS ||--o{ RIG_PLAN_VERSIONS : "作为绑定基线"
   LAYER_SPEC_VERSIONS ||--o{ MODEL_BUILDS : "提供图层与 PSD"
   RIG_PLAN_VERSIONS ||--o{ MODEL_BUILDS : "配置绑定"
   LIVE2D_PROJECTS ||--o{ MODEL_BUILDS : "发起构建"
-  MODEL_BUILDS ||--o| QC_REPORTS : "生成质检报告"
   MODEL_BUILDS ||--o| MODEL_ARTIFACTS : "生成模型产物"
   PETS }o--o| MODEL_ARTIFACTS : "使用模型"
   PETS ||--o{ PERSONA_VERSIONS : "拥有人格版本"
@@ -127,17 +130,23 @@ PromptDraft、GenerationCandidate、ProjectFork 状态和 active 指针仍由对
 ```mermaid
 erDiagram
   ART_VERSIONS ||--o{ LIVE2D_PROJECTS : "作为制作输入"
+  LIVE2D_PREPARATION_PROMPT_VERSIONS }o--|| ART_VERSIONS : "固定来源"
+  LIVE2D_PREPARATION_PROMPT_VERSIONS ||--o{ LIVE2D_READY_ART_VERSIONS : "生成"
+  LIVE2D_READY_ART_VERSIONS ||--o{ LIVE2D_PROJECTS : "属于"
+  LIVE2D_READY_ART_VERSIONS ||--o{ LAYER_SPEC_VERSIONS : "作为自动分层输入"
+  LIVE2D_PROJECTS ||--o{ LIVE2D_READY_ART_VERSIONS : "包含"
   LIVE2D_PROJECTS ||--o{ LAYER_SPEC_VERSIONS : "包含图层方案"
   LIVE2D_PROJECTS ||--o{ RIG_PLAN_VERSIONS : "包含绑定方案"
   LAYER_SPEC_VERSIONS ||--o{ RIG_PLAN_VERSIONS : "作为绑定基线"
   LAYER_SPEC_VERSIONS ||--o{ MODEL_BUILDS : "提供图层与 PSD"
   RIG_PLAN_VERSIONS ||--o{ MODEL_BUILDS : "配置绑定"
   LIVE2D_PROJECTS ||--o{ MODEL_BUILDS : "发起构建"
-  MODEL_BUILDS ||--o| QC_REPORTS : "生成质检报告"
   MODEL_BUILDS ||--o| MODEL_ARTIFACTS : "生成模型产物"
 ```
 
-LayerSpecVersion 固定 source/binding-ready PSD 与 compose report；RigPlanVersion 固定来源 LayerSpec 和 BindingReadyPsd；ModelBuild 固化完整输入并对 QC、ModelArtifact 负责。
+LayerSpecVersion 固定分层用立绘或导入 PSD 来源、BindingReadyPsd 和本页验收；RigPlanVersion
+固定来源 LayerSpec 和 BindingReadyPsd；ModelBuild 固化完整输入并对绑定页验收与 ModelArtifact
+负责。`qc_reports` 仅作为旧库迁移别名，不进入新关系主链。
 
 ### 2.4 桌宠、聊天与记忆
 
@@ -649,38 +658,79 @@ PromptVersion 的有序参考图使用 `asset_links(owner_type='prompt_version')
 
 ### 7.1 `live2d_projects`
 
-| 字段                           | 类型         | 必填 | 约束                            | 说明                   |
-| ------------------------------ | ------------ | ---- | ------------------------------- | ---------------------- |
-| `id`                           | TEXT         | 是   | PK                              |                        |
-| `art_project_id`               | TEXT         | 是   | FK art_projects                 | 一个项目可有多次构建线 |
-| `base_art_version_id`          | TEXT         | 是   | FK art_versions                 | 固定立绘版本           |
-| `active_layer_spec_version_id` | TEXT NULL    | 否   | FK layer_spec_versions RESTRICT | 当前图层方案           |
-| `active_rig_plan_version_id`   | TEXT NULL    | 否   | FK rig_plan_versions RESTRICT   | 当前绑定方案           |
-| `stage`                        | TEXT         | 是   | enum                            | 6.1 状态机             |
-| `created_at`                   | INTEGER      | 是   |                                 |                        |
-| `updated_at`                   | INTEGER      | 是   |                                 |                        |
-| `deleted_at`                   | INTEGER NULL | 否   |                                 |                        |
-| `row_version`                  | INTEGER      | 是   | ≥1                              |                        |
+| 字段                                   | 类型         | 必填 | 约束                                  | 说明                   |
+| -------------------------------------- | ------------ | ---- | ------------------------------------- | ---------------------- |
+| `id`                                   | TEXT         | 是   | PK                                    |                        |
+| `art_project_id`                       | TEXT         | 是   | FK art_projects                       | 一个项目可有多次构建线 |
+| `base_art_version_id`                  | TEXT         | 是   | FK art_versions                       | 用户最终确认的来源立绘 |
+| `active_preparation_prompt_version_id` | TEXT NULL    | 否   | FK live2d_preparation_prompt_versions | 当前立绘准备提示词     |
+| `active_live2d_ready_art_version_id`   | TEXT NULL    | 否   | FK live2d_ready_art_versions          | 当前分层用立绘         |
+| `active_layer_spec_version_id`         | TEXT NULL    | 否   | FK layer_spec_versions RESTRICT       | 当前图层方案           |
+| `active_rig_plan_version_id`           | TEXT NULL    | 否   | FK rig_plan_versions RESTRICT         | 当前绑定方案           |
+| `stage`                                | TEXT         | 是   | enum                                  | §12 状态枚举           |
+| `created_at`                           | INTEGER      | 是   |                                       |                        |
+| `updated_at`                           | INTEGER      | 是   |                                       |                        |
+| `deleted_at`                           | INTEGER NULL | 否   |                                       |                        |
+| `row_version`                          | INTEGER      | 是   | ≥1                                    |                        |
+
+`active_preparation_prompt_version_id` 和 `active_live2d_ready_art_version_id` 必须引用同一
+Live2DProject 的版本，并且最终来源等于 `base_art_version_id`。切换来源立绘时，两者与下游
+LayerSpec/RigPlan/交付资格必须在同一事务中失效。
+
+### 7.1.1 `live2d_preparation_prompt_versions`
+
+| 字段                           | 类型      | 必填 | 约束                        | 说明                      |
+| ------------------------------ | --------- | ---- | --------------------------- | ------------------------- |
+| `id`                           | TEXT      | 是   | PK                          |                           |
+| `art_project_id`               | TEXT      | 是   | FK art_projects             | 来源美术项目              |
+| `source_art_version_id`        | TEXT      | 是   | FK art_versions             | 用户最终确认的 ArtVersion |
+| `source_prompt_version_id`     | TEXT      | 是   | FK prompt_versions          | 原始提示词，不被覆盖      |
+| `character_brief_version_id`   | TEXT NULL | 否   | FK character_brief_versions | 身份与设定来源            |
+| `spec_json`                    | TEXT      | 是   | JSON                        | 结构化立绘准备 PromptSpec |
+| `production_requirements_json` | TEXT      | 是   | JSON                        | 身体范围、背景和动作目标  |
+| `audit_json`                   | TEXT      | 是   | JSON                        | 原图适用性检查            |
+| `content_hash`                 | TEXT      | 是   | 64 hex                      |                           |
+| `created_at`                   | INTEGER   | 是   |                             |                           |
+
+### 7.1.2 `live2d_ready_art_versions`
+
+| 字段                                   | 类型      | 必填 | 约束                                  | 说明                     |
+| -------------------------------------- | --------- | ---- | ------------------------------------- | ------------------------ |
+| `id`                                   | TEXT      | 是   | PK                                    |                          |
+| `live2d_project_id`                    | TEXT      | 是   | FK live2d_projects                    | 所属项目                 |
+| `parent_version_id`                    | TEXT NULL | 否   | FK live2d_ready_art_versions          | 版本链                   |
+| `live2d_preparation_prompt_version_id` | TEXT      | 是   | FK live2d_preparation_prompt_versions | 生成规格                 |
+| `source_art_version_id`                | TEXT      | 是   | FK art_versions                       | 来源最终立绘             |
+| `layer_ready_art_asset_id`             | TEXT      | 是   | FK assets                             | 唯一允许送入 See-through |
+| `character_reference_asset_id`         | TEXT NULL | 否   | FK assets                             | 可选角色设定板           |
+| `manifest_json`                        | TEXT      | 是   | JSON                                  | 画布、身体范围、表情结构 |
+| `stage_validation_json`                | TEXT      | 是   | JSON                                  | 立绘准备本页验收         |
+| `content_hash`                         | TEXT      | 是   | 64 hex                                |                          |
+| `created_at`                           | INTEGER   | 是   |                                       |                          |
+
+`layer_ready_art_asset_id` 和 `character_reference_asset_id` 必须分开。See-through 输入只允许前者；
+拼版角色设定板不得被当作分层输入。
 
 ### 7.2 `layer_spec_versions`
 
-| 字段                         | 类型      | 必填 | 约束                   | 说明                                               |
-| ---------------------------- | --------- | ---- | ---------------------- | -------------------------------------------------- |
-| `id`                         | TEXT      | 是   | PK                     |                                                    |
-| `live2d_project_id`          | TEXT      | 是   | FK live2d_projects     |                                                    |
-| `parent_version_id`          | TEXT NULL | 否   | FK layer_spec_versions |                                                    |
-| `source_art_version_id`      | TEXT      | 是   | FK art_versions        |                                                    |
-| `label`                      | TEXT NULL | 否   | ≤100                   | 用户可读版本名，不进入 content hash                |
-| `change_summary`             | TEXT NULL | 否   | ≤2000                  | 相对父版本的变更说明，不进入 content hash          |
-| `source_kind`                | TEXT      | 是   | enum                   | `see_through/imported_psd/external_import/derived` |
-| `source_psd_asset_id`        | TEXT NULL | 否   | FK assets              | 用户导入或外部来源的原始 PSD；自动分层时为空       |
-| `binding_ready_psd_asset_id` | TEXT      | 是   | FK assets              | Binder 实际读取的规范化 PSD                        |
-| `compose_report_asset_id`    | TEXT      | 是   | FK assets              | PSD 合成与不支持特性报告                           |
-| `layers_json`                | TEXT      | 是   | JSON                   | 图层语义、bbox、来源、置信度                       |
-| `decomposer_json`            | TEXT      | 是   | JSON                   | See-through 版本/权重/参数                         |
-| `qc_json`                    | TEXT      | 是   | JSON                   | 合成误差、必需角色                                 |
-| `content_hash`               | TEXT      | 是   | 64 hex                 |                                                    |
-| `created_at`                 | INTEGER   | 是   |                        |                                                    |
+| 字段                                 | 类型      | 必填 | 约束                         | 说明                                               |
+| ------------------------------------ | --------- | ---- | ---------------------------- | -------------------------------------------------- |
+| `id`                                 | TEXT      | 是   | PK                           |                                                    |
+| `live2d_project_id`                  | TEXT      | 是   | FK live2d_projects           |                                                    |
+| `parent_version_id`                  | TEXT NULL | 否   | FK layer_spec_versions       |                                                    |
+| `source_art_version_id`              | TEXT      | 是   | FK art_versions              | 来源立绘，用于身份追溯                             |
+| `source_live2d_ready_art_version_id` | TEXT NULL | 否   | FK live2d_ready_art_versions | 自动分层输入；导入 PSD 时可为空                    |
+| `label`                              | TEXT NULL | 否   | ≤100                         | 用户可读版本名，不进入 content hash                |
+| `change_summary`                     | TEXT NULL | 否   | ≤2000                        | 相对父版本的变更说明，不进入 content hash          |
+| `source_kind`                        | TEXT      | 是   | enum                         | `see_through/imported_psd/external_import/derived` |
+| `source_psd_asset_id`                | TEXT NULL | 否   | FK assets                    | 用户导入或外部来源的原始 PSD；自动分层时为空       |
+| `binding_ready_psd_asset_id`         | TEXT      | 是   | FK assets                    | Binder 实际读取的规范化 PSD                        |
+| `compose_report_asset_id`            | TEXT      | 是   | FK assets                    | PSD 合成与不支持特性报告                           |
+| `layers_json`                        | TEXT      | 是   | JSON                         | 图层语义、bbox、来源、置信度                       |
+| `decomposer_json`                    | TEXT      | 是   | JSON                         | See-through 版本/权重/参数                         |
+| `stage_validation_json`              | TEXT      | 是   | JSON                         | 本页主体、图层、合成和 PSD 检查                    |
+| `content_hash`                       | TEXT      | 是   | 64 hex                       |                                                    |
+| `created_at`                         | INTEGER   | 是   |                              |                                                    |
 
 ### 7.3 `semantic_patch_candidates`
 
@@ -772,38 +822,46 @@ PromptVersion 的有序参考图使用 `asset_links(owner_type='prompt_version')
 
 ### 7.9 `model_builds`
 
-| 字段                         | 类型         | 必填 | 约束                   | 说明                                                                   |
-| ---------------------------- | ------------ | ---- | ---------------------- | ---------------------------------------------------------------------- |
-| `id`                         | TEXT         | 是   | PK                     |                                                                        |
-| `live2d_project_id`          | TEXT         | 是   | FK live2d_projects     |                                                                        |
-| `art_version_id`             | TEXT         | 是   | FK art_versions        | 固定输入                                                               |
-| `layer_spec_version_id`      | TEXT         | 是   | FK layer_spec_versions | 固定图层方案                                                           |
-| `binding_ready_psd_asset_id` | TEXT         | 是   | FK assets              | 固定 Binder 实际读取的 PSD                                             |
-| `rig_plan_version_id`        | TEXT         | 是   | FK rig_plan_versions   | 固定绑定                                                               |
-| `label`                      | TEXT NULL    | 否   | ≤100                   | 用户可读构建名，不进入 content hash                                    |
-| `change_summary`             | TEXT NULL    | 否   | ≤2000                  | 本次构建说明，不进入 content hash                                      |
-| `canvas_transform_json`      | TEXT         | 是   | JSON                   | 本次构建固定使用的画布映射                                             |
-| `target_cubism_version`      | TEXT         | 是   |                        | 目标 Cubism / moc3 版本                                                |
-| `required_capabilities_json` | TEXT         | 是   | JSON                   | 本次构建要求产物具备的参数、动作和运行能力                             |
-| `binder_connection_id`       | TEXT NULL    | 否   |                        | Binder ID                                                              |
-| `binder_version`             | TEXT         | 是   |                        | 版本                                                                   |
-| `status`                     | TEXT         | 是   | enum                   | `queued/running/qc_pending/qc_passed/qc_failed/failed/unknown_outcome` |
-| `job_id`                     | TEXT         | 是   | FK jobs                |                                                                        |
-| `work_asset_id`              | TEXT NULL    | 否   | FK assets              | 工程快照                                                               |
-| `input_hash`                 | TEXT         | 是   | 64 hex                 | 构建请求、全部输入引用和配置的 canonical hash                          |
-| `created_at`                 | INTEGER      | 是   |                        |                                                                        |
-| `finished_at`                | INTEGER NULL | 否   |                        |                                                                        |
+| 字段                         | 类型         | 必填 | 约束                   | 说明                                                                     |
+| ---------------------------- | ------------ | ---- | ---------------------- | ------------------------------------------------------------------------ |
+| `id`                         | TEXT         | 是   | PK                     |                                                                          |
+| `live2d_project_id`          | TEXT         | 是   | FK live2d_projects     |                                                                          |
+| `art_version_id`             | TEXT         | 是   | FK art_versions        | 固定输入                                                                 |
+| `layer_spec_version_id`      | TEXT         | 是   | FK layer_spec_versions | 固定图层方案                                                             |
+| `binding_ready_psd_asset_id` | TEXT         | 是   | FK assets              | 固定 Binder 实际读取的 PSD                                               |
+| `rig_plan_version_id`        | TEXT         | 是   | FK rig_plan_versions   | 固定绑定                                                                 |
+| `label`                      | TEXT NULL    | 否   | ≤100                   | 用户可读构建名，不进入 content hash                                      |
+| `change_summary`             | TEXT NULL    | 否   | ≤2000                  | 本次构建说明，不进入 content hash                                        |
+| `canvas_transform_json`      | TEXT         | 是   | JSON                   | 本次构建固定使用的画布映射                                               |
+| `target_cubism_version`      | TEXT         | 是   |                        | 目标 Cubism / moc3 版本                                                  |
+| `required_capabilities_json` | TEXT         | 是   | JSON                   | 本次构建要求产物具备的参数、动作和运行能力                               |
+| `binder_connection_id`       | TEXT NULL    | 否   |                        | Binder ID                                                                |
+| `binder_version`             | TEXT         | 是   |                        | 版本                                                                     |
+| `status`                     | TEXT         | 是   | enum                   | `queued/running/validation_pending/handoff_ready/failed/unknown_outcome` |
+| `job_id`                     | TEXT         | 是   | FK jobs                |                                                                          |
+| `work_asset_id`              | TEXT NULL    | 否   | FK assets              | 工程快照                                                                 |
+| `stage_validation_json`      | TEXT         | 是   | JSON                   | 绑定页验收结果                                                           |
+| `input_hash`                 | TEXT         | 是   | 64 hex                 | 构建请求、全部输入引用和配置的 canonical hash                            |
+| `created_at`                 | INTEGER      | 是   |                        |                                                                          |
+| `finished_at`                | INTEGER NULL | 否   |                        |                                                                          |
 
 版本引用约束：
 
+- `source_live2d_ready_art_version_id` 非空时必须属于当前 Live2DProject，且来源 ArtVersion
+  等于项目 `base_art_version_id`；导入 PSD 时改为记录 PSD provenance。
 - `active_layer_spec_version_id`、`active_rig_plan_version_id` 及其版本链必须属于当前 Live2DProject。
 - `active_rig_plan_version_id` 非空时，其 `source_layer_spec_version_id` 必须等于 `active_layer_spec_version_id`；切换 LayerSpec 后，不兼容的 RigPlan pointer 必须清空或在同一事务中替换。
 - `rig_plan_versions.binding_ready_psd_asset_id` 必须等于 `source_layer_spec_version_id.binding_ready_psd_asset_id`。
 - `model_builds.binding_ready_psd_asset_id` 必须同时等于 `layer_spec_version_id.binding_ready_psd_asset_id` 和 `rig_plan_version_id.binding_ready_psd_asset_id`。
 - LayerSpecVersion、RigPlanVersion 和 ModelBuild 的 `label/change_summary` 是版本注记，可独立修订并写审计，不进入 LayerSpec/RigPlan 的 `content_hash` 或 ModelBuild 的 `input_hash`。
-- LayerSpecVersion 的 `content_hash` 必须覆盖 layers、decomposer、QC、source/binding-ready PSD 和 compose report 引用；RigPlanVersion 的 `content_hash` 必须覆盖 plan、Binder state、edit log 及来源 LayerSpec/PSD；ModelBuild 的 `input_hash` 必须覆盖全部构建输入、required capabilities 和配置。
+- LayerSpecVersion 的 `content_hash` 必须覆盖 layers、decomposer、stage validation、source/binding-ready PSD 和 compose report 引用；RigPlanVersion 的 `content_hash` 必须覆盖 plan、Binder state、edit log 及来源 LayerSpec/PSD；ModelBuild 的 `input_hash` 必须覆盖全部构建输入、required capabilities 和配置。
+- ModelBuild 只有 `stage_validation_json` 通过后才能进入 `handoff_ready`；artifact 的
+  `handed_off_at` 只能在桌宠 active pointer 同一事务中写入。
 
-### 7.10 `qc_reports`
+### 7.10 `qc_reports`（迁移期别名）
+
+该表只为已有数据库迁移保留，不再是产品中的独立 QC 阶段。新代码把验收写入版本自己的
+`stage_validation_json`；旧记录读取时映射为对应页面的历史验收。
 
 | 字段             | 类型    | 必填 | 约束            | 说明                  |
 | ---------------- | ------- | ---- | --------------- | --------------------- |
@@ -829,8 +887,40 @@ PromptVersion 的有序参考图使用 `asset_links(owner_type='prompt_version')
 | `cubism_core_version` | TEXT         | 是   |                        |                         |
 | `runtime_version`     | TEXT         | 是   |                        |                         |
 | `capabilities_json`   | TEXT         | 是   | JSON                   | 参数、动作、物理        |
-| `qc_report_id`        | TEXT         | 是   | FK qc_reports          |                         |
-| `published_at`        | INTEGER NULL | 否   |                        | 未被桌宠发布时为空      |
+| `legacy_qc_report_id` | TEXT NULL    | 否   | FK qc_reports          | 迁移期只读引用          |
+| `handed_off_at`       | INTEGER NULL | 否   |                        | 未交给桌宠时为空        |
+| `handoff_target`      | TEXT NULL    | 否   | enum                   | 交付目标，固定为 `pet`  |
+
+### 7.12 `layer_canvas_sessions`
+
+| 字段                         | 类型    | 必填 | 约束                   | 说明                   |
+| ---------------------------- | ------- | ---- | ---------------------- | ---------------------- |
+| `id`                         | TEXT    | 是   | PK                     |                        |
+| `live2d_project_id`          | TEXT    | 是   | FK live2d_projects     | 所属项目               |
+| `base_layer_spec_version_id` | TEXT    | 是   | FK layer_spec_versions | 会话冻结起点           |
+| `selection_json`             | TEXT    | 是   | JSON                   | 选区、当前层和锁定约束 |
+| `status`                     | TEXT    | 是   | enum                   | `active/closed`        |
+| `created_at`                 | INTEGER | 是   |                        |                        |
+| `updated_at`                 | INTEGER | 是   |                        |                        |
+
+### 7.13 `layer_edit_runs`
+
+| 字段                             | 类型      | 必填 | 约束                     | 说明                   |
+| -------------------------------- | --------- | ---- | ------------------------ | ---------------------- |
+| `id`                             | TEXT      | 是   | PK                       |                        |
+| `session_id`                     | TEXT      | 是   | FK layer_canvas_sessions | 所属会话               |
+| `base_layer_spec_version_id`     | TEXT      | 是   | FK layer_spec_versions   | 冻结输入               |
+| `skill_id`                       | TEXT      | 是   |                          | skill 标识             |
+| `skill_hash`                     | TEXT      | 是   | 64 hex                   | skill 内容 hash        |
+| `intent`                         | TEXT      | 是   |                          | 用户目标               |
+| `input_hash`                     | TEXT      | 是   | 64 hex                   | 快照 hash              |
+| `manifest_asset_id`              | TEXT NULL | 否   | FK assets                | 结构化修改候选         |
+| `evidence_json`                  | TEXT      | 是   | JSON                     | OCR/视觉/像素/断言摘要 |
+| `status`                         | TEXT      | 是   | enum                     | 任务状态               |
+| `accepted_layer_spec_version_id` | TEXT NULL | 否   | FK layer_spec_versions   | 接受后生成版本         |
+| `created_at`, `finished_at`      | INTEGER   | 是   |                          | 时间                   |
+
+不保存原始一次性脚本。只保存 skill、输入 hash、结构化 manifest、验收证据和运行器错误码。
 
 ## 8. 桌宠、聊天和记忆
 
@@ -1219,6 +1309,10 @@ CREATE INDEX ix_prompt_versions_project
   ON prompt_versions(art_project_id, created_at DESC);
 CREATE INDEX ix_live2d_project
   ON live2d_projects(art_project_id, updated_at DESC);
+CREATE INDEX ix_live2d_preparation_prompts_source
+  ON live2d_preparation_prompt_versions(source_art_version_id, created_at DESC);
+CREATE INDEX ix_live2d_ready_art_project
+  ON live2d_ready_art_versions(live2d_project_id, created_at DESC);
 CREATE INDEX ix_layer_specs_project
   ON layer_spec_versions(live2d_project_id, created_at DESC);
 CREATE INDEX ix_rig_plans_project
@@ -1263,43 +1357,44 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(
 
 ## 12. 状态枚举
 
-| 域                   | 枚举                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| PromptDraft          | `active, committed, superseded`                                                                                                                                    |
-| PromptSuggestion     | `proposed, accepted, rejected, stale`                                                                                                                              |
-| GenerationCandidate  | `ready, accepted, rejected, expired`                                                                                                                               |
-| ArtVersionSourceKind | `generated, manual_upload, fork_seed`                                                                                                                              |
-| Live2DProject        | `created, image_ready, decomposing, layer_review, psd_composed, rig_planning, rigging, rig_review, motion_review, qc, published, externally_edited, failed, stale` |
-| RigProposal          | `draft, preview_ready, approved, applied, rejected, stale, failed`                                                                                                 |
-| ModelBuild           | `queued, running, qc_pending, qc_passed, qc_failed, failed, unknown_outcome`                                                                                       |
-| Job                  | `queued, leased, running, waiting_user, succeeded, failed, retrying, cancelled, unknown_outcome`                                                                   |
-| AgentApproval        | `pending, accepted, declined, expired, cancelled`                                                                                                                  |
-| ToolSource           | `unknown, ready, degraded, offline, auth_required`                                                                                                                 |
-| ToolReview           | `approved, pending_reapproval, blocked`                                                                                                                            |
-| ToolInvocation       | `requested, waiting_approval, running, succeeded, failed, cancelled`                                                                                               |
-| ToolApproval         | `pending, allowed_once, allowed_session, denied, expired`                                                                                                          |
-| Fork                 | `active, detached`                                                                                                                                                 |
+| 域                   | 枚举                                                                                                                                                                                                                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PromptDraft          | `active, committed, superseded`                                                                                                                                                                                                                                                                           |
+| PromptSuggestion     | `proposed, accepted, rejected, stale`                                                                                                                                                                                                                                                                     |
+| GenerationCandidate  | `ready, accepted, rejected, expired`                                                                                                                                                                                                                                                                      |
+| ArtVersionSourceKind | `generated, manual_upload, fork_seed`                                                                                                                                                                                                                                                                     |
+| Live2DProject        | `created, image_ready, live2d_preparation_prompting, live2d_ready_art_generating, live2d_preparation_review, live2d_ready_art_ready, decomposing, layer_review, psd_composed, psd_editing, rig_planning, rigging, rig_review, motion_review, handoff_ready, handed_off, externally_edited, failed, stale` |
+| RigProposal          | `draft, preview_ready, approved, applied, rejected, stale, failed`                                                                                                                                                                                                                                        |
+| ModelBuild           | `queued, running, validation_pending, handoff_ready, failed, unknown_outcome`                                                                                                                                                                                                                             |
+| Job                  | `queued, leased, running, waiting_user, succeeded, failed, retrying, cancelled, unknown_outcome`                                                                                                                                                                                                          |
+| AgentApproval        | `pending, accepted, declined, expired, cancelled`                                                                                                                                                                                                                                                         |
+| ToolSource           | `unknown, ready, degraded, offline, auth_required`                                                                                                                                                                                                                                                        |
+| ToolReview           | `approved, pending_reapproval, blocked`                                                                                                                                                                                                                                                                   |
+| ToolInvocation       | `requested, waiting_approval, running, succeeded, failed, cancelled`                                                                                                                                                                                                                                      |
+| ToolApproval         | `pending, allowed_once, allowed_session, denied, expired`                                                                                                                                                                                                                                                 |
+| Fork                 | `active, detached`                                                                                                                                                                                                                                                                                        |
 
 ## 13. 事务边界
 
-| 操作                          | 必须同事务写入                                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| 修改角色设定                  | 新 CharacterBriefVersion + characters.active_brief_version_id + audit                           |
-| 保存 PromptInput              | Submission + asset_links + draft revision                                                       |
-| 提交 PromptVersion            | Version + 有序 prompt_version asset_links + input snapshot + active prompt pointer + audit      |
-| 采纳候选                      | Candidate status + ArtVersion(artwork asset/generation source) + active pointer + audit         |
-| 手工上传立绘                  | ArtVersion(artwork asset/manual source) + active pointer + audit                                |
-| Fork                          | Child project + seed versions + fork relation + audit                                           |
-| 采纳 SemanticPatch            | Candidate status + BindingReadyPsd + compose report + LayerSpecVersion + active pointer + audit |
-| 重建 PSD                      | BindingReadyPsd + compose report + LayerSpecVersion + active pointer + audit                    |
-| 保存 RigPlanVersion           | RigPlanVersion + 固定 source LayerSpec/PSD 引用 + audit                                         |
-| 切换 active LayerSpec/RigPlan | 两个 active pointer + 兼容性校验 + audit                                                        |
-| 创建 ModelBuild               | 固定 ArtVersion/LayerSpec/PSD/RigPlan/CanvasTransform 引用 + Job + audit                        |
-| 应用 RigProposal              | Proposal status + RigPlanVersion + audit                                                        |
-| 发布 ModelArtifact            | Artifact + Pet active_model_id + runtime binding + audit                                        |
-| 安装 MCP 工具源               | Source + discovered tool definitions + schema hashes + audit                                    |
-| 修改 Tools/Skills 权限        | Grant/binding + approved schema/manifest hash + audit                                           |
-| 删除角色/项目                 | 软删除 + audit；不做级联物理删除                                                                |
+| 操作                          | 必须同事务写入                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| 修改角色设定                  | 新 CharacterBriefVersion + characters.active_brief_version_id + audit                      |
+| 保存 PromptInput              | Submission + asset_links + draft revision                                                  |
+| 提交 PromptVersion            | Version + 有序 prompt_version asset_links + input snapshot + active prompt pointer + audit |
+| 采纳候选                      | Candidate status + ArtVersion(artwork asset/generation source) + active pointer + audit    |
+| 手工上传立绘                  | ArtVersion(artwork asset/manual source) + active pointer + audit                           |
+| Fork                          | Child project + seed versions + fork relation + audit                                      |
+| 接受立绘准备提示词            | PreparationPromptVersion + active preparation prompt pointer + audit                       |
+| 接受分层用立绘                | Live2DReadyArtVersion + active ready-art pointer + audit                                   |
+| 接受 PSD 图层候选             | BindingReadyPsd + layer manifest + LayerSpecVersion + active pointer + audit               |
+| 保存 RigPlanVersion           | RigPlanVersion + 固定 source LayerSpec/PSD 引用 + audit                                    |
+| 切换 active LayerSpec/RigPlan | 两个 active pointer + 兼容性校验 + audit                                                   |
+| 创建 ModelBuild               | 固定 ArtVersion/LayerSpec/PSD/RigPlan/CanvasTransform 引用 + Job + audit                   |
+| 应用 RigProposal              | Proposal status + RigPlanVersion + audit                                                   |
+| 交给桌宠                      | ModelArtifact `handed_off_at` + Pet active_model_id + runtime binding + handoff audit      |
+| 安装 MCP 工具源               | Source + discovered tool definitions + schema hashes + audit                               |
+| 修改 Tools/Skills 权限        | Grant/binding + approved schema/manifest hash + audit                                      |
+| 删除角色/项目                 | 软删除 + audit；不做级联物理删除                                                           |
 
 ## 14. 保留与删除
 
